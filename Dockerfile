@@ -1,0 +1,12 @@
+FROM node:22-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+ARG VITE_ADSENSE_CLIENT
+ARG VITE_ADSENSE_SLOT_LOBBY
+ARG VITE_ADSENSE_SLOT_RESULT
+RUN npm run build
+ENV PORT=8080 DB_PATH=/data/tsunagu.db
+EXPOSE 8080
+CMD ["npm", "start"]

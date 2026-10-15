@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ツナグラン | ワイヤーでつながるオンライン協力アクション</title>
+  <meta name="description" content="ブラウザで遊べる無料のオンライン協力2Dアクション。ワイヤーでスイングし、仲間とつながってステージを突破しよう。" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- タイトル -->
+    <section id="screen-title" class="screen">
+      <div class="title-card">
+        <h1 class="logo">ツナグ<span>ラン</span></h1>
+        <p class="tagline">ワイヤーでつながる、オンライン協力アクション</p>
+
+        <div id="logged-in" class="hidden">
+          <p><b id="logged-name"></b> でログイン中</p>
+          <button id="btn-play-account" class="primary">はじめる</button>
+          <button id="btn-logout" class="link">ログアウト</button>
+        </div>
+
+        <div id="auth-forms">
+          <div class="tabs">
+            <button class="tab active" data-tab="guest">ゲスト</button>
+            <button class="tab" data-tab="login">ログイン</button>
+            <button class="tab" data-tab="register">新規登録</button>
+          </div>
+          <form id="form-guest" class="tab-pane" data-pane="guest">
+            <label>名前<input name="name" maxlength="16" required autocomplete="nickname" /></label>
+            <button class="primary">ゲストで遊ぶ</button>
+            <p class="note">ゲストの記録はランキングに残りません。</p>
+          </form>
+          <form id="form-login" class="tab-pane hidden" data-pane="login">
+            <label>名前<input name="name" maxlength="16" required autocomplete="username" /></label>
+            <label>パスワード<input name="password" type="password" required autocomplete="current-password" /></label>
+            <button class="primary">ログイン</button>
+          </form>
+          <form id="form-register" class="tab-pane hidden" data-pane="register">
+            <label>名前<input name="name" maxlength="16" required autocomplete="username" /></label>
+            <label>パスワード（6文字以上）<input name="password" type="password" minlength="6" required autocomplete="new-password" /></label>
+            <button class="primary">登録してはじめる</button>
+          </form>
+          <p id="auth-error" class="error"></p>
+        </div>
+      </div>
+      <div class="ad-slot" data-slot="lobby"></div>
+      <footer class="footer"><a href="/about.html">ツナグランについて</a> · <a href="/privacy.html">プライバシーポリシー</a></footer>
+    </section>
+
+    <!-- 大部屋一覧 -->
+    <section id="screen-hubs" class="screen hidden">
+      <header class="bar">
+        <h2>大部屋をえらぶ</h2>
+        <span class="me-label"></span>
+        <button id="btn-back-title" class="link">タイトルへ</button>
+      </header>
+      <div class="hubs-layout">
+        <div class="panel">
+          <ul id="hub-list" class="list"></ul>
+          <form id="form-create-hub" class="inline">
+            <input name="name" maxlength="16" placeholder="新しい大部屋の名前" />
+            <button>作って入る</button>
+          </form>
+        </div>
+        <div class="panel">
+          <h3>ランキング</h3>
+          <div class="stage-tabs" data-rank="hubs"></div>
+          <ol class="ranking" data-rank-list="hubs"></ol>
+        </div>
+      </div>
+      <div class="ad-slot" data-slot="lobby"></div>
+    </section>
+
+    <!-- 大部屋の中 -->
+    <section id="screen-hub" class="screen hidden">
+      <header class="bar">
+        <h2 id="hub-name"></h2>
+        <span class="me-label"></span>
+        <button id="btn-leave-hub" class="link">大部屋を出る</button>
+      </header>
+      <div class="hub-layout">
+        <div class="panel">
+          <h3>仲間と遊ぶ</h3>
+          <div id="party-area"></div>
+        </div>
+        <div class="panel">
+          <h3>フリーで遊ぶ</h3>
+          <p class="note">誰でも途中から入れる公開セッションです。</p>
+          <div id="free-list" class="cards"></div>
+        </div>
+        <div class="panel side">
+          <h3>大部屋のメンバー</h3>
+          <ul id="member-list" class="list compact"></ul>
+          <h3>チャット</h3>
+          <div id="chat-log" class="chat-log"></div>
+          <form id="form-chat" class="inline">
+            <input name="text" maxlength="200" placeholder="メッセージ" autocomplete="off" />
+            <button>送信</button>
+          </form>
+        </div>
+      </div>
+      <div class="ad-slot" data-slot="lobby"></div>
+    </section>
+
+    <!-- ゲーム -->
+    <section id="screen-game" class="screen hidden">
+      <canvas id="game-canvas"></canvas>
+      <div class="hud">
+        <div id="hud-stage"></div>
+        <div id="hud-timer">0.00</div>
+        <div id="hud-mode"></div>
+      </div>
+      <div class="help">
+        A/D 移動 · Space ジャンプ（空中でダッシュ、壁で壁キック） · 右クリック/E ワイヤー · W/S 巻き取り ·
+        左クリック/Q エアキャノン · K やり直し · Esc 大部屋へ
+      </div>
+      <div id="toast" class="toast hidden"></div>
+      <div id="result" class="overlay hidden">
+        <div class="result-card">
+          <h2 id="result-title">ゴール！</h2>
+          <div id="result-body"></div>
+          <div class="ad-slot" data-slot="result"></div>
+          <div class="buttons">
+            <button id="btn-retry" class="primary">もう一度（K）</button>
+            <button id="btn-close-result">続けて見る</button>
+            <button id="btn-leave-game">大部屋へ戻る</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
