@@ -49,6 +49,7 @@ function limited(req: IncomingMessage): boolean {
 }
 
 async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
+  if (url.pathname === '/api/health') return json(res, 200, { ok: true });
   if (req.method === 'POST' && (url.pathname === '/api/register' || url.pathname === '/api/login')) {
     if (limited(req)) return json(res, 429, { error: 'しばらく待ってからもう一度試してください' });
     const b = await readBody(req);
