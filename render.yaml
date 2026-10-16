@@ -1,10 +1,12 @@
 # Render の Blueprint。Dashboard の「New > Blueprint」でこのリポジトリを選ぶと作られる。
 services:
   - type: web
-    name: tsunagu-run
+    name: chainrace
     runtime: docker
     plan: starter # 無料プランは停止とディスクなしのため、記録が消える
     region: singapore
+    domains:
+      - chainrace.kodking-tools.com
     healthCheckPath: /api/health
     disk:
       name: data

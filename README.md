@@ -46,10 +46,19 @@ npm run typecheck
 - `server/` Node.js + WebSocket。物理はサーバーが正（不正なタイムを防ぐ）。SQLite（`node:sqlite`）にアカウントと記録を保存。
 - `client/` Vite + TypeScript + Canvas。自分のキャラはクライアント予測し、サーバーの状態で補正する。
 
-## 公開
+## 公開（https://chainrace.kodking-tools.com）
 
-WebSocket を常時つなぐため、常駐サーバーが動くサービス（Render の Web Service、Fly.io など）を使う。
-`Dockerfile` でそのまま動く。SQLite のファイル（`DB_PATH`、既定 `/data/tsunagu.db`）は永続ディスクに置くこと。
+WebSocket を常時つなぐため、常駐サーバーが動く Render を使う。設定は `render.yaml` にある（Docker、Starter プラン、1GB ディスクに SQLite を置く）。
+
+1. Render で「New > Blueprint」を選び、このリポジトリをつなぐ。`render.yaml` のとおりに `chainrace` サービスが作られる。
+2. デプロイが終わったら、サービスの「Settings > Custom Domains」に `chainrace.kodking-tools.com` が入っていることを確認する。
+3. ドメインを買ったサービスの DNS 設定で、次のレコードを追加する。
+
+   | 種類 | 名前（ホスト） | 値 |
+   | --- | --- | --- |
+   | CNAME | `chainrace` | `chainrace.onrender.com`（Render の画面に出る `xxx.onrender.com` を使う） |
+
+4. Render の Custom Domains で「Verify」を押す。証明書（HTTPS）は自動で発行される。
 
 ## 広告
 
