@@ -74,35 +74,29 @@
       <div class="ad-slot" data-slot="lobby"></div>
     </section>
 
-    <!-- 大部屋の中 -->
+    <!-- 大部屋の中（歩き回れる広場） -->
     <section id="screen-hub" class="screen hidden">
-      <header class="bar">
+      <canvas id="lobby-canvas"></canvas>
+      <header class="lobby-bar">
         <h2 id="hub-name"></h2>
         <span class="me-label"></span>
-        <button id="btn-leave-hub" class="link">大部屋を出る</button>
+        <button id="btn-leave-hub">大部屋を出る</button>
       </header>
-      <div class="hub-layout">
-        <div class="panel">
-          <h3>仲間と遊ぶ</h3>
-          <div id="party-area"></div>
-        </div>
-        <div class="panel">
-          <h3>フリーで遊ぶ</h3>
-          <p class="note">誰でも途中から入れる公開セッションです。</p>
-          <div id="free-list" class="cards"></div>
-        </div>
-        <div class="panel side">
-          <h3>大部屋のメンバー</h3>
+      <aside class="lobby-side">
+        <details open>
+          <summary>メンバー <span id="member-count"></span></summary>
           <ul id="member-list" class="list compact"></ul>
-          <h3>チャット</h3>
-          <div id="chat-log" class="chat-log"></div>
-          <form id="form-chat" class="inline">
-            <input name="text" maxlength="200" placeholder="メッセージ" autocomplete="off" />
-            <button>送信</button>
-          </form>
-        </div>
+        </details>
+        <div id="chat-log" class="chat-log"></div>
+        <form id="form-chat" class="inline">
+          <input name="text" maxlength="200" placeholder="Enter でチャット" autocomplete="off" />
+          <button>送信</button>
+        </form>
+        <div class="ad-slot" data-slot="lobby"></div>
+      </aside>
+      <div class="help">
+        A/D 移動 · Space ジャンプ · 右クリック/E ワイヤー · 入口や台で F · Enter チャット
       </div>
-      <div class="ad-slot" data-slot="lobby"></div>
     </section>
 
     <!-- ゲーム -->

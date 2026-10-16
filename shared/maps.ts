@@ -1,9 +1,10 @@
-import type { MapDef } from './physics';
+import type { MapDef, Zone } from './physics';
 
 // ステージはすべてこのプロジェクトのオリジナル。四角形を重ねて組み立てる。
 class Builder {
   grid: string[][];
   hints: MapDef['hints'] = [];
+  zones: Zone[] = [];
   constructor(public width: number, public height: number) {
     this.grid = Array.from({ length: height }, () => Array(width).fill('.'));
   }
@@ -23,9 +24,16 @@ class Builder {
     this.hints.push({ x, y, text });
     return this;
   }
-  build(meta: Omit<MapDef, 'width' | 'height' | 'tiles' | 'hints'>): MapDef {
+  zone(z: Zone) {
+    this.zones.push(z);
+    return this;
+  }
+  build(meta: Omit<MapDef, 'width' | 'height' | 'tiles' | 'hints' | 'zones'>): MapDef {
     this.border();
-    return { ...meta, width: this.width, height: this.height, tiles: this.grid.map((r) => r.join('')), hints: this.hints };
+    return {
+      ...meta, width: this.width, height: this.height, tiles: this.grid.map((r) => r.join('')), hints: this.hints,
+      zones: this.zones.length ? this.zones : undefined,
+    };
   }
 }
 
@@ -120,4 +128,35 @@ function stage3(): MapDef {
 }
 
 export const MAPS: MapDef[] = [stage1(), stage2(), stage3()];
-export const mapById = (id: string) => MAPS.find((m) => m.id === id);
+
+// 大部屋の広場：左にフリー入口、右に協力の台
+function lobby(): MapDef {
+  const b = new Builder(84, 22);
+  b.rect(0, 18, 84, 4, '#');
+  b.rect(42, 17, 1, 1, 'S');
+  // 中央の遊び場（ワイヤーの練習用の天井とバネ）
+  b.rect(32, 4, 20, 2, '#');
+  b.rect(36, 12, 12, 1, '#');
+  b.rect(34, 17, 1, 1, 'J');
+  b.rect(50, 17, 1, 1, 'J');
+  // 左右を区切る低い仕切り
+  b.rect(31, 16, 1, 2, 'X');
+  b.rect(53, 16, 1, 2, 'X');
+  // 端のゾーンは壁際まで広げて、歩いて行くだけで入れるようにする
+  const free = [{ x: 1, w: 9 }, { x: 12, w: 7 }, { x: 21, w: 7 }];
+  const party = [{ x: 56, w: 7 }, { x: 65, w: 7 }, { x: 74, w: 9 }];
+  MAPS.forEach((m, i) => {
+    b.zone({ id: `free-${m.id}`, kind: 'free', stageId: m.id, ...free[i], y: 13, h: 5 });
+    b.zone({ id: `party-${m.id}`, kind: 'party', stageId: m.id, ...party[i], y: 13, h: 5 });
+  });
+  b.hint(2, 9, 'フリー入口: 入口で F を押すと、誰でもいるステージに入る')
+    .hint(56, 9, '協力の台: 乗って F でカウント開始、台の上の全員で出発')
+    .hint(35, 9, 'Enter でチャット');
+  return b.build({ id: 'lobby', name: '大部屋', minPlayers: 1, description: '' });
+}
+export const LOBBY_MAP = lobby();
+
+/** 遊べるステージだけを探す */
+export const stageById = (id: string) => MAPS.find((m) => m.id === id);
+/** 大部屋を含むすべてのマップから探す */
+export const mapById = (id: string) => (id === LOBBY_MAP.id ? LOBBY_MAP : stageById(id));
