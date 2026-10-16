@@ -13,7 +13,7 @@ const STATIC_DIR = resolve(process.env.STATIC_DIR ?? 'dist');
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8',
-  '.json': 'application/json', '.webmanifest': 'application/manifest+json',
+  '.json': 'application/json', '.xml': 'application/xml', '.webmanifest': 'application/manifest+json',
 };
 
 function json(res: ServerResponse, status: number, body: unknown) {
