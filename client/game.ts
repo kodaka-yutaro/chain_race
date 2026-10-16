@@ -1,9 +1,9 @@
-import { mapById } from '../shared/maps';
 import {
-  createWorld, emptyInput, isSolidChar, newRunner, stepWorld, TEE_SIZE, TICK_RATE, TILE, WIRE_ATTACHED, WIRE_FLYING,
-  type Input, type MapDef, type Runner, type World,
+  createWorld, emptyInput, inZone, isSolidChar, newRunner, stepWorld, TEE_SIZE, TICK_RATE, TILE, WIRE_ATTACHED,
+  WIRE_FLYING, type Input, type MapDef, type Runner, type World,
 } from '../shared/physics';
-import type { RunnerView, ServerMsg } from '../shared/protocol';
+import { mapById as stageOrLobby, stageById } from '../shared/maps';
+import { PARTY_CAPACITY, type RunnerView, type ServerMsg, type ZoneState } from '../shared/protocol';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
 
@@ -42,8 +42,9 @@ export class ClientGame {
     names: Record<number, string>,
     private send: (input: { seq: number; input: Input }) => void,
     private onHud: (timer: number, running: boolean) => void,
+    private onInteract: () => void = () => {},
   ) {
-    this.map = mapById(stageId)!;
+    this.map = stageOrLobby(stageId)!;
     this.world = createWorld(this.map);
     this.me = newRunner(youId, this.map);
     this.world.runners.push(this.me);
@@ -55,7 +56,15 @@ export class ClientGame {
     this.raf = requestAnimationFrame(this.frame);
   }
 
+  private zoneStates: ZoneState[] = [];
+  private bubbles = new Map<number, { text: string; until: number }>();
+
   setNames(n: Record<number, string>) { this.names = n; }
+
+  /** チャットの吹き出しを頭の上に出す */
+  bubble(id: number, text: string) {
+    this.bubbles.set(id, { text: text.length > 40 ? `${text.slice(0, 40)}…` : text, until: performance.now() + 5000 });
+  }
 
   queueKill() { this.killQueued = true; }
 
@@ -70,6 +79,7 @@ export class ClientGame {
     if (this.lastSnapAt) this.snapInterval = this.snapInterval * 0.9 + (now - this.lastSnapAt) * 0.1;
     this.lastSnapAt = now;
     this.doors = s.doors;
+    if (s.zones) this.zoneStates = s.zones;
     const seen = new Set<number>();
     for (const v of s.others) {
       seen.add(v.id);
@@ -157,6 +167,7 @@ export class ClientGame {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (e.code === 'KeyK' && !e.repeat) this.killQueued = true;
+      if (e.code === 'KeyF' && !e.repeat) this.onInteract();
       this.keys.add(e.code);
     });
     this.on(window, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.code));
@@ -288,6 +299,7 @@ export class ClientGame {
     g.scale(z, z);
     g.translate(-this.cam.x, -this.cam.y);
     g.drawImage(this.staticLayer, 0, 0);
+    this.drawZones(g);
 
     // 扉
     for (let y = 0; y < this.map.height; y++) {
@@ -336,8 +348,77 @@ export class ClientGame {
     }
 
     for (const r of all) this.drawRunner(g, r);
+    this.drawBubbles(g, all, now);
+    this.drawZonePrompt(g, meX, meY);
 
     g.restore();
+  }
+
+  private drawZones(g: CanvasRenderingContext2D) {
+    for (const z of this.map.zones ?? []) {
+      const st = this.zoneStates.find((x) => x.id === z.id);
+      const stage = stageById(z.stageId);
+      const x = z.x * TILE, y = z.y * TILE, w = z.w * TILE, h = z.h * TILE;
+      const party = z.kind === 'party';
+      g.fillStyle = party ? 'rgba(255,122,89,0.18)' : 'rgba(76,201,240,0.18)';
+      g.fillRect(x, y, w, h);
+      g.strokeStyle = party ? '#ff7a59' : '#4cc9f0';
+      g.lineWidth = 3;
+      g.setLineDash(party ? [] : [10, 6]);
+      g.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+      g.setLineDash([]);
+      g.textAlign = 'center';
+      g.fillStyle = '#fff';
+      g.font = 'bold 18px system-ui, sans-serif';
+      g.fillText(stage?.name ?? '', x + w / 2, y - 30);
+      g.font = '14px system-ui, sans-serif';
+      g.fillStyle = 'rgba(255,255,255,0.8)';
+      const count = st?.count ?? 0;
+      const label = party
+        ? `協力の台 ${count}/${PARTY_CAPACITY}人${stage && stage.minPlayers > 1 ? `（${stage.minPlayers}人〜）` : ''}`
+        : `フリー入口 ${count}人プレイ中`;
+      g.fillText(label, x + w / 2, y - 10);
+      if (party && st && st.countdown > 0) {
+        g.font = 'bold 64px system-ui, sans-serif';
+        g.fillStyle = '#ffe066';
+        g.fillText(String(Math.ceil(st.countdown / TICK_RATE)), x + w / 2, y + h / 2 + 10);
+      }
+    }
+  }
+
+  private drawZonePrompt(g: CanvasRenderingContext2D, x: number, y: number) {
+    const z = (this.map.zones ?? []).find((q) => inZone(q, this.me.x, this.me.y));
+    if (!z) return;
+    const counting = (this.zoneStates.find((q) => q.id === z.id)?.countdown ?? 0) > 0;
+    const text = z.kind === 'free' ? 'F: このステージに入る' : counting ? '台の上にいる全員で出発します' : 'F: 台の上の全員で出発';
+    g.font = 'bold 14px system-ui, sans-serif';
+    const w = g.measureText(text).width + 16;
+    g.fillStyle = 'rgba(0,0,0,0.65)';
+    g.fillRect(x - w / 2, y + 22, w, 24);
+    g.fillStyle = '#fff';
+    g.textAlign = 'center';
+    g.fillText(text, x, y + 39);
+  }
+
+  private drawBubbles(g: CanvasRenderingContext2D, all: { id: number; x: number; y: number }[], now: number) {
+    for (const r of all) {
+      const b = this.bubbles.get(r.id);
+      if (!b) continue;
+      if (b.until < now) { this.bubbles.delete(r.id); continue; }
+      g.font = '14px system-ui, sans-serif';
+      const w = Math.min(320, g.measureText(b.text).width + 18);
+      const bx = r.x - w / 2, by = r.y - 72;
+      g.fillStyle = 'rgba(255,255,255,0.95)';
+      g.beginPath();
+      g.roundRect(bx, by, w, 26, 10);
+      g.moveTo(r.x - 6, by + 26);
+      g.lineTo(r.x, by + 34);
+      g.lineTo(r.x + 6, by + 26);
+      g.fill();
+      g.fillStyle = '#1b1b1b';
+      g.textAlign = 'center';
+      g.fillText(b.text, r.x, by + 18, w - 12);
+    }
   }
 
   private drawRunner(

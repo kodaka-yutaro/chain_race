@@ -1,6 +1,6 @@
 import { mapById } from '../shared/maps';
-import { createWorld, emptyInput, newRunner, stepWorld, type Input, type World } from '../shared/physics';
-import { toView, type ServerMsg } from '../shared/protocol';
+import { createWorld, emptyInput, newRunner, stepWorld, TILE, type Input, type World } from '../shared/physics';
+import { toView, type GameMode, type ServerMsg, type ZoneState } from '../shared/protocol';
 import { saveRecord } from './db';
 import type { Client } from './hub';
 
@@ -23,8 +23,9 @@ export class Game {
 
   constructor(
     readonly stageId: string,
-    readonly mode: 'party' | 'free',
+    readonly mode: GameMode,
     private onEmpty: (g: Game) => void,
+    private hooks: { afterTick?: () => void; zones?: () => ZoneState[] } = {},
   ) {
     const map = mapById(stageId);
     if (!map) throw new Error(`unknown stage ${stageId}`);
@@ -45,6 +46,9 @@ export class Game {
 
   add(c: Client) {
     const r = newRunner(c.id, this.world.map);
+    // 同じ場所に重ならないよう、出現位置を少しずらす（ステージではスタート線より手前に収める）
+    if (this.mode === 'lobby') r.x += Math.round((Math.random() * 8 - 4) * TILE);
+    else r.x += (this.slots.size % 3) * TILE;
     this.world.runners.push(r);
     this.slots.set(c.id, { client: c, queue: [], last: emptyInput(), lastSeq: 0 });
     c.game = this;
@@ -52,12 +56,13 @@ export class Game {
     this.broadcast({ t: 'names', names: this.names() });
   }
 
-  remove(c: Client) {
+  /** notify=false は別のゲームへ移るとき（画面を戻さない） */
+  remove(c: Client, notify = true) {
     if (!this.slots.delete(c.id)) return;
     this.world.runners = this.world.runners.filter((r) => r.id !== c.id);
     for (const r of this.world.runners) if (r.wireRunner === c.id) { r.wireState = 0; r.wireRunner = -1; }
     c.game = null;
-    c.send({ t: 'gameEnd' });
+    if (notify) c.send({ t: 'gameEnd' });
     if (this.slots.size === 0) this.onEmpty(this);
     else this.broadcast({ t: 'names', names: this.names() });
   }
@@ -97,13 +102,16 @@ export class Game {
     }
     if (this.cleared && this.world.runners.some((r) => r.finishedTime < 0)) this.cleared = false;
 
+    this.hooks.afterTick?.();
+
     if (!sendSnapshot) return;
+    const zones = this.hooks.zones?.();
     const views = this.world.runners.map(toView);
     for (const [id, s] of this.slots) {
       const me = this.world.runners.find((r) => r.id === id) ?? null;
       s.client.send({
         t: 'snap', tick: this.world.tick, me, lastSeq: s.lastSeq,
-        others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen,
+        others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen, zones,
       });
     }
   }

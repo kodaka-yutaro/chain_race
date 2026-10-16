@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
-import { mapById } from '../shared/maps';
+import { stageById } from '../shared/maps';
 import { TICK_RATE } from '../shared/physics';
 import { accountByToken, login, logout, myRecords, register, topRecords } from './db';
 import { games, handleConnection } from './hub';
@@ -69,7 +69,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
   if (url.pathname === '/api/records') {
     const stage = url.searchParams.get('stage') ?? '';
-    if (!mapById(stage)) return json(res, 404, { error: 'unknown stage' });
+    if (!stageById(stage)) return json(res, 404, { error: 'unknown stage' });
     return json(res, 200, { stage, records: topRecords(stage) });
   }
   return json(res, 404, { error: 'not found' });

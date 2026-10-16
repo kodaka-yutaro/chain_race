@@ -1,5 +1,5 @@
 import { MAPS, mapById } from '../shared/maps';
-import { PARTY_CAPACITY, type ClientMsg, type HubState, type ServerMsg, type UserInfo } from '../shared/protocol';
+import type { ClientMsg, GameMode, HubState, ServerMsg, UserInfo } from '../shared/protocol';
 import { fillAds } from './ads';
 import { ClientGame } from './game';
 
@@ -23,9 +23,8 @@ const store = {
 let ws: WebSocket | null = null;
 let me: UserInfo | null = null;
 let hub: HubState | null = null;
-let myPartyId: string | null = null;
 let game: ClientGame | null = null;
-let gameMode: 'party' | 'free' = 'free';
+let gameMode: GameMode = 'free';
 let rankStage = MAPS[0].id;
 
 type Screen = 'title' | 'hubs' | 'hub' | 'game';
@@ -134,13 +133,12 @@ function onMessage(m: ServerMsg) {
       return;
     case 'hubState':
       hub = m.hub;
-      myPartyId = m.you.partyId;
       if (!hub) { show('hubs'); send({ t: 'listHubs' }); return; }
       renderHub();
-      if (!game && $('#screen-hub').classList.contains('hidden')) show('hub');
       return;
     case 'chat':
       addChat(m.from, m.text, !!m.system);
+      if (m.fromId !== undefined && gameMode === 'lobby') game?.bubble(m.fromId, m.text);
       return;
     case 'gameStart':
       startGame(m);
@@ -161,7 +159,7 @@ function onMessage(m: ServerMsg) {
       return;
     case 'gameEnd':
       stopGame();
-      show(hub ? 'hub' : 'hubs');
+      if (!hub) show('hubs');
       return;
   }
 }
@@ -189,70 +187,10 @@ $('#form-create-hub').addEventListener('submit', (e) => {
 
 $('#btn-leave-hub').addEventListener('click', () => send({ t: 'leaveHub' }));
 
-function stageSelect(value: string, onChange: (v: string) => void, disabled = false) {
-  const s = el('select', { disabled });
-  for (const m of MAPS) s.append(el('option', { value: m.id, textContent: `${m.name}${m.minPlayers > 1 ? `（${m.minPlayers}人〜）` : ''}`, selected: m.id === value }));
-  s.addEventListener('change', () => onChange(s.value));
-  return s;
-}
-
-function nameOf(id: number) {
-  const m = hub?.members.find((x) => x.id === id);
-  return m ? m.name + (m.guest ? '（ゲスト）' : '') : '?';
-}
-
 function renderHub() {
   if (!hub) return;
   $('#hub-name').textContent = hub.name;
-
-  // パーティ
-  const area = $('#party-area');
-  const mine = hub.parties.find((p) => p.id === myPartyId);
-  if (mine) {
-    const leader = mine.leaderId === me?.id;
-    const start = el('button', { className: 'primary', textContent: mine.playing ? 'プレイ中' : 'ゲーム開始', disabled: !leader || mine.playing });
-    start.addEventListener('click', () => send({ t: 'startParty' }));
-    const leave = el('button', { textContent: 'パーティを抜ける' });
-    leave.addEventListener('click', () => send({ t: 'leaveParty' }));
-    const map = mapById(mine.stageId)!;
-    area.replaceChildren(
-      el('p', { className: 'note', textContent: leader ? 'あなたがリーダーです。仲間が集まったら開始しましょう。' : 'リーダーの開始を待っています。' }),
-      el('label', {}, 'ステージ ', stageSelect(mine.stageId, (v) => send({ t: 'setPartyStage', stageId: v }), !leader || mine.playing)),
-      el('p', { className: 'note', textContent: map.description }),
-      el('ul', { className: 'list compact' }, ...mine.members.map((id) => el('li', {}, `${id === mine.leaderId ? '★ ' : ''}${nameOf(id)}`))),
-      el('div', { className: 'buttons' }, start, leave),
-    );
-  } else {
-    let newStage = MAPS[0].id;
-    const create = el('button', { className: 'primary', textContent: 'パーティを作る' });
-    create.addEventListener('click', () => send({ t: 'createParty', stageId: newStage }));
-    const list = hub.parties.length === 0
-      ? el('p', { className: 'note', textContent: 'まだパーティはありません。' })
-      : el('ul', { className: 'list' }, ...hub.parties.map((p) => {
-        const join = el('button', { textContent: p.playing ? 'プレイ中' : '参加', disabled: p.playing || p.members.length >= PARTY_CAPACITY });
-        join.addEventListener('click', () => send({ t: 'joinParty', partyId: p.id }));
-        return el('li', {},
-          el('span', { className: 'grow', textContent: `${nameOf(p.leaderId)} のパーティ・${mapById(p.stageId)?.name}` }),
-          el('span', { className: 'count', textContent: `${p.members.length}/${PARTY_CAPACITY}` }), join);
-      }));
-    area.replaceChildren(
-      list,
-      el('div', { className: 'inline' }, stageSelect(newStage, (v) => { newStage = v; }), create),
-    );
-  }
-
-  // フリー
-  $('#free-list').replaceChildren(...MAPS.map((m) => {
-    const count = hub!.free.find((f) => f.stageId === m.id)?.count ?? 0;
-    const join = el('button', { className: 'primary', textContent: '参加する' });
-    join.addEventListener('click', () => send({ t: 'joinFree', stageId: m.id }));
-    return el('div', { className: 'card' },
-      el('h4', { textContent: m.name }),
-      el('p', { className: 'note', textContent: m.description }),
-      el('div', { className: 'card-foot' }, el('span', { className: 'count', textContent: `${count}人がプレイ中` }), join));
-  }));
-
-  // メンバー
+  $('#member-count').textContent = `${hub.members.length}人`;
   $('#member-list').replaceChildren(...hub.members.map((m) =>
     el('li', {}, el('span', { className: 'grow', textContent: m.name + (m.guest ? '（ゲスト）' : '') }), el('span', { className: 'count', textContent: m.status }))));
 }
@@ -272,6 +210,15 @@ $('#form-chat').addEventListener('submit', (e) => {
   const input = (e.target as HTMLFormElement).elements.namedItem('text') as HTMLInputElement;
   if (input.value.trim()) send({ t: 'chat', text: input.value });
   input.value = '';
+  input.blur();
+});
+
+// 広場では Enter でチャット入力へ、Esc で入力をやめる
+window.addEventListener('keydown', (e) => {
+  if (gameMode !== 'lobby' || !game) return;
+  const input = $<HTMLInputElement>('#form-chat input');
+  if (e.code === 'Enter' && document.activeElement !== input) { e.preventDefault(); input.focus(); }
+  else if (e.code === 'Escape' && document.activeElement === input) input.blur();
 });
 
 // ---------- ランキング ----------
@@ -295,18 +242,21 @@ function loadRanking(where: string) {
 
 function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
   stopGame();
-  show('game');
   gameMode = m.mode;
-  const canvas = $<HTMLCanvasElement>('#game-canvas');
-  const map = mapById(m.stageId)!;
-  $('#hud-stage').textContent = map.name;
-  $('#hud-mode').textContent = m.mode === 'party' ? 'パーティ' : 'フリー';
+  const lobby = m.mode === 'lobby';
+  show(lobby ? 'hub' : 'game');
+  const canvas = $<HTMLCanvasElement>(lobby ? '#lobby-canvas' : '#game-canvas');
+  if (!lobby) {
+    $('#hud-stage').textContent = mapById(m.stageId)?.name ?? '';
+    $('#hud-mode').textContent = m.mode === 'party' ? 'パーティ' : 'フリー';
+  }
   hideResult();
   game = new ClientGame(canvas, m.stageId, m.youId, m.names, (i) => send({ t: 'input', ...i }), (t, running) => {
+    if (lobby) return;
     const el = $('#hud-timer');
     el.textContent = t.toFixed(2);
     el.classList.toggle('running', running);
-  });
+  }, () => send({ t: 'interact' }));
 }
 
 function stopGame() {
@@ -341,7 +291,7 @@ $('#btn-retry').addEventListener('click', () => { game?.queueKill(); hideResult(
 $('#btn-close-result').addEventListener('click', hideResult);
 $('#btn-leave-game').addEventListener('click', () => send({ t: 'leaveGame' }));
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && game) send({ t: 'leaveGame' });
+  if (e.code === 'Escape' && game && gameMode !== 'lobby') send({ t: 'leaveGame' });
 });
 
 let toastTimer = 0;

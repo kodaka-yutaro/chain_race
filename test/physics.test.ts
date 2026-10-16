@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MAPS, mapById } from '../shared/maps';
+import { LOBBY_MAP, MAPS, mapById } from '../shared/maps';
 import {
-  createWorld, emptyInput, newRunner, stepWorld, TILE, WIRE_ATTACHED, type Input, type World,
+  createWorld, emptyInput, inZone, newRunner, stepWorld, TILE, WIRE_ATTACHED, type Input, type World,
 } from '../shared/physics';
 
 const inp = (p: Partial<Input>): Input => ({ ...emptyInput(), ...p });
@@ -102,4 +102,23 @@ test('しびれ洞窟の煙突は壁キックだけで登りきれる', () => {
     if (r.x > 121 * TILE) break;
   }
   assert.ok(top < 8 * TILE, `top=${top / TILE}`);
+});
+
+test('大部屋の広場に、ステージごとのフリー入口と協力の台がある', () => {
+  const zones = LOBBY_MAP.zones ?? [];
+  for (const m of MAPS) {
+    assert.ok(zones.some((z) => z.kind === 'free' && z.stageId === m.id), `${m.id} のフリー入口がない`);
+    assert.ok(zones.some((z) => z.kind === 'party' && z.stageId === m.id), `${m.id} の協力の台がない`);
+  }
+  const w = createWorld(LOBBY_MAP);
+  const r = newRunner(1, LOBBY_MAP);
+  w.runners.push(r);
+  settle(w);
+  assert.ok(!zones.some((z) => inZone(z, r.x, r.y)), 'スポーン地点がゾーンの中にある');
+  // 地面に立ったまま各ゾーンに入れる
+  for (const z of zones) {
+    r.x = (z.x + z.w / 2) * TILE;
+    settle(w, 20);
+    assert.ok(r.grounded && inZone(z, r.x, r.y), `${z.id} に立てない`);
+  }
 });

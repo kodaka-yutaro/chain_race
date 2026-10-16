@@ -49,6 +49,19 @@ export interface MapDef {
   height: number;
   tiles: string[];
   hints: { x: number; y: number; text: string }[];
+  /** 大部屋の入口・協力の台（タイル座標） */
+  zones?: Zone[];
+}
+
+export interface Zone {
+  id: string;
+  kind: 'free' | 'party';
+  stageId: string;
+  x: number; y: number; w: number; h: number;
+}
+
+export function inZone(z: Zone, px: number, py: number): boolean {
+  return px >= z.x * TILE && px < (z.x + z.w) * TILE && py >= z.y * TILE && py < (z.y + z.h) * TILE;
 }
 
 export interface Input {
