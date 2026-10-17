@@ -63,8 +63,9 @@ WebSocket を常時つなぐため、常駐サーバーが動く Render を使�
 
 4. Render の Custom Domains で「Verify」を押す。証明書（HTTPS）は自動で発行される。
 
-## 広告
+## 広告と検索（kdking サイト共通の方針）
 
-- 広告はプレイ中には出さず、タイトル・ロビー・リザルトにだけ出す。
-- AdSense の審査には独自ドメインと、`/about.html`・`/privacy.html` のようなページが必要。`privacy.html` の運営者名と連絡先を記入する。
-- 審査通過後、`.env.example` の値をビルド時の環境変数に設定し、`client/public/ads.txt` を置く。
+- 運営者名は「kdking」。実名はサイトに出さない。
+- AdSense はルートの `kdking-tools.com` で一括申請している。`ads.txt` はルートのサイトに置くので、このリポジトリには不要。
+- 審査が通ったら、ビルド時の環境変数（`.env.example` 参照）に広告ユニットの ID を入れる。Render ではサービスの「Environment」に設定する。広告はプレイ中には出さず、タイトル・大部屋の横の欄・リザルトにだけ出す。
+- Search Console は `kdking-tools.com` のドメインプロパティで登録済み。公開後に `https://chainrace.kdking-tools.com/sitemap.xml` をそこから送信する。
