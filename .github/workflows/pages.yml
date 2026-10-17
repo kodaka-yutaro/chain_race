@@ -1,0 +1,48 @@
+# main に入ると GitHub Pages に公開する
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          # AdSense の審査が通ったら、リポジトリの Settings → Secrets and variables → Actions → Variables に入れる
+          VITE_ADSENSE_CLIENT: ${{ vars.VITE_ADSENSE_CLIENT }}
+          VITE_ADSENSE_SLOT_LOBBY: ${{ vars.VITE_ADSENSE_SLOT_LOBBY }}
+          VITE_ADSENSE_SLOT_RESULT: ${{ vars.VITE_ADSENSE_SLOT_RESULT }}
+          VITE_TURN_URL: ${{ vars.VITE_TURN_URL }}
+          VITE_TURN_USER: ${{ vars.VITE_TURN_USER }}
+          VITE_TURN_PASS: ${{ vars.VITE_TURN_PASS }}
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,6 +1,7 @@
 import type { Input, Runner } from './physics';
 
-export const HUB_CAPACITY = 32;
+/** 大部屋の定員。作った人のブラウザが全員分の通信を受け持つので控えめにする */
+export const HUB_CAPACITY = 16;
 export const PARTY_CAPACITY = 8;
 /** 協力の台で F を押してから出発するまで（tick） */
 export const PARTY_COUNTDOWN_TICKS = 150;
@@ -11,8 +12,6 @@ export type GameMode = 'party' | 'free' | 'lobby';
 export interface ZoneState { id: string; count: number; countdown: number }
 
 export interface UserInfo { id: number; name: string; guest: boolean }
-
-export interface HubSummary { id: string; name: string; count: number; capacity: number }
 
 export interface HubState {
   id: string;
@@ -30,29 +29,36 @@ export interface RunnerView {
   ft: number; rs: number; g: boolean;
 }
 
+/** 参加者 → 大部屋の主（ホスト） */
 export type ClientMsg =
-  | { t: 'hello'; token?: string; guestName?: string }
-  | { t: 'listHubs' }
-  | { t: 'createHub'; name: string }
-  | { t: 'joinHub'; hubId: string }
-  | { t: 'leaveHub' }
+  | { t: 'hello'; name: string; guest: boolean }
   | { t: 'chat'; text: string }
   | { t: 'interact' }
   | { t: 'leaveGame' }
-  | { t: 'input'; seq: number; input: Input };
+  /** 取りこぼしに備えて直近の入力をまとめて送る */
+  | { t: 'input'; gameId: string; list: { seq: number; input: Input }[] };
 
+/** 大部屋の主（ホスト） → 参加者 */
 export type ServerMsg =
   | { t: 'welcome'; you: UserInfo }
-  | { t: 'hubs'; list: HubSummary[] }
-  | { t: 'hubState'; hub: HubState | null }
+  | { t: 'hubState'; hub: HubState }
   | { t: 'chat'; from: string; fromId?: number; text: string; system?: boolean }
   | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string> }
   | { t: 'names'; names: Record<number, string> }
-  | { t: 'snap'; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; zones?: ZoneState[] }
-  | { t: 'finish'; runnerId: number; name: string; time: number; best: number | null; saved: boolean }
+  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; zones?: ZoneState[] }
+  | { t: 'finish'; runnerId: number; name: string; time: number }
   | { t: 'partyClear'; results: { name: string; time: number }[] }
-  | { t: 'gameEnd' }
   | { t: 'error'; message: string };
+
+/** 届かなくてもよい（次のぶんで上書きされる）メッセージ */
+export const isRealtime = (m: ClientMsg | ServerMsg) => m.t === 'snap' || m.t === 'input';
+
+export function validName(name: string): string | null {
+  const n = String(name ?? '').trim();
+  if (n.length < 1 || n.length > 16) return null;
+  if (/[\u0000-\u001f<>]/.test(n)) return null;
+  return n;
+}
 
 export function toView(r: Runner): RunnerView {
   const q = (n: number) => Math.round(n * 100) / 100;

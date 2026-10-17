@@ -7,11 +7,13 @@
 <p>運営者: kdking<br>制定日: 2026年10月17日</p>
 <p>このポリシーは、ツナグラン（https://chainrace.kdking-tools.com/）に適用されます。</p>
 <h2>取得する情報</h2>
-<p>アカウント登録時に、表示名とパスワード（ハッシュ化して保存）を取得します。ゲームのクリアタイムを記録します。ゲストの場合は入力した名前を接続中のみ使用し、保存しません。チャットの内容は保存しません。</p>
+<p>アカウント登録時に、表示名とパスワードを取得します。パスワードは Google の Firebase Authentication が管理し、運営者は知ることができません。アカウントの表示名と各ステージの自己ベストタイムを Google の Firebase（Cloud Firestore）に保存し、ランキングとして公開します。ゲストの場合は入力した名前を遊んでいる間だけ使い、保存しません。チャットの内容は保存しません。</p>
+<h2>ほかのプレイヤーとの通信</h2>
+<p>ツナグランは、大部屋を作った人のブラウザと参加者のブラウザが直接つながる仕組み（WebRTC）で動いています。そのため、同じ大部屋のプレイヤー同士で、接続に必要な IP アドレスなどの情報がお互いに伝わります。</p>
 <h2>広告について</h2>
 <p>当サイトは第三者配信の広告サービス（Google AdSense）を利用しています。広告配信事業者は、ユーザーの興味に応じた広告を表示するために Cookie を使用することがあります。Google による Cookie の使用は、<a href="https://policies.google.com/technologies/ads" rel="noopener">Google の広告に関するポリシー</a>をご覧ください。パーソナライズ広告は <a href="https://www.google.com/settings/ads" rel="noopener">広告設定</a> で無効にできます。</p>
 <h2>ブラウザへの保存</h2>
-<p>ログイン状態とゲスト名を、お使いのブラウザの localStorage に保存します。</p>
+<p>ログイン状態（Firebase）とゲスト名を、お使いのブラウザに保存します。</p>
 <h2>お問い合わせ</h2>
 <p>お問い合わせは<a href="https://forms.gle/vRKFaCG5Nzq2FCLk6" target="_blank" rel="noopener">お問い合わせフォーム</a>からお願いします。</p>
 <p><a href="/">ゲームに戻る</a> · <a href="https://kdking-tools.com/">kdking のサイト一覧</a></p>

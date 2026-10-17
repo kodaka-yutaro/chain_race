@@ -1,0 +1,50 @@
+rules_version = '2';
+// Firebase コンソールの「Firestore Database → ルール」にこの内容を貼り付けて「公開」する
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAccount() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function stale(d) { return d.updatedAt < request.time.toMillis() - 75000; }
+
+    // 大部屋の一覧。主（作った人）だけが更新でき、主が消えたものは誰でも引き継げる
+    match /hubs/{hubId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 40;
+      allow update: if signedIn()
+        && (resource.data.hostUid == request.auth.uid || stale(resource.data))
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 40;
+      allow delete: if signedIn() && (resource.data.hostUid == request.auth.uid || stale(resource.data));
+
+      // 参加したい人と主のあいだの接続の仲介
+      match /joins/{joinId} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+          && request.resource.data.offer is string && request.resource.data.offer.size() < 20000;
+        allow update: if signedIn()
+          && get(/databases/$(database)/documents/hubs/$(hubId)).data.hostUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answer']);
+        allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      }
+    }
+
+    // アカウントの表示名
+    match /users/{uid} {
+      allow read: if true;
+      allow create: if isAccount() && request.auth.uid == uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 16;
+    }
+
+    // ステージごとの自己ベスト（速くなるときだけ書き換えられる）
+    match /stages/{stageId}/best/{uid} {
+      allow read: if true;
+      allow write: if isAccount() && request.auth.uid == uid
+        && request.resource.data.time is number && request.resource.data.time >= 3
+        && request.resource.data.name == get(/databases/$(database)/documents/users/$(uid)).data.name
+        && (resource == null || request.resource.data.time < resource.data.time);
+    }
+  }
+}
