@@ -60,6 +60,18 @@ function button(el: HTMLElement, onDown: () => void, onUp: () => void = () => {}
 export function mountTouchControls(screen: HTMLElement, actions: { label: string; cls: string; run: () => void }[]) {
   if (!isTouch()) return;
   document.body.classList.add('touch');
+  if (!touch.active) {
+    // iOS Safari はピンチやダブルタップで拡大してしまうので止める
+    for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+    let lastEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('input, textarea, select')) return;
+      const now = Date.now();
+      if (now - lastEnd < 350) e.preventDefault();
+      lastEnd = now;
+    }, { passive: false });
+  }
   touch.active = true;
   const pad = document.createElement('div');
   pad.className = 'touch-pad';
