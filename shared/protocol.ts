@@ -65,7 +65,7 @@ export function toView(r: Runner): RunnerView {
   return {
     id: r.id, x: q(r.x), y: q(r.y), vx: q(r.vx), vy: q(r.vy),
     ws: r.wireState, wx: q(r.wireX), wy: q(r.wireY), wr: r.wireRunner,
-    st: r.stun, ax: q(r.aimX), ay: q(r.aimY), ct: r.cannonTick,
+    st: r.stun, ax: q(r.aimX), ay: q(r.aimY), ct: r.hammerTick,
     ft: r.finishedTime, rs: r.raceStart, g: r.grounded,
   };
 }
