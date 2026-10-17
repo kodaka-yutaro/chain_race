@@ -1,7 +1,6 @@
-import { mapById } from '../shared/maps';
-import { createWorld, emptyInput, newRunner, stepWorld, TILE, type Input, type World } from '../shared/physics';
-import { toView, type GameMode, type ServerMsg, type ZoneState } from '../shared/protocol';
-import { saveRecord } from './db';
+import { mapById } from '../../shared/maps';
+import { createWorld, emptyInput, newRunner, stepWorld, TILE, type Input, type World } from '../../shared/physics';
+import { toView, type GameMode, type ServerMsg, type ZoneState } from '../../shared/protocol';
 import type { Client } from './hub';
 
 const MAX_QUEUE = 6;
@@ -11,12 +10,16 @@ interface Slot {
   queue: { seq: number; input: Input }[];
   last: Input;
   lastSeq: number;
+  /** キューに入れた最大の seq（同じ入力が何度か届くので重複をはじく） */
+  queuedSeq: number;
 }
 
+// ホストが替わっても前のゲームの id と重ならないようにする
+const idPrefix = Date.now().toString(36);
 let nextGameId = 1;
 
 export class Game {
-  readonly id = `g${nextGameId++}`;
+  readonly id = `g${idPrefix}${nextGameId++}`;
   readonly world: World;
   readonly slots = new Map<number, Slot>();
   private cleared = false;
@@ -36,7 +39,7 @@ export class Game {
 
   names(): Record<number, string> {
     const out: Record<number, string> = {};
-    for (const [id, s] of this.slots) out[id] = s.client.guest ? `${s.client.name}` : s.client.name;
+    for (const [id, s] of this.slots) out[id] = s.client.name;
     return out;
   }
 
@@ -50,26 +53,25 @@ export class Game {
     if (this.mode === 'lobby') r.x += Math.round((Math.random() * 8 - 4) * TILE);
     else r.x += (this.slots.size % 3) * TILE;
     this.world.runners.push(r);
-    this.slots.set(c.id, { client: c, queue: [], last: emptyInput(), lastSeq: 0 });
+    this.slots.set(c.id, { client: c, queue: [], last: emptyInput(), lastSeq: 0, queuedSeq: 0 });
     c.game = this;
     c.send({ t: 'gameStart', gameId: this.id, stageId: this.stageId, mode: this.mode, youId: c.id, names: this.names() });
     this.broadcast({ t: 'names', names: this.names() });
   }
 
-  /** notify=false は別のゲームへ移るとき（画面を戻さない） */
-  remove(c: Client, notify = true) {
+  remove(c: Client) {
     if (!this.slots.delete(c.id)) return;
     this.world.runners = this.world.runners.filter((r) => r.id !== c.id);
     for (const r of this.world.runners) if (r.wireRunner === c.id) { r.wireState = 0; r.wireRunner = -1; }
     c.game = null;
-    if (notify) c.send({ t: 'gameEnd' });
     if (this.slots.size === 0) this.onEmpty(this);
     else this.broadcast({ t: 'names', names: this.names() });
   }
 
   pushInput(c: Client, seq: number, input: Input) {
     const s = this.slots.get(c.id);
-    if (!s || seq <= s.lastSeq) return;
+    if (!s || seq <= s.queuedSeq) return;
+    s.queuedSeq = seq;
     s.queue.push({ seq, input });
     while (s.queue.length > MAX_QUEUE) s.queue.shift();
   }
@@ -88,9 +90,8 @@ export class Game {
     for (const f of ev.finished) {
       const s = this.slots.get(f.runnerId);
       if (!s) continue;
-      let best: number | null = null;
-      if (s.client.accountId !== null) best = saveRecord(s.client.accountId, this.stageId, this.mode, f.time);
-      this.broadcast({ t: 'finish', runnerId: f.runnerId, name: s.client.name, time: f.time, best, saved: best !== null });
+      // 記録の保存は各プレイヤーが自分のブラウザから行う
+      this.broadcast({ t: 'finish', runnerId: f.runnerId, name: s.client.name, time: f.time });
     }
     if (this.mode === 'party' && !this.cleared && this.world.runners.length > 0
       && this.world.runners.every((r) => r.finishedTime >= 0)) {
@@ -110,7 +111,7 @@ export class Game {
     for (const [id, s] of this.slots) {
       const me = this.world.runners.find((r) => r.id === id) ?? null;
       s.client.send({
-        t: 'snap', tick: this.world.tick, me, lastSeq: s.lastSeq,
+        t: 'snap', gameId: this.id, tick: this.world.tick, me, lastSeq: s.lastSeq,
         others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen, zones,
       });
     }

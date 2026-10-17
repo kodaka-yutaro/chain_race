@@ -10,5 +10,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": false
   },
-  "include": ["shared", "server", "client", "test"]
+  "include": ["shared", "client", "test"]
 }

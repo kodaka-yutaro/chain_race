@@ -4,25 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n server,client \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "tsx watch server/index.ts",
-    "dev:client": "vite",
+    "dev": "vite",
     "build": "vite build",
-    "start": "NODE_ENV=production tsx server/index.ts",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts"
   },
-  "engines": {
-    "node": ">=22.13"
-  },
   "dependencies": {
-    "tsx": "^4.23.15",
-    "ws": "^8.22.0"
+    "firebase": "^12.19.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "@types/ws": "^8.18.2",
-    "concurrently": "^10.0.6",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
   }

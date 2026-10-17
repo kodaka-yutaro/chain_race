@@ -74,7 +74,12 @@ export class ClientGame {
     for (const [t, ev, fn] of this.listeners) t.removeEventListener(ev, fn);
   }
 
+  private lastSnapTick = -1;
+
   onSnap(s: Snap) {
+    // 届く順番が入れ替わることがあるので、古いものは捨てる
+    if (s.tick <= this.lastSnapTick) return;
+    this.lastSnapTick = s.tick;
     const now = performance.now();
     if (this.lastSnapAt) this.snapInterval = this.snapInterval * 0.9 + (now - this.lastSnapAt) * 0.1;
     this.lastSnapAt = now;

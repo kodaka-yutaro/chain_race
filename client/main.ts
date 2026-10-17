@@ -1,7 +1,13 @@
 import { MAPS, mapById } from '../shared/maps';
-import type { ClientMsg, GameMode, HubState, ServerMsg, UserInfo } from '../shared/protocol';
+import type { Input } from '../shared/physics';
+import { validName, type ClientMsg, type GameMode, type HubState, type ServerMsg, type UserInfo } from '../shared/protocol';
 import { fillAds } from './ads';
 import { ClientGame } from './game';
+import type { Backend, HubInfo } from './net/backend';
+import { firebaseConfig } from './net/firebase-config';
+import { firebaseBackend } from './net/firebase';
+import { localBackend } from './net/local';
+import { enterHub, type Connection } from './net/session';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const $$ = <T extends HTMLElement = HTMLElement>(sel: string) => [...document.querySelectorAll(sel)] as T[];
@@ -12,7 +18,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string,
   return e;
 }
 
-const TOKEN_KEY = 'tsunagu.token';
 const NAME_KEY = 'tsunagu.guestName';
 const store = {
   get(k: string) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -20,11 +25,17 @@ const store = {
   del(k: string) { try { localStorage.removeItem(k); } catch { /* 無視 */ } },
 };
 
-let ws: WebSocket | null = null;
+const backend: Backend = firebaseConfig ? firebaseBackend(firebaseConfig) : localBackend();
+let conn: Connection | null = null;
+/** 大部屋に入る前の自分（名前とゲストかどうか） */
+let profile: { name: string; guest: boolean } | null = null;
 let me: UserInfo | null = null;
 let hub: HubState | null = null;
 let game: ClientGame | null = null;
 let gameMode: GameMode = 'free';
+let gameId = '';
+let gameStage = '';
+let recentInputs: { seq: number; input: Input }[] = [];
 let rankStage = MAPS[0].id;
 
 type Screen = 'title' | 'hubs' | 'hub' | 'game';
@@ -33,11 +44,17 @@ function show(s: Screen) {
   const target = $(`#screen-${s}`);
   target.classList.remove('hidden');
   fillAds(target);
-  if (s === 'hubs') loadRanking('hubs');
+  clearInterval(hubListTimer);
+  if (s === 'hubs') {
+    loadRanking('hubs');
+    refreshHubs();
+    hubListTimer = window.setInterval(refreshHubs, 15_000);
+  }
 }
+let hubListTimer = 0;
 
 function send(msg: ClientMsg) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  conn?.send(msg);
 }
 
 // ---------- タイトル / アカウント ----------
@@ -54,86 +71,111 @@ const guestInput = $<HTMLInputElement>('#form-guest input[name=name]');
 guestInput.value = store.get(NAME_KEY) ?? '';
 
 function refreshTitle() {
-  const token = store.get(TOKEN_KEY);
-  $('#logged-in').classList.toggle('hidden', !token);
-  $('#auth-forms').classList.toggle('hidden', !!token);
-  if (!token) return;
-  fetch('/api/me', { headers: { authorization: `Bearer ${token}` } })
-    .then((r) => (r.ok ? r.json() : Promise.reject()))
-    .then((d) => { $('#logged-name').textContent = d.account.name; })
-    .catch(() => { store.del(TOKEN_KEY); refreshTitle(); });
+  backend.account().then((a) => {
+    $('#logged-in').classList.toggle('hidden', !a);
+    $('#auth-forms').classList.toggle('hidden', !!a);
+    if (a) $('#logged-name').textContent = a.name;
+  }).catch(() => {});
 }
 
-$('#form-guest').addEventListener('submit', (e) => {
+function enterLobbyList(name: string, guest: boolean) {
+  profile = { name, guest };
+  for (const x of $$('.me-label')) x.textContent = `${name}${guest ? '（ゲスト）' : ''}`;
+  show('hubs');
+}
+
+$('#form-guest').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const name = guestInput.value.trim();
-  if (!name) return;
+  const name = validName(guestInput.value);
+  if (!name) { $('#auth-error').textContent = '名前は1〜16文字で入力してください'; return; }
   store.set(NAME_KEY, name);
-  connect({ t: 'hello', guestName: name });
+  try { await backend.guest(); } catch { $('#auth-error').textContent = '通信に失敗しました'; return; }
+  enterLobbyList(name, true);
 });
 
 async function auth(kind: 'login' | 'register', form: HTMLFormElement) {
   const fd = new FormData(form);
-  const r = await fetch(`/api/${kind}`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name: fd.get('name'), password: fd.get('password') }),
-  });
-  const d = await r.json().catch(() => ({ error: '通信に失敗しました' }));
-  if (!r.ok) { $('#auth-error').textContent = d.error ?? 'エラーが発生しました'; return; }
-  store.set(TOKEN_KEY, d.token);
-  form.reset();
-  connect({ t: 'hello', token: d.token });
+  const name = validName(String(fd.get('name') ?? ''));
+  const password = String(fd.get('password') ?? '');
+  if (!name) { $('#auth-error').textContent = '名前は1〜16文字にしてください'; return; }
+  try {
+    const a = kind === 'login' ? await backend.login(name, password) : await backend.register(name, password);
+    form.reset();
+    $('#auth-error').textContent = '';
+    enterLobbyList(a.name, false);
+  } catch (e) {
+    $('#auth-error').textContent = (e as Error).message;
+  }
 }
 $('#form-login').addEventListener('submit', (e) => { e.preventDefault(); auth('login', e.target as HTMLFormElement); });
 $('#form-register').addEventListener('submit', (e) => { e.preventDefault(); auth('register', e.target as HTMLFormElement); });
 
-$('#btn-play-account').addEventListener('click', () => {
-  const token = store.get(TOKEN_KEY);
-  if (token) connect({ t: 'hello', token });
+$('#btn-play-account').addEventListener('click', async () => {
+  const a = await backend.account();
+  if (a) enterLobbyList(a.name, false);
+  else refreshTitle();
 });
-$('#btn-logout').addEventListener('click', () => {
-  const token = store.get(TOKEN_KEY);
-  if (token) fetch('/api/logout', { method: 'POST', headers: { authorization: `Bearer ${token}` } });
-  store.del(TOKEN_KEY);
+$('#btn-logout').addEventListener('click', async () => {
+  await backend.logout().catch(() => {});
   refreshTitle();
 });
-$('#btn-back-title').addEventListener('click', () => { ws?.close(); });
+$('#btn-back-title').addEventListener('click', () => {
+  leaveHub();
+  profile = null;
+  show('title');
+  refreshTitle();
+});
 
 // ---------- 接続 ----------
 
-function connect(hello: ClientMsg) {
-  ws?.close();
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const sock = new WebSocket(`${proto}://${location.host}/ws`);
-  ws = sock;
-  sock.onopen = () => sock.send(JSON.stringify(hello));
-  sock.onmessage = (e) => onMessage(JSON.parse(e.data));
-  sock.onclose = () => {
-    if (ws !== sock) return;
-    ws = null; me = null; hub = null;
-    stopGame();
-    show('title');
-    refreshTitle();
-  };
+let entering = false;
+async function joinHub(id: string | null, name: string) {
+  if (!profile || entering) return;
+  entering = true;
+  alertBar('大部屋に入っています…');
+  try {
+    leaveHub();
+    const c = await enterHub(backend, id, name);
+    conn = c;
+    c.onMessage = onMessage;
+    c.onClose = (reason) => {
+      if (conn !== c) return;
+      conn = null;
+      afterLeave();
+      alertBar(reason);
+    };
+    c.send({ t: 'hello', name: profile.name, guest: profile.guest });
+  } catch (e) {
+    alertBar((e as Error).message || '大部屋に入れませんでした');
+  } finally {
+    entering = false;
+  }
+}
+
+function leaveHub() {
+  const c = conn;
+  conn = null;
+  c?.close();
+  if (c) afterLeave();
+}
+
+function afterLeave() {
+  me = null; hub = null;
+  stopGame();
+  if (profile) show('hubs');
 }
 
 function onMessage(m: ServerMsg) {
   switch (m.t) {
     case 'welcome':
       me = m.you;
-      for (const x of $$('.me-label')) x.textContent = `${me.name}${me.guest ? '（ゲスト）' : ''}`;
-      show('hubs');
+      $('#chat-log').replaceChildren();
       return;
     case 'error':
-      if (!me) { $('#auth-error').textContent = m.message; if (m.message.includes('ログイン')) store.del(TOKEN_KEY); refreshTitle(); }
-      else toast(m.message);
-      return;
-    case 'hubs':
-      renderHubList(m.list);
+      toast(m.message);
       return;
     case 'hubState':
       hub = m.hub;
-      if (!hub) { show('hubs'); send({ t: 'listHubs' }); return; }
       renderHub();
       return;
     case 'chat':
@@ -147,7 +189,7 @@ function onMessage(m: ServerMsg) {
       game?.setNames(m.names);
       return;
     case 'snap':
-      game?.onSnap(m);
+      if (m.gameId === gameId) game?.onSnap(m);
       return;
     case 'finish':
       onFinish(m);
@@ -157,35 +199,36 @@ function onMessage(m: ServerMsg) {
         el('ul', { className: 'list' }, ...m.results.map((r) => el('li', {}, `${r.name}　${r.time.toFixed(2)} 秒`))),
       ]);
       return;
-    case 'gameEnd':
-      stopGame();
-      if (!hub) show('hubs');
-      return;
   }
 }
 
 // ---------- 大部屋一覧 ----------
 
-function renderHubList(list: { id: string; name: string; count: number; capacity: number }[]) {
+function refreshHubs() {
+  backend.listHubs().then(renderHubList).catch(() => {});
+}
+
+function renderHubList(list: HubInfo[]) {
   const ul = $('#hub-list');
   ul.replaceChildren(...list.map((h) => {
-    const btn = el('button', { textContent: '入る', disabled: h.count >= h.capacity });
-    btn.addEventListener('click', () => send({ t: 'joinHub', hubId: h.id }));
+    const btn = el('button', { textContent: h.count ? '入る' : '開く', disabled: h.count >= h.capacity });
+    btn.addEventListener('click', () => joinHub(h.id, h.name));
     return el('li', {}, el('span', { className: 'grow', textContent: h.name }), el('span', { className: 'count', textContent: `${h.count}/${h.capacity}人` }), btn);
   }));
 }
 
 $('#form-create-hub').addEventListener('submit', (e) => {
   e.preventDefault();
+  if (!profile) return;
   const f = e.target as HTMLFormElement;
-  const name = (f.elements.namedItem('name') as HTMLInputElement).value.trim();
-  send({ t: 'createHub', name });
+  const name = validName((f.elements.namedItem('name') as HTMLInputElement).value) ?? `${profile.name} の大部屋`;
+  joinHub(null, name);
   f.reset();
 });
 
 // ---------- 大部屋の中 ----------
 
-$('#btn-leave-hub').addEventListener('click', () => send({ t: 'leaveHub' }));
+$('#btn-leave-hub').addEventListener('click', leaveHub);
 
 function renderHub() {
   if (!hub) return;
@@ -231,10 +274,10 @@ function loadRanking(where: string) {
     return b;
   }));
   const ol = $(`[data-rank-list="${where}"]`);
-  fetch(`/api/records?stage=${rankStage}`).then((r) => r.json()).then((d) => {
-    ol.replaceChildren(...(d.records as { name: string; time: number }[]).map((r) =>
+  backend.topRecords(rankStage).then((records) => {
+    ol.replaceChildren(...records.map((r) =>
       el('li', {}, el('span', { className: 'grow', textContent: r.name }), el('span', { textContent: `${r.time.toFixed(2)} 秒` }))));
-    if (!d.records.length) ol.replaceChildren(el('li', { className: 'note', textContent: 'まだ記録がありません' }));
+    if (!records.length) ol.replaceChildren(el('li', { className: 'note', textContent: 'まだ記録がありません' }));
   }).catch(() => {});
 }
 
@@ -243,6 +286,9 @@ function loadRanking(where: string) {
 function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
   stopGame();
   gameMode = m.mode;
+  gameId = m.gameId;
+  gameStage = m.stageId;
+  recentInputs = [];
   const lobby = m.mode === 'lobby';
   show(lobby ? 'hub' : 'game');
   const canvas = $<HTMLCanvasElement>(lobby ? '#lobby-canvas' : '#game-canvas');
@@ -251,7 +297,12 @@ function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
     $('#hud-mode').textContent = m.mode === 'party' ? 'パーティ' : 'フリー';
   }
   hideResult();
-  game = new ClientGame(canvas, m.stageId, m.youId, m.names, (i) => send({ t: 'input', ...i }), (t, running) => {
+  game = new ClientGame(canvas, m.stageId, m.youId, m.names, (i) => {
+    // 取りこぼしに備えて直近3つをまとめて送る
+    recentInputs.push(i);
+    if (recentInputs.length > 3) recentInputs.shift();
+    send({ t: 'input', gameId, list: recentInputs });
+  }, (t, running) => {
     if (lobby) return;
     const el = $('#hud-timer');
     el.textContent = t.toFixed(2);
@@ -269,10 +320,14 @@ function onFinish(m: Extract<ServerMsg, { t: 'finish' }>) {
   if (!game) return;
   if (m.runnerId !== game.youId) { toast(`${m.name} さんがゴール！ ${m.time.toFixed(2)} 秒`); return; }
   const body: (Node | string)[] = [el('p', { className: 'big', textContent: `${m.time.toFixed(2)} 秒` })];
-  if (m.saved && m.best !== null) {
-    body.push(el('p', { textContent: m.best >= m.time ? '自己ベスト更新！' : `自己ベスト ${m.best.toFixed(2)} 秒` }));
-  } else {
-    body.push(el('p', { className: 'note', textContent: 'アカウントを作ると記録がランキングに残ります。' }));
+  const best = el('p', { className: 'note', textContent: profile?.guest ? 'アカウントを作ると記録がランキングに残ります。' : '記録を保存しています…' });
+  body.push(best);
+  if (!profile?.guest) {
+    backend.saveBest(gameStage, m.time).then((b) => {
+      if (b === null) return;
+      best.className = '';
+      best.textContent = b >= m.time ? '自己ベスト更新！' : `自己ベスト ${b.toFixed(2)} 秒`;
+    }).catch(() => { best.textContent = '記録を保存できませんでした'; });
   }
   if (gameMode === 'party') body.push(el('p', { className: 'note', textContent: '仲間のゴールを待っています…' }));
   showResult('ゴール！', body);
@@ -311,3 +366,4 @@ function alertBar(text: string) {
 
 refreshTitle();
 show('title');
+if (backend.local) console.info('Firebase 未設定のため、同じブラウザのタブ同士だけでつながるローカル動作です');
