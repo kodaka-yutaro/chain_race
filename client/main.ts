@@ -7,6 +7,7 @@ import type { Backend, HubInfo } from './net/backend';
 import { firebaseConfig } from './net/firebase-config';
 import { firebaseBackend } from './net/firebase';
 import { localBackend } from './net/local';
+import { mountTouchControls } from './touch';
 import { enterHub, type Connection } from './net/session';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -363,6 +364,15 @@ function alertBar(text: string) {
   document.body.append(bar);
   setTimeout(() => bar.remove(), 3000);
 }
+
+mountTouchControls($('#screen-game'), [
+  { label: 'やり直し', cls: '', run: () => game?.queueKill() },
+  { label: '大部屋へ', cls: '', run: () => send({ t: 'leaveGame' }) },
+]);
+mountTouchControls($('#screen-hub'), [
+  { label: '入る / 出発', cls: 'accent', run: () => send({ t: 'interact' }) },
+  { label: 'チャット', cls: '', run: () => $('#screen-hub').classList.toggle('chat-open') },
+]);
 
 refreshTitle();
 show('title');

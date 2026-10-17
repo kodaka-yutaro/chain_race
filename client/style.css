@@ -122,3 +122,63 @@ label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); fo
 .lobby-side details .list { margin: 8px 0 0; max-height: 30vh; overflow-y: auto; }
 .lobby-side .chat-log { height: min(180px, 25vh); background: rgba(17, 23, 43, 0.6); margin: 0; }
 .lobby-side .ad-slot { margin: 0; }
+
+/* スマホ（タッチ操作） */
+.touch-pad { display: none; }
+body.touch .help { display: none; }
+body.touch .touch-pad {
+  display: grid; position: absolute; left: 0; right: 0; bottom: 0;
+  grid-template-columns: 1fr auto 1fr; grid-template-rows: auto 1fr; align-items: center; justify-items: center;
+  gap: 8px; padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+body.touch .touch-row { grid-column: 1 / -1; display: flex; gap: 8px; justify-self: stretch; justify-content: center; }
+.stick {
+  position: relative; width: min(36vw, 150px); aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+  border: 2px solid rgba(255,255,255,0.25); touch-action: none;
+}
+.stick .knob {
+  position: absolute; left: 50%; top: 50%; width: 42%; height: 42%; margin: -21% 0 0 -21%; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff, #c9d3ea); box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  transition: transform 0.05s;
+}
+.stick.held { border-color: rgba(255,255,255,0.6); }
+.stick.aim .knob { background: radial-gradient(circle at 35% 35%, #ffe2d8, #ff7a59); }
+.stick span {
+  position: absolute; left: 50%; bottom: -18px; transform: translateX(-50%); white-space: nowrap;
+  font-size: 11px; color: rgba(255,255,255,0.65);
+}
+.tbtn {
+  width: 76px; height: 76px; border-radius: 50%; font-weight: 700; font-size: 13px; touch-action: none; padding: 0; white-space: nowrap;
+  background: rgba(40,50,86,0.85); border: 2px solid rgba(255,255,255,0.3);
+}
+.tbtn.held { filter: brightness(1.5); transform: scale(0.96); }
+.tbtn.jump { grid-column: 2; grid-row: 2; align-self: start; margin-top: 4px; }
+.tbtn.fire { grid-column: 2; grid-row: 2; align-self: end; background: rgba(120,70,40,0.9); }
+.tbtn.small { width: auto; height: 34px; border-radius: 17px; padding: 0 16px; font-size: 13px; }
+.tbtn.accent { background: var(--accent); color: #1b1b1b; border-color: var(--accent); }
+.stick.move { grid-column: 1; grid-row: 2; }
+.stick.aim { grid-column: 3; grid-row: 2; }
+
+/* 縦画面: 上にゲーム、下に操作パネル */
+@media (orientation: portrait) {
+  body.touch #game-canvas, body.touch #lobby-canvas { height: 58%; }
+  body.touch .touch-pad { top: 58%; background: linear-gradient(#18203a, #10162a); border-top: 1px solid #2c3866; }
+  body.touch .hud { top: 6px; gap: 12px; }
+  body.touch #hud-timer { font-size: 22px; }
+}
+/* 横画面: 画面の上に重ねる */
+@media (orientation: landscape) {
+  body.touch .touch-pad { grid-template-rows: auto auto; background: none; }
+  body.touch .touch-row { position: fixed; top: 8px; right: 12px; justify-content: flex-end; }
+  body.touch .stick { width: min(26vh, 140px); }
+}
+
+/* 大部屋: メンバーとチャットは「チャット」ボタンで開く */
+body.touch .lobby-side { display: none; }
+body.touch #screen-hub.chat-open .lobby-side { display: flex; left: 12px; right: 12px; width: auto; top: 52px; }
+body.touch .lobby-bar { left: 8px; right: 8px; top: 6px; padding: 4px 10px; }
+body.touch .lobby-bar h2 { font-size: 15px; }
+body.touch .lobby-bar .me-label { display: none; }
+body.touch canvas { touch-action: none; }

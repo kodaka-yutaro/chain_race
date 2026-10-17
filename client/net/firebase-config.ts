@@ -5,7 +5,7 @@ import type { FirebaseOptions } from 'firebase/app';
  * これらの値は公開されても問題ない（守りは firestore.rules で行う）。
  * null にすると、同じブラウザの中だけで試せるローカル動作になる。
  */
-export const firebaseConfig: FirebaseOptions | null = {
+export const firebaseConfig: FirebaseOptions | null = import.meta.env.VITE_LOCAL_ONLY ? null : {
   apiKey: 'AIzaSyB3JC_fBke5GTHpZGkr6I7OkZhWFVh9AKo',
   authDomain: 'chainrace-4fc4c.firebaseapp.com',
   projectId: 'chainrace-4fc4c',

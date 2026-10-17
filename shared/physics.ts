@@ -5,6 +5,7 @@ export const TICK_RATE = 50;
 export const TEE_SIZE = 28;
 const R = TEE_SIZE / 2;
 
+// 動きの数値は DDNet（DDRace）の標準値に合わせている
 export const PHYS = {
   gravity: 0.5,
   groundSpeed: 10,
@@ -13,28 +14,24 @@ export const PHYS = {
   airSpeed: 5,
   airAccel: 1.5,
   airFriction: 0.95,
-  jump: 12,
-  dashSpeed: 13,
-  wallKickUp: 11,
-  wallKickSide: 9,
-  wallSlide: 2.5,
-  wireLength: 380,
-  wireFireSpeed: 80,
-  wireMinLength: 40,
-  wireReel: 7,
+  jump: 13.2,
+  airJump: 12,
+  hookLength: 380,
+  hookFireSpeed: 80,
+  hookDragAccel: 3,
+  hookDragSpeed: 15,
+  /** 仲間をつかんでいられる時間（tick） */
+  hookPlayerTicks: 60,
   springSpeed: 18,
   stunTicks: 150,
-  cannonCooldown: 20,
-  cannonRange: 90,
-  cannonPower: 12,
-  cannonRecoil: 3,
+  hammerCooldown: 6,
   maxSpeed: 40,
 };
 
 // タイル:
 //   .  空
-//   #  岩壁（ワイヤーが刺さる・壁キックできる）
-//   X  金属壁（ワイヤーも壁キックも不可）
+//   #  岩壁（フックが掛かる）
+//   X  金属壁（フックが掛からない）
 //   ~  しびれ床（触れている間しびれ、離れて 3 秒で回復）
 //   ^  トゲ（スタートからやり直し）
 //   J  バネ床
@@ -89,19 +86,20 @@ export interface Runner {
   x: number; y: number;
   vx: number; vy: number;
   grounded: boolean;
-  dashed: boolean;
-  wallSide: number; // -1 左の壁 / 1 右の壁 / 0 なし
+  /** 1 = ジャンプボタンを押しっぱなし、2 = 二段ジャンプを使った */
+  jumped: number;
   prevJump: boolean;
   prevWire: boolean;
   prevFire: boolean;
   wireState: number;
   wireX: number; wireY: number;
   wireDX: number; wireDY: number;
-  wireLen: number;
-  wireRunner: number; // -1 = 壁に刺さっている／なし
+  wireRunner: number; // -1 = 壁に掛かっている／なし
+  /** フックを掛けてからの tick */
+  wireTick: number;
   stun: number;
-  cannonCd: number;
-  cannonTick: number; // 最後に撃った tick（演出用）
+  hammerCd: number;
+  hammerTick: number; // 最後に振った tick（演出用）
   aimX: number; aimY: number;
   raceStart: number; // -1 = 未スタート
   finishedTime: number; // -1 = 未ゴール（秒）
@@ -187,10 +185,10 @@ function saturatedAdd(min: number, max: number, cur: number, mod: number): numbe
 export function newRunner(id: number, map: MapDef): Runner {
   const s = findSpawn(map);
   return {
-    id, x: s.x, y: s.y, vx: 0, vy: 0, grounded: false, dashed: false, wallSide: 0,
+    id, x: s.x, y: s.y, vx: 0, vy: 0, grounded: false, jumped: 0,
     prevJump: false, prevWire: false, prevFire: false,
-    wireState: WIRE_IDLE, wireX: 0, wireY: 0, wireDX: 0, wireDY: 0, wireLen: 0, wireRunner: -1,
-    stun: 0, cannonCd: 0, cannonTick: -100, aimX: 1, aimY: 0, raceStart: -1, finishedTime: -1,
+    wireState: WIRE_IDLE, wireX: 0, wireY: 0, wireDX: 0, wireDY: 0, wireRunner: -1, wireTick: 0,
+    stun: 0, hammerCd: 0, hammerTick: -100, aimX: 1, aimY: 0, raceStart: -1, finishedTime: -1,
   };
 }
 
@@ -202,7 +200,7 @@ export function respawn(w: World, t: Runner) {
   const s = findSpawn(w.map);
   t.x = s.x; t.y = s.y; t.vx = 0; t.vy = 0;
   releaseWire(t);
-  t.stun = 0; t.dashed = false;
+  t.stun = 0; t.jumped = 0;
   t.raceStart = -1;
   t.finishedTime = -1;
   for (const o of w.runners) if (o.wireRunner === t.id) releaseWire(o);
@@ -223,14 +221,6 @@ function checkGrounded(w: World, t: Runner): boolean {
     if (Math.abs(o.x - t.x) < TEE_SIZE * 0.8 && dy > 0 && dy <= TEE_SIZE + 3) return true;
   }
   return false;
-}
-
-/** 壁キックできる岩壁に接しているか */
-function wallContact(w: World, t: Runner): number {
-  const kick = (px: number, py: number) => charAtPx(w, px, py) === '#';
-  if (kick(t.x - R - 2, t.y - R + 3) || kick(t.x - R - 2, t.y + R - 3)) return -1;
-  if (kick(t.x + R + 2, t.y - R + 3) || kick(t.x + R + 2, t.y + R - 3)) return 1;
-  return 0;
 }
 
 function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number) {
@@ -272,6 +262,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   }
   w.doorsOpen = pressed;
 
+  const dirs = new Map<number, number>();
   for (const t of w.runners) {
     const inp = inputs.get(t.id) ?? emptyInput();
     if (inp.kill) {
@@ -284,9 +275,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
 
     const stunned = t.stun > 0;
     const dir = stunned ? 0 : (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+    dirs.set(t.id, dir);
     t.grounded = checkGrounded(w, t);
-    t.wallSide = t.grounded ? 0 : wallContact(w, t);
-    if (t.grounded) t.dashed = false;
 
     const maxSpeed = t.grounded ? PHYS.groundSpeed : PHYS.airSpeed;
     const accel = t.grounded ? PHYS.groundAccel : PHYS.airAccel;
@@ -294,93 +284,98 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
 
     t.vy += PHYS.gravity;
 
-    // ジャンプ / 壁キック / 空中ダッシュ
-    const jumpPressed = inp.jump && !t.prevJump;
-    if (!stunned && jumpPressed) {
-      if (t.grounded) {
-        t.vy = -PHYS.jump;
-      } else if (t.wallSide !== 0) {
-        t.vy = -PHYS.wallKickUp;
-        t.vx = -t.wallSide * PHYS.wallKickSide;
-      } else if (!t.dashed) {
-        t.vx = t.aimX * PHYS.dashSpeed;
-        t.vy = t.aimY * PHYS.dashSpeed;
-        t.dashed = true;
+    // ジャンプ（押しっぱなしでは連続しない）と二段ジャンプ
+    if (!stunned && inp.jump) {
+      if (!(t.jumped & 1)) {
+        if (t.grounded) { t.vy = -PHYS.jump; t.jumped |= 1; }
+        else if (!(t.jumped & 2)) { t.vy = -PHYS.airJump; t.jumped |= 3; }
       }
+    } else {
+      t.jumped &= ~1;
     }
-    // 壁ずり
-    if (!stunned && t.wallSide !== 0 && dir === t.wallSide && t.vy > PHYS.wallSlide) t.vy = PHYS.wallSlide;
+    if (t.grounded) t.jumped &= ~2;
 
-    // ワイヤー発射・解除
+    // フック：押している間だけ。外れたら一度離すまで撃てない
     if (stunned || !inp.wire) {
       releaseWire(t);
-    } else if (inp.wire && !t.prevWire && t.wireState === WIRE_IDLE) {
+    } else if (!t.prevWire && t.wireState === WIRE_IDLE) {
       t.wireState = WIRE_FLYING;
-      t.wireX = t.x + t.aimX * R;
-      t.wireY = t.y + t.aimY * R;
+      t.wireX = t.x + t.aimX * R * 1.5;
+      t.wireY = t.y + t.aimY * R * 1.5;
       t.wireDX = t.aimX; t.wireDY = t.aimY;
       t.wireRunner = -1;
+      t.wireTick = 0;
     }
 
     if (dir !== 0) t.vx = saturatedAdd(-maxSpeed, maxSpeed, t.vx, accel * dir);
     else t.vx *= friction;
 
     if (t.wireState === WIRE_FLYING) {
-      const nx = t.wireX + t.wireDX * PHYS.wireFireSpeed;
-      const ny = t.wireY + t.wireDY * PHYS.wireFireSpeed;
-      if (Math.hypot(nx - t.x, ny - t.y) > PHYS.wireLength) {
-        releaseWire(t);
-      } else {
-        const hit = intersectLine(w, t.wireX, t.wireY, nx, ny);
-        let best = -1, bestD = Infinity;
-        for (const o of w.runners) {
-          if (o === t) continue;
-          const c = closestPointOnSegment(t.wireX, t.wireY, hit.x, hit.y, o.x, o.y);
-          if (Math.hypot(c.x - o.x, c.y - o.y) < R + 2) {
-            const d = Math.hypot(c.x - t.wireX, c.y - t.wireY);
-            if (d < bestD) { bestD = d; best = o.id; }
-          }
-        }
-        if (best >= 0) {
-          const o = byId(w, best)!;
-          t.wireState = WIRE_ATTACHED;
-          t.wireRunner = best;
-          t.wireLen = Math.max(PHYS.wireMinLength, Math.hypot(o.x - t.x, o.y - t.y));
-        } else if (hit.hit) {
-          if (hit.stick) {
-            t.wireState = WIRE_ATTACHED;
-            t.wireX = hit.x; t.wireY = hit.y;
-            t.wireLen = Math.max(PHYS.wireMinLength, Math.hypot(hit.x - t.x, hit.y - t.y));
-          } else releaseWire(t);
-        } else {
-          t.wireX = hit.x; t.wireY = hit.y;
-        }
-      }
-    }
-
-    // 巻き取り・繰り出し
-    if (t.wireState === WIRE_ATTACHED && !stunned) {
-      if (inp.up) t.wireLen = Math.max(PHYS.wireMinLength, t.wireLen - PHYS.wireReel);
-      if (inp.down) t.wireLen = Math.min(PHYS.wireLength, t.wireLen + PHYS.wireReel);
-    }
-
-    // エアキャノン
-    if (t.cannonCd > 0) t.cannonCd--;
-    if (!stunned && inp.fire && !t.prevFire && t.cannonCd === 0) {
-      t.cannonCd = PHYS.cannonCooldown;
-      t.cannonTick = w.tick;
+      const nx = t.wireX + t.wireDX * PHYS.hookFireSpeed;
+      const ny = t.wireY + t.wireDY * PHYS.hookFireSpeed;
+      const hit = intersectLine(w, t.wireX, t.wireY, nx, ny);
+      let best = -1, bestD = Infinity;
       for (const o of w.runners) {
         if (o === t) continue;
-        const dx = o.x - t.x, dy = o.y - t.y;
+        const c = closestPointOnSegment(t.wireX, t.wireY, hit.x, hit.y, o.x, o.y);
+        if (Math.hypot(c.x - o.x, c.y - o.y) < R + 2) {
+          const d = Math.hypot(c.x - t.wireX, c.y - t.wireY);
+          if (d < bestD) { bestD = d; best = o.id; }
+        }
+      }
+      if (best >= 0) {
+        t.wireState = WIRE_ATTACHED;
+        t.wireRunner = best;
+      } else if (hit.hit) {
+        if (hit.stick) {
+          t.wireState = WIRE_ATTACHED;
+          t.wireX = hit.x; t.wireY = hit.y;
+        } else releaseWire(t);
+      } else if (Math.hypot(nx - t.x, ny - t.y) > PHYS.hookLength) {
+        releaseWire(t);
+      } else {
+        t.wireX = hit.x; t.wireY = hit.y;
+      }
+    }
+
+    if (t.wireState === WIRE_ATTACHED) {
+      t.wireTick++;
+      if (t.wireRunner >= 0) {
+        const o = byId(w, t.wireRunner);
+        // 仲間をつかめるのは少しの間だけ
+        if (!o || t.wireTick > PHYS.hookPlayerTicks) releaseWire(t);
+        else { t.wireX = o.x; t.wireY = o.y; }
+      } else if (Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
+        // 掛かった所へ引き寄せられる
+        const d = Math.hypot(t.wireX - t.x, t.wireY - t.y);
+        let hx = ((t.wireX - t.x) / d) * PHYS.hookDragAccel;
+        let hy = ((t.wireY - t.y) / d) * PHYS.hookDragAccel;
+        if (hy > 0) hy *= 0.3;
+        if ((hx < 0 && dir < 0) || (hx > 0 && dir > 0)) hx *= 0.95;
+        else hx *= 0.75;
+        const nvx = t.vx + hx, nvy = t.vy + hy;
+        const nl = Math.hypot(nvx, nvy);
+        if (nl < PHYS.hookDragSpeed || nl < Math.hypot(t.vx, t.vy)) { t.vx = nvx; t.vy = nvy; }
+      }
+    }
+
+    // ハンマー：すぐ前の仲間を叩いて飛ばし、しびれを解く
+    if (t.hammerCd > 0) t.hammerCd--;
+    if (!stunned && inp.fire && !t.prevFire && t.hammerCd === 0) {
+      t.hammerCd = PHYS.hammerCooldown;
+      t.hammerTick = w.tick;
+      const hx = t.x + t.aimX * R * 1.5, hy = t.y + t.aimY * R * 1.5;
+      for (const o of w.runners) {
+        if (o === t || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE / 2) continue;
+        let dx = o.x - t.x, dy = o.y - t.y;
         const d = Math.hypot(dx, dy);
-        if (d > PHYS.cannonRange) continue;
-        if (d > TEE_SIZE && (dx * t.aimX + dy * t.aimY) / d < 0.6) continue;
-        o.vx += t.aimX * PHYS.cannonPower;
-        o.vy += t.aimY * PHYS.cannonPower;
+        if (d > 0) { dx /= d; dy /= d; } else { dx = 0; dy = -1; }
+        dy -= 1.1;
+        const n = Math.hypot(dx, dy);
+        o.vx += (dx / n) * 10;
+        o.vy += (dy / n) * 10 - 1;
         o.stun = 0;
       }
-      t.vx -= t.aimX * PHYS.cannonRecoil;
-      t.vy -= t.aimY * PHYS.cannonRecoil;
     }
 
     t.prevJump = inp.jump;
@@ -388,44 +383,27 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.prevFire = inp.fire;
   }
 
+  // 仲間を掛けたフック：相手を強く、自分を少し引き寄せる
+  for (const t of w.runners) {
+    if (t.wireState !== WIRE_ATTACHED || t.wireRunner < 0) continue;
+    const o = byId(w, t.wireRunner);
+    if (!o) continue;
+    const d = Math.hypot(t.x - o.x, t.y - o.y);
+    if (d <= TEE_SIZE * 1.5) continue;
+    const dx = (t.x - o.x) / d, dy = (t.y - o.y) / d;
+    const a = PHYS.hookDragAccel * (d / PHYS.hookLength);
+    const sp = PHYS.hookDragSpeed;
+    o.vx = saturatedAdd(-sp, sp, o.vx, a * dx * 1.5);
+    o.vy = saturatedAdd(-sp, sp, o.vy, a * dy * 1.5);
+    t.vx = saturatedAdd(-sp, sp, t.vx, -a * dx * 0.25);
+    t.vy = saturatedAdd(-sp, sp, t.vy, -a * dy * 0.25);
+  }
+
   for (const t of w.runners) {
     const m = PHYS.maxSpeed;
     t.vx = Math.max(-m, Math.min(m, t.vx));
     t.vy = Math.max(-m, Math.min(m, t.vy));
     moveBox(w, t);
-  }
-
-  // ワイヤーの長さ制約（ロープ）
-  for (const t of w.runners) {
-    if (t.wireState !== WIRE_ATTACHED) continue;
-    if (t.wireRunner >= 0) {
-      const o = byId(w, t.wireRunner);
-      if (!o) { releaseWire(t); continue; }
-      t.wireX = o.x; t.wireY = o.y;
-      const dx = t.x - o.x, dy = t.y - o.y;
-      const d = Math.hypot(dx, dy);
-      if (d <= t.wireLen || d === 0) continue;
-      const nx = dx / d, ny = dy / d;
-      // 撃った側が地面にいれば相手だけが動く（引き上げ）。空中なら相手が支点になる。
-      const wt = t.grounded ? 0 : 1, wo = o.grounded && !t.grounded ? 0 : 1;
-      const st = wt / (wt + wo), so = wo / (wt + wo);
-      const ex = d - t.wireLen;
-      shiftTo(w, t, t.x - nx * ex * st, t.y - ny * ex * st);
-      shiftTo(w, o, o.x + nx * ex * so, o.y + ny * ex * so);
-      const rel = (t.vx - o.vx) * nx + (t.vy - o.vy) * ny;
-      if (rel > 0) {
-        t.vx -= nx * rel * st; t.vy -= ny * rel * st;
-        o.vx += nx * rel * so; o.vy += ny * rel * so;
-      }
-    } else {
-      const dx = t.x - t.wireX, dy = t.y - t.wireY;
-      const d = Math.hypot(dx, dy);
-      if (d <= t.wireLen || d === 0) continue;
-      const nx = dx / d, ny = dy / d;
-      shiftTo(w, t, t.wireX + nx * t.wireLen, t.wireY + ny * t.wireLen);
-      const vr = t.vx * nx + t.vy * ny;
-      if (vr > 0) { t.vx -= nx * vr; t.vy -= ny * vr; }
-    }
   }
 
   // ランナー同士の衝突（頭に乗れる）
@@ -464,7 +442,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
     if (tiles.includes('J') && t.vy > -PHYS.springSpeed) {
       t.vy = -PHYS.springSpeed;
-      t.dashed = false;
+      t.jumped &= ~2;
     }
     if (tiles.includes('>') && t.finishedTime < 0) t.raceStart = w.tick;
     if (tiles.includes('F') && t.raceStart >= 0 && t.finishedTime < 0) {
