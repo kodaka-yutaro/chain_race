@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://chainrace.kodking-tools.com/sitemap.xml
+Sitemap: https://chainrace.kdking-tools.com/sitemap.xml

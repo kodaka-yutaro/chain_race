@@ -6,7 +6,7 @@ services:
     plan: starter # 無料プランは停止とディスクなしのため、記録が消える
     region: singapore
     domains:
-      - chainrace.kodking-tools.com
+      - chainrace.kdking-tools.com
     healthCheckPath: /api/health
     disk:
       name: data
