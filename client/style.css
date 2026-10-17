@@ -161,11 +161,11 @@ body.touch .touch-row { grid-column: 1 / -1; display: flex; gap: 8px; justify-se
 .stick.move { grid-column: 1; grid-row: 2; }
 .stick.aim { grid-column: 3; grid-row: 2; }
 
-/* 縦画面: 上にゲーム、下に操作パネル */
+/* 縦画面: ゲームは全画面、操作パネルは下の方に重ねる */
 @media (orientation: portrait) {
-  body.touch #game-canvas, body.touch #lobby-canvas { height: 58%; }
-  body.touch .touch-pad { top: 58%; background: linear-gradient(#18203a, #10162a); border-top: 1px solid #2c3866; }
-  body.touch .hud { top: 6px; gap: 12px; }
+  body.touch .touch-pad { grid-template-rows: auto auto; background: none; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  body.touch .touch-row { position: fixed; top: calc(44px + env(safe-area-inset-top)); right: 8px; justify-content: flex-end; }
+  body.touch .hud { top: calc(6px + env(safe-area-inset-top)); gap: 12px; }
   body.touch #hud-timer { font-size: 22px; }
 }
 /* 横画面: 画面の上に重ねる */
@@ -174,6 +174,21 @@ body.touch .touch-row { grid-column: 1 / -1; display: flex; gap: 8px; justify-se
   body.touch .touch-row { position: fixed; top: 8px; right: 12px; justify-content: flex-end; }
   body.touch .stick { width: min(26vh, 140px); }
 }
+/* 重ねても後ろが見えるよう半透明に */
+body.touch .touch-pad { pointer-events: none; }
+body.touch .touch-pad > *, body.touch .touch-row > * { pointer-events: auto; }
+body.touch .touch-row { pointer-events: none; }
+body.touch .stick { background: radial-gradient(circle, rgba(10,14,30,0.35), rgba(10,14,30,0.15)); }
+body.touch .stick .knob { opacity: 0.85; }
+body.touch .tbtn { background-color: rgba(30,38,70,0.6); }
+body.touch .tbtn.fire { background-color: rgba(120,70,40,0.65); }
+body.touch .tbtn.small { background-color: rgba(30,38,70,0.75); }
+body.touch .stick span { text-shadow: 0 1px 2px #000; }
+
+/* 勝手に拡大されないようにする（ダブルタップ・入力欄のフォーカス） */
+body.touch, body.touch * { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+body.touch { position: fixed; inset: 0; overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body.touch input, body.touch select, body.touch textarea { font-size: 16px; -webkit-user-select: text; user-select: text; }
 
 /* 大部屋: メンバーとチャットは「チャット」ボタンで開く */
 body.touch .lobby-side { display: none; }
@@ -181,4 +196,4 @@ body.touch #screen-hub.chat-open .lobby-side { display: flex; left: 12px; right:
 body.touch .lobby-bar { left: 8px; right: 8px; top: 6px; padding: 4px 10px; }
 body.touch .lobby-bar h2 { font-size: 15px; }
 body.touch .lobby-bar .me-label { display: none; }
-body.touch canvas { touch-action: none; }
+body.touch canvas, body.touch .touch-pad, body.touch .touch-pad * { touch-action: none; }

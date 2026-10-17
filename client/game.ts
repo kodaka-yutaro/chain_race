@@ -31,6 +31,8 @@ export class ClientGame {
   private smoothX = 0;
   private smoothY = 0;
   private cam = { x: 0, y: 0, zoom: 1 };
+  // 下に重ねた操作パネルで隠れる高さ（canvas の px）。自分はその上の真ん中に映す
+  private bottomInset = 0;
   private snapInterval = 40;
   private lastSnapAt = 0;
   private stopped = false;
@@ -216,6 +218,13 @@ export class ClientGame {
     this.canvas.height = Math.floor(this.canvas.clientHeight * dpr);
     // 縦長の画面（スマホ）でも横に12マスは見えるようにする
     this.cam.zoom = Math.min(this.canvas.height / (TILE * 20), this.canvas.width / (TILE * 12));
+    const pad = this.canvas.parentElement?.querySelector('.touch-pad');
+    const portrait = this.canvas.clientHeight > this.canvas.clientWidth;
+    this.bottomInset = 0;
+    if (pad && portrait && touch.active) {
+      const c = this.canvas.getBoundingClientRect(), r = pad.getBoundingClientRect();
+      this.bottomInset = Math.max(0, c.bottom - r.top) * 0.8 * dpr;
+    }
   }
 
   private othersInterpolated(now: number): RunnerView[] {
@@ -236,9 +245,10 @@ export class ClientGame {
     const vw = W / z, vh = H / z;
     const mw = this.map.width * TILE, mh = this.map.height * TILE;
     this.cam.x = Math.max(0, Math.min(mw - vw, meX - vw / 2));
-    this.cam.y = Math.max(0, Math.min(mh - vh, meY - vh / 2));
+    const ev = vh - this.bottomInset / z;
+    this.cam.y = Math.max(0, Math.min(mh - ev, meY - ev / 2));
     if (vw > mw) this.cam.x = (mw - vw) / 2;
-    if (vh > mh) this.cam.y = (mh - vh) / 2;
+    if (ev > mh) this.cam.y = (mh - ev) / 2;
 
     drawBackground(g, this.map.id, W, H, this.cam.x, this.cam.y, z, now);
 
@@ -246,6 +256,11 @@ export class ClientGame {
     g.scale(z, z);
     g.translate(-this.cam.x, -this.cam.y);
     g.drawImage(this.staticLayer, 0, 0);
+    // 操作パネルの下に見えるマップの外は、いちばん下の段をくり返して地面が続いているように見せる
+    if (this.cam.y + vh > mh) {
+      const sh = this.staticLayer.height / this.map.height, sw = this.staticLayer.width;
+      for (let y = mh; y < this.cam.y + vh; y += TILE) g.drawImage(this.staticLayer, 0, this.staticLayer.height - sh, sw, sh, 0, y, mw, TILE);
+    }
     drawLiveTiles(g, this.map, this.doors, Math.floor(this.cam.x / TILE) - 1, Math.floor(this.cam.y / TILE) - 1,
       Math.ceil((this.cam.x + vw) / TILE) + 1, Math.ceil((this.cam.y + vh) / TILE) + 1, now);
     this.drawZones(g);
