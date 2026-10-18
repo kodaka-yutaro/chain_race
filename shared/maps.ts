@@ -1,10 +1,12 @@
-import type { MapDef, Zone } from './physics';
+import type { Channel, Lift, MapDef, Zone } from './physics';
 
 // ステージはすべてこのプロジェクトのオリジナル。四角形を重ねて組み立てる。
 class Builder {
   grid: string[][];
   hints: MapDef['hints'] = [];
   zones: Zone[] = [];
+  lifts: Lift[] = [];
+  channels: Channel[] = [];
   constructor(public width: number, public height: number) {
     this.grid = Array.from({ length: height }, () => Array(width).fill('.'));
   }
@@ -28,11 +30,22 @@ class Builder {
     this.zones.push(z);
     return this;
   }
-  build(meta: Omit<MapDef, 'width' | 'height' | 'tiles' | 'hints' | 'zones'>): MapDef {
+  lift(l: Lift) {
+    this.lifts.push(l);
+    return this;
+  }
+  /** スイッチ n（1〜5）の設定 */
+  channel(n: number, c: Channel) {
+    this.channels[n - 1] = c;
+    return this;
+  }
+  build(meta: Omit<MapDef, 'width' | 'height' | 'tiles' | 'hints' | 'zones' | 'lifts' | 'channels'>): MapDef {
     this.border();
     return {
       ...meta, width: this.width, height: this.height, tiles: this.grid.map((r) => r.join('')), hints: this.hints,
       zones: this.zones.length ? this.zones : undefined,
+      lifts: this.lifts.length ? this.lifts : undefined,
+      channels: this.channels.length ? Array.from(this.channels, (c) => c ?? {}) : undefined,
     };
   }
 }
@@ -98,8 +111,8 @@ function stage2(): MapDef {
 }
 
 function stage3(): MapDef {
-  const b = new Builder(120, 30);
-  b.rect(0, 26, 120, 4, '#');
+  const b = new Builder(176, 30);
+  b.rect(0, 26, 176, 4, '#');
   b.rect(3, 25, 1, 1, 'S');
   b.rect(7, 1, 1, 25, '>');
   // 扉 A：どちら側のスイッチでも開く
@@ -115,16 +128,39 @@ function stage3(): MapDef {
   b.rect(72, 1, 2, 13, 'X');
   b.rect(72, 14, 2, 12, 'b');
   b.rect(77, 25, 3, 1, '2');
-  b.rect(100, 1, 1, 25, 'F');
+  // 光の橋：トゲの穴の上に、スイッチを踏んでいる間だけ橋が出る。低い金属の天井でジャンプでは越えられない
+  b.rect(86, 13, 24, 11, 'X');
+  b.rect(87, 26, 22, 1, 'C');
+  b.rect(87, 27, 22, 1, '^');
+  b.rect(82, 25, 3, 1, '3');
+  b.rect(112, 25, 3, 1, '3');
+  // 昇降リフト：スイッチを踏んでいる間だけ上がり、仲間を高い金属の壁の上へ運ぶ
+  b.rect(117, 25, 3, 1, '4');
+  b.rect(122, 26, 4, 1, '.');
+  b.rect(126, 8, 2, 18, 'X');
+  b.rect(131, 25, 3, 1, '4');
+  b.lift({ x: 122, w: 4, top: 8, bottom: 26, ch: 4 });
+  // 二人スイッチ：2人で踏むと扉が開き、離しても少しの間は開いている
+  b.rect(144, 25, 3, 1, '5');
+  b.rect(152, 1, 2, 13, 'X');
+  b.rect(152, 14, 2, 12, 'e');
+  b.channel(5, { need: 2, hold: 3 * 50 });
+  b.rect(166, 1, 1, 25, 'F');
   b.hint(3, 21, '2人以上で協力するステージ')
     .hint(15, 21, 'スイッチを踏んでいる間だけ扉が開く')
     .hint(36, 19, '仲間を頭に乗せてジャンプし、左クリックのハンマーで打ち上げよう')
     .hint(36, 21, '上に着いたら、ジャンプした仲間にフックを掛けて引き上げる')
     .hint(56, 19, '足場の裏にフックを掛けて登ろう')
-    .hint(96, 21, 'ゴール！');
+    .hint(88, 20, '光の橋: 青いスイッチを踏んでいる間だけ橋が現れる')
+    .hint(88, 22, '渡った人は向こうのスイッチで、残った仲間に橋を架けよう')
+    .hint(110, 19, '紫のスイッチを踏んでいる間、リフトが上がる')
+    .hint(129, 21, '下りたら、こっちのスイッチで仲間を運ぼう')
+    .hint(142, 17, '二人スイッチ: 2人で同時に踏むと扉が開く')
+    .hint(142, 19, '離しても3秒は開いているので、急いでくぐろう')
+    .hint(162, 21, 'ゴール！');
   return b.build({
     id: 'tower', name: 'ツナグの塔', minPlayers: 2,
-    description: '2人以上が必要な協力ステージ。スイッチ、ハンマーでの打ち上げ、フックでの引き上げ。',
+    description: '2人以上が必要な協力ステージ。スイッチの扉、打ち上げと引き上げ、光の橋、昇降リフト、二人スイッチ。',
   });
 }
 

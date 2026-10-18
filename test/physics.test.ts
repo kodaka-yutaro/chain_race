@@ -139,3 +139,90 @@ test('大部屋の広場に、ステージごとのフリー入口と協力の�
     assert.ok(r.grounded && inZone(z, r.x, r.y), `${z.id} に立てない`);
   }
 });
+
+// ---------- ツナグの塔の後半：フックに頼らない協力ギミック ----------
+
+const tower = () => createWorld(mapById('tower')!);
+
+test('光の橋は、スイッチを踏んでいる間だけ現れる', () => {
+  const w = tower();
+  place(w, 1, 85);
+  settle(w);
+  let died = false;
+  for (let i = 0; i < 200 && !died; i++) died = stepWorld(w, new Map([[1, inp({ right: true })]])).killed.includes(1);
+  assert.ok(died, '橋がないのにトゲの穴を渡れてしまう');
+
+  const w2 = tower();
+  const holder = place(w2, 1, 83);
+  const runner = place(w2, 2, 85);
+  settle(w2);
+  assert.ok(w2.doorsOpen[2], 'スイッチで橋が出ない');
+  for (let i = 0; i < 200; i++) {
+    const ev = stepWorld(w2, new Map([[2, inp({ right: runner.x < 111 * TILE })]]));
+    assert.ok(!ev.killed.includes(2), '橋の上で死んだ');
+  }
+  assert.ok(runner.x > 110 * TILE && holder.x < 86 * TILE, `渡れない x=${runner.x / TILE}`);
+});
+
+test('光の橋の穴は、1人で走ってジャンプしても越えられない', () => {
+  const w = tower();
+  const r = place(w, 1, 80);
+  settle(w);
+  let died = false;
+  for (let i = 0; i < 200 && !died; i++) {
+    const x = r.x / TILE;
+    const ev = stepWorld(w, new Map([[1, inp({ right: true, jump: (x > 86 && x < 87.5) || (r.vy > 0 && x > 88 && x < 96) })]]));
+    died = ev.killed.includes(1);
+  }
+  assert.ok(died, '1人で穴を越えられてしまう');
+});
+
+test('昇降リフトはスイッチを踏んでいる間だけ上がり、乗った仲間を壁の上へ運ぶ', () => {
+  const w = tower();
+  const rider = place(w, 2, 123);
+  settle(w, 60);
+  assert.equal(w.lifts[0], 18 * TILE, 'スイッチなしでリフトが動いた');
+  assert.ok(Math.abs(rider.y + TEE_SIZE / 2 - 26 * TILE) < 1, `リフトに乗れない y=${rider.y / TILE}`);
+
+  const holder = place(w, 1, 118);
+  settle(w, 200);
+  assert.equal(w.lifts[0], 0, 'リフトが上がりきらない');
+  assert.ok(rider.y < 8 * TILE && rider.grounded, `いっしょに上がらない y=${rider.y / TILE}`);
+  for (let i = 0; i < 60; i++) stepWorld(w, new Map([[2, inp({ right: rider.x < 127 * TILE })]]));
+  assert.ok(rider.x > 126 * TILE && rider.y < 8 * TILE && rider.grounded, `壁の上に移れない (${rider.x / TILE},${rider.y / TILE})`);
+
+  // スイッチから降りるとリフトは下りる
+  holder.x = 115 * TILE;
+  settle(w, 200);
+  assert.equal(w.lifts[0], 18 * TILE);
+});
+
+test('昇降リフトの壁は、1人でジャンプしても届かない', () => {
+  const w = tower();
+  const r = place(w, 1, 125);
+  r.x = 125.5 * TILE;
+  settle(w);
+  let minY = r.y;
+  for (let i = 0; i < 150; i++) {
+    stepWorld(w, new Map([[1, inp({ jump: i < 3 || (i >= 20 && i < 23) })]]));
+    minY = Math.min(minY, r.y);
+  }
+  assert.ok(minY + TEE_SIZE / 2 > 8 * TILE + TILE * 4, `壁の上に届きそう minY=${minY / TILE}`);
+});
+
+test('二人スイッチは2人で踏むと開き、離しても3秒だけ開いている', () => {
+  const w = tower();
+  const a = place(w, 1, 145);
+  settle(w);
+  assert.equal(w.plates[4], 1);
+  assert.ok(!w.doorsOpen[4], '1人で開いてしまう');
+  const b = place(w, 2, 146);
+  settle(w);
+  assert.equal(w.plates[4], 2);
+  assert.ok(w.doorsOpen[4], '2人で踏んでも開かない');
+  a.x = 141 * TILE; b.x = 149 * TILE;
+  settle(w, 140);
+  assert.ok(w.doorsOpen[4], 'すぐ閉じてしまう');
+  settle(w, 20);
+  assert.ok(!w.doorsOpen[4], 'いつまでも閉じない');
+});
