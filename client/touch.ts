@@ -1,4 +1,5 @@
-// スマホ用の操作。左のスティックで移動（上に倒すとジャンプ）、右のスティックでねらってフック、ボタンでハンマー。
+// スマホ用の操作。左のスティックで移動（上に倒すとジャンプ）、右のボタンでジャンプとハンマー、
+// 画面のほかの場所に触るとその方向へフック（触っている間は伸ばしたまま）。
 
 export const isTouch = () => matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
@@ -10,9 +11,11 @@ export const touch = {
   jumpTap: false,
   fireTap: false,
   hook: false,
+  hookTap: false,
   fire: false,
-  aimX: 1,
-  aimY: 0,
+  // フックで触った場所（画面の座標）
+  aimClientX: 0,
+  aimClientY: 0,
 };
 
 const DEAD = 0.3;
@@ -67,6 +70,26 @@ function button(el: HTMLElement, onDown: () => void, onUp: () => void = () => {}
   releases.push(up);
 }
 
+/** 画面（canvas）に触ったら、その方向へフックを伸ばす */
+function hookArea(el: HTMLElement) {
+  let id: number | null = null;
+  const aim = (e: PointerEvent) => { touch.aimClientX = e.clientX; touch.aimClientY = e.clientY; };
+  el.addEventListener('pointerdown', (e) => {
+    id = e.pointerId;
+    el.setPointerCapture(e.pointerId);
+    aim(e);
+    touch.hook = touch.hookTap = true;
+    e.preventDefault();
+  });
+  el.addEventListener('pointermove', (e) => { if (e.pointerId === id) aim(e); });
+  const release = () => { id = null; touch.hook = false; };
+  const end = (e: PointerEvent) => { if (e.pointerId === id) release(); };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
+  releases.push(release);
+}
+
 /** 操作パネルを作って screen に入れる。actions はボタンの名前と押したときの処理 */
 export function mountTouchControls(screen: HTMLElement, actions: { label: string; cls: string; run: () => void }[]) {
   if (!isTouch()) return;
@@ -96,10 +119,14 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
   pad.innerHTML = `
     <div class="touch-row">${actions.map((a, i) => `<button class="tbtn small ${a.cls}" data-i="${i}">${a.label}</button>`).join('')}</div>
     <div class="stick move"><div class="knob"></div><span>移動 / 上でジャンプ</span></div>
-    <button class="tbtn jump">ジャンプ</button>
-    <button class="tbtn fire">ハンマー</button>
-    <div class="stick aim"><div class="knob"></div><span>ねらってフック</span></div>`;
+    <div class="touch-btns">
+      <button class="tbtn fire">ハンマー</button>
+      <button class="tbtn jump">ジャンプ</button>
+    </div>
+    <div class="touch-hint">画面をタップした方向にチェーン</div>`;
   screen.append(pad);
+  const canvas = screen.querySelector<HTMLElement>('canvas');
+  if (canvas) hookArea(canvas);
 
   let up = false;
   stick(pad.querySelector('.move')!, (x, y) => {
@@ -107,10 +134,6 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
     // 上に倒したらジャンプ。戻すまで押しっぱなし扱い
     const nowUp = y < -0.55;
     if (nowUp !== up) { up = nowUp; touch.jump = nowUp; if (nowUp) touch.jumpTap = true; }
-  });
-  stick(pad.querySelector('.aim')!, (x, y, held) => {
-    if (Math.hypot(x, y) > DEAD) { touch.aimX = x; touch.aimY = y; }
-    touch.hook = held && Math.hypot(x, y) > DEAD;
   });
   button(pad.querySelector('.jump')!, () => { touch.jump = touch.jumpTap = true; }, () => { touch.jump = false; });
   button(pad.querySelector('.fire')!, () => { touch.fire = touch.fireTap = true; }, () => { touch.fire = false; });
