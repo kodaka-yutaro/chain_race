@@ -4,7 +4,7 @@ import {
 } from '../shared/physics';
 import { mapById as stageOrLobby, stageById } from '../shared/maps';
 import { PARTY_CAPACITY, type RunnerView, type ServerMsg, type ZoneState } from '../shared/protocol';
-import { touch } from './touch';
+import { releaseAllTouch, touch } from './touch';
 import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles, drawRunner } from './render';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
@@ -193,8 +193,24 @@ export class ClientGame {
       this.keys.add(e.code);
       if (!e.repeat) this.tapped.add(e.code);
     });
-    this.on(window, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.code));
-    this.on(window, 'blur', () => { this.keys.clear(); this.mouse.left = this.mouse.right = false; });
+    this.on(window, 'keyup', (e: KeyboardEvent) => {
+      this.keys.delete(e.code);
+      // Mac では ⌘ を押している間に離したキーの keyup が来ないので、⌘ を離したら全部離したことにする
+      if (e.key === 'Meta') this.keys.clear();
+    });
+    // 別のウィンドウやタブに移ると keyup が届かないので、押しっぱなしのまま固まらないよう離す
+    const releaseAll = () => { this.keys.clear(); this.mouse.left = this.mouse.right = false; releaseAllTouch(); };
+    this.on(window, 'blur', releaseAll);
+    this.on(document, 'visibilitychange', () => {
+      if (!document.hidden) return;
+      releaseAll();
+      // 隠れている間は描画が止まって入力も送られず、主の側では最後の入力（右移動など）が続いてしまうので、
+      // 何も押していない入力を一度送っておく
+      const seq = ++this.seq;
+      const input = this.sampleInput();
+      this.pending.push({ seq, input });
+      this.send({ seq, input });
+    });
     this.on(window, 'resize', () => this.resize());
     this.on(this.canvas, 'contextmenu', (e) => e.preventDefault());
     this.on(this.canvas, 'mousemove', (e: MouseEvent) => {

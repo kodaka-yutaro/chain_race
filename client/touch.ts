@@ -17,6 +17,13 @@ export const touch = {
 
 const DEAD = 0.3;
 
+// 指を離した知らせ（pointerup）が届かないことがある（画面の端からのスワイプ、通知、アプリ切り替えなど）。
+// そのとき押しっぱなしのまま固まらないよう、全部の操作を離した状態に戻せるようにしておく
+const releases: (() => void)[] = [];
+export function releaseAllTouch() {
+  for (const r of releases) r();
+}
+
 function stick(el: HTMLElement, onMove: (x: number, y: number, held: boolean) => void) {
   const knob = el.querySelector<HTMLElement>('.knob')!;
   let id: number | null = null;
@@ -30,7 +37,7 @@ function stick(el: HTMLElement, onMove: (x: number, y: number, held: boolean) =>
     onMove(dx, dy, true);
   };
   el.addEventListener('pointerdown', (e) => {
-    if (id !== null) return;
+    // 前の指の離し忘れが残っていても、新しく触った指で操作できるようにする
     id = e.pointerId;
     el.setPointerCapture(e.pointerId);
     el.classList.add('held');
@@ -38,15 +45,17 @@ function stick(el: HTMLElement, onMove: (x: number, y: number, held: boolean) =>
     e.preventDefault();
   });
   el.addEventListener('pointermove', (e) => { if (e.pointerId === id) update(e); });
-  const end = (e: PointerEvent) => {
-    if (e.pointerId !== id) return;
+  const release = () => {
     id = null;
     el.classList.remove('held');
     knob.style.transform = '';
     onMove(0, 0, false);
   };
+  const end = (e: PointerEvent) => { if (e.pointerId === id) release(); };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
+  releases.push(release);
 }
 
 function button(el: HTMLElement, onDown: () => void, onUp: () => void = () => {}) {
@@ -54,6 +63,8 @@ function button(el: HTMLElement, onDown: () => void, onUp: () => void = () => {}
   const up = () => { el.classList.remove('held'); onUp(); };
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
+  releases.push(up);
 }
 
 /** 操作パネルを作って screen に入れる。actions はボタンの名前と押したときの処理 */
@@ -71,6 +82,13 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
       if (now - lastEnd < 350) e.preventDefault();
       lastEnd = now;
     }, { passive: false });
+    // 画面に触れている指がなくなったら、どの操作も離れたはず
+    const allUp = (e: TouchEvent) => { if (e.touches.length === 0) releaseAllTouch(); };
+    document.addEventListener('touchend', allUp);
+    document.addEventListener('touchcancel', allUp);
+    window.addEventListener('blur', releaseAllTouch);
+    window.addEventListener('pagehide', releaseAllTouch);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAllTouch(); });
   }
   touch.active = true;
   const pad = document.createElement('div');
