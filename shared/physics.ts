@@ -26,7 +26,14 @@ export const PHYS = {
   stunTicks: 150,
   hammerCooldown: 6,
   maxSpeed: 40,
+  /** 昇降リフトの速さ（px/tick） */
+  liftSpeed: 4,
 };
+
+/** スイッチの色の数（1-5 / a-e / A-E） */
+export const CHANNELS = 5;
+/** 昇降リフトの床の厚さ（px） */
+export const LIFT_THICK = 16;
 
 // タイル:
 //   .  空
@@ -36,7 +43,9 @@ export const PHYS = {
 //   ^  トゲ（スタートからやり直し）
 //   J  バネ床
 //   S  スポーン  >  スタート線  F  ゴール線
-//   1-4 スイッチ  a-d 扉（1 を誰かが踏んでいる間 a が開く）
+//   1-5 スイッチ  a-e 扉（1 を誰かが踏んでいる間 a が開く）
+//   A-E 光の橋（1 を誰かが踏んでいる間だけ A が現れる。フックは掛からない）
+// スイッチの色ごとに、踏む人数（二人スイッチ）や離してから閉じるまでの時間を channels で決められる。
 export interface MapDef {
   id: string;
   name: string;
@@ -48,6 +57,25 @@ export interface MapDef {
   hints: { x: number; y: number; text: string }[];
   /** 大部屋の入口・協力の台（タイル座標） */
   zones?: Zone[];
+  /** スイッチの色ごとの設定（添字 0 = スイッチ 1） */
+  channels?: Channel[];
+  /** 昇降リフト（タイル座標） */
+  lifts?: Lift[];
+}
+
+export interface Channel {
+  /** 同時に踏んでいないといけない人数（既定 1） */
+  need?: number;
+  /** 離してからも開いている時間（tick） */
+  hold?: number;
+}
+
+/** スイッチ ch が入っている間は top まで上がり、切れると bottom まで下がる床 */
+export interface Lift {
+  x: number; w: number;
+  /** 床の上面が来る行（上端・下端） */
+  top: number; bottom: number;
+  ch: number;
 }
 
 export interface Zone {
@@ -109,7 +137,13 @@ export interface World {
   map: MapDef;
   tick: number;
   runners: Runner[];
-  doorsOpen: boolean[]; // a..d
+  doorsOpen: boolean[]; // a..e
+  /** 離したあと開いている残り tick */
+  timers: number[];
+  /** スイッチの色ごとに、踏んでいる人数（描画用） */
+  plates: number[];
+  /** 各リフトの上端からの下がり量（px） */
+  lifts: number[];
 }
 
 export interface StepEvents {
@@ -132,7 +166,8 @@ export function findSpawn(map: MapDef): { x: number; y: number } {
 
 export function isSolidChar(c: string, doorsOpen: boolean[]): boolean {
   if (c === '#' || c === 'X') return true;
-  if (c >= 'a' && c <= 'd') return !doorsOpen[c.charCodeAt(0) - 97];
+  if (c >= 'a' && c <= 'e') return !doorsOpen[c.charCodeAt(0) - 97];
+  if (c >= 'A' && c <= 'E') return !!doorsOpen[c.charCodeAt(0) - 65];
   return false;
 }
 
@@ -140,8 +175,21 @@ function charAtPx(w: World, px: number, py: number): string {
   return tileAt(w.map, Math.floor(px / TILE), Math.floor(py / TILE));
 }
 
+/** リフトの床の上面（px） */
+export const liftTop = (l: Lift, off: number) => l.top * TILE + off;
+
+function inLift(w: World, px: number, py: number): boolean {
+  const ls = w.map.lifts;
+  if (!ls) return false;
+  for (let i = 0; i < ls.length; i++) {
+    const l = ls[i], y0 = liftTop(l, w.lifts[i] ?? 0);
+    if (px >= l.x * TILE && px < (l.x + l.w) * TILE && py >= y0 && py < y0 + LIFT_THICK) return true;
+  }
+  return false;
+}
+
 export function isSolid(w: World, px: number, py: number): boolean {
-  return isSolidChar(charAtPx(w, px, py), w.doorsOpen);
+  return isSolidChar(charAtPx(w, px, py), w.doorsOpen) || inLift(w, px, py);
 }
 
 function testBox(w: World, x: number, y: number): boolean {
@@ -193,7 +241,12 @@ export function newRunner(id: number, map: MapDef): Runner {
 }
 
 export function createWorld(map: MapDef): World {
-  return { map, tick: 0, runners: [], doorsOpen: [false, false, false, false] };
+  const off = () => Array<number>(CHANNELS).fill(0);
+  return {
+    map, tick: 0, runners: [], doorsOpen: Array<boolean>(CHANNELS).fill(false), timers: off(), plates: off(),
+    // リフトは下にいる状態から始まる
+    lifts: (map.lifts ?? []).map((l) => (l.bottom - l.top) * TILE),
+  };
 }
 
 export function respawn(w: World, t: Runner) {
@@ -251,16 +304,63 @@ function releaseWire(t: Runner) {
 
 const byId = (w: World, id: number) => w.runners.find((e) => e.id === id);
 
+/** スイッチを踏んでいる人数を数え、扉・光の橋の開け閉めを決める */
+function updateSwitches(w: World) {
+  const plates = Array<number>(CHANNELS).fill(0);
+  for (const t of w.runners) {
+    const on = new Set<number>();
+    for (const c of touchedTiles(w, t)) if (c >= '1' && c <= '5') on.add(c.charCodeAt(0) - 49);
+    for (const i of on) plates[i]++;
+  }
+  w.plates = plates;
+  w.doorsOpen = plates.map((n, i) => {
+    const ch = w.map.channels?.[i];
+    const on = n >= (ch?.need ?? 1);
+    if (on) w.timers[i] = ch?.hold ?? 0;
+    else if (w.timers[i] > 0) w.timers[i]--;
+    return on || w.timers[i] > 0;
+  });
+}
+
+const overlapsX = (t: Runner, l: Lift) => t.x + R > l.x * TILE && t.x - R < (l.x + l.w) * TILE;
+
+/** リフトを動かす。乗っている人はいっしょに運び、ほかの人や天井につかえるなら止まる */
+function moveLifts(w: World) {
+  const ls = w.map.lifts;
+  if (!ls) return;
+  ls.forEach((l, i) => {
+    const off = w.lifts[i];
+    const target = w.doorsOpen[l.ch - 1] ? 0 : (l.bottom - l.top) * TILE;
+    if (off === target) return;
+    const next = off + Math.max(-PHYS.liftSpeed, Math.min(PHYS.liftSpeed, target - off));
+    const top0 = liftTop(l, off), top1 = liftTop(l, next);
+    const riders = w.runners.filter((t) => overlapsX(t, l) && Math.abs(t.y + R - top0) <= 4);
+    const y0 = Math.min(top0, top1), y1 = Math.max(top0, top1) + LIFT_THICK;
+    if (w.runners.some((t) => !riders.includes(t) && overlapsX(t, l) && t.y + R > y0 && t.y - R < y1)) return;
+    w.lifts[i] = next;
+    const moved: [Runner, number][] = [];
+    for (const t of riders) {
+      const ny = top1 - R;
+      if (testBox(w, t.x, ny)) {
+        // 乗っている人が天井につかえる：動かさずに戻す
+        w.lifts[i] = off;
+        for (const [m, y] of moved) m.y = y;
+        return;
+      }
+      moved.push([t, t.y]);
+      t.y = ny;
+      if (t.vy > 0) t.vy = 0;
+    }
+  });
+}
+
 /** 1 tick 進める。inputs は runner.id -> Input */
 export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   const ev: StepEvents = { finished: [], killed: [] };
   w.tick++;
 
-  const pressed = [false, false, false, false];
-  for (const t of w.runners) {
-    for (const c of touchedTiles(w, t)) if (c >= '1' && c <= '4') pressed[c.charCodeAt(0) - 49] = true;
-  }
-  w.doorsOpen = pressed;
+  updateSwitches(w);
+  moveLifts(w);
 
   const dirs = new Map<number, number>();
   for (const t of w.runners) {

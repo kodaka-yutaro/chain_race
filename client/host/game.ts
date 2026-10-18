@@ -112,7 +112,8 @@ export class Game {
       const me = this.world.runners.find((r) => r.id === id) ?? null;
       s.client.send({
         t: 'snap', gameId: this.id, tick: this.world.tick, me, lastSeq: s.lastSeq,
-        others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen, zones,
+        others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen,
+        timers: this.world.timers, lifts: this.world.lifts, zones,
       });
     }
   }

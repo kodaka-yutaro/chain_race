@@ -1,5 +1,5 @@
 // 見た目の描画（背景・タイル・キャラ・フック）。ゲームの進行とは切り離してある。
-import { isSolidChar, TEE_SIZE, TILE, type MapDef } from '../shared/physics';
+import { CHANNELS, isSolidChar, LIFT_THICK, liftTop, TEE_SIZE, TILE, type MapDef } from '../shared/physics';
 
 const R = TEE_SIZE / 2;
 
@@ -147,7 +147,7 @@ export function buildTileLayer(m: MapDef): HTMLCanvasElement {
   const g = c.getContext('2d')!;
   const [rock, rockDark, rockEdge, grass] = ROCK[m.id] ?? ROCK.hill;
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= m.width || y >= m.height ? 'X' : m.tiles[y][x]);
-  const solid = (ch: string) => isSolidChar(ch, [false, false, false, false]) || (ch >= 'a' && ch <= 'd');
+  const solid = (ch: string) => isSolidChar(ch, Array(CHANNELS).fill(false));
 
   for (let y = 0; y < m.height; y++) {
     for (let x = 0; x < m.width; x++) {
@@ -253,9 +253,20 @@ export function buildTileLayer(m: MapDef): HTMLCanvasElement {
         gr.addColorStop(1, 'rgba(90,170,255,0)');
         g.fillStyle = gr;
         g.fillRect(px, py, TILE, TILE);
-      } else if (ch >= '1' && ch <= '4') {
+      } else if (ch >= '1' && ch <= '5') {
+        const heavy = (m.channels?.[ch.charCodeAt(0) - 49]?.need ?? 1) > 1;
         g.fillStyle = '#3d4250';
-        g.fillRect(px + 1, py + TILE - 6, TILE - 2, 6);
+        g.fillRect(px + 1, py + TILE - (heavy ? 9 : 6), TILE - 2, heavy ? 9 : 6);
+        if (heavy) {
+          g.fillStyle = 'rgba(255,255,255,0.18)';
+          g.fillRect(px + 1, py + TILE - 9, TILE - 2, 2);
+          g.fillStyle = '#262a35';
+          for (const bx of [5, TILE - 5]) {
+            g.beginPath();
+            g.arc(px + bx, py + TILE - 4, 1.6, 0, Math.PI * 2);
+            g.fill();
+          }
+        }
       }
     }
   }
@@ -273,12 +284,25 @@ export function buildTileLayer(m: MapDef): HTMLCanvasElement {
   return c;
 }
 
-const DOOR_COLORS = ['#ff9f1c', '#2ec4b6', '#e71d36', '#9b5de5'];
+const DOOR_COLORS = ['#ff9f1c', '#2ec4b6', '#5aa9ff', '#9b5de5', '#ff5d8f'];
 
-/** 毎フレーム描く動くタイル（しびれ床の火花・スイッチ・扉） */
+/** 毎フレーム変わる仕掛けの状態 */
+export interface LiveState {
+  doors: boolean[];
+  /** 離したあと開いている残り tick */
+  timers: number[];
+  /** スイッチを踏んでいる人数 */
+  plates: number[];
+  /** リフトの下がり量（px） */
+  lifts: number[];
+}
+
+/** 毎フレーム描く動くタイル（しびれ床の火花・スイッチ・扉・光の橋・リフト） */
 export function drawLiveTiles(
-  g: CanvasRenderingContext2D, m: MapDef, doors: boolean[], x0: number, y0: number, x1: number, y1: number, now: number,
+  g: CanvasRenderingContext2D, m: MapDef, st: LiveState, x0: number, y0: number, x1: number, y1: number, now: number,
 ) {
+  const doors = st.doors;
+  drawLifts(g, m, st, now);
   for (let y = Math.max(0, y0); y <= Math.min(m.height - 1, y1); y++) {
     const row = m.tiles[y];
     for (let x = Math.max(0, x0); x <= Math.min(m.width - 1, x1); x++) {
@@ -295,18 +319,28 @@ export function drawLiveTiles(
           for (let i = 0; i < 4; i++) { lx += 6; ly += (hash(x, y, k + 4 + i) - 0.5) * 14; g.lineTo(lx, ly); }
           g.stroke();
         }
-      } else if (ch >= '1' && ch <= '4') {
+      } else if (ch >= '1' && ch <= '5') {
         const idx = ch.charCodeAt(0) - 49;
-        const on = doors[idx];
-        g.fillStyle = on ? shade(DOOR_COLORS[idx], 0.3) : DOOR_COLORS[idx];
+        const heavy = (m.channels?.[idx]?.need ?? 1) > 1;
+        const down = heavy ? st.plates[idx] > 0 : doors[idx];
+        const lift = heavy ? 3 : 0;
+        g.fillStyle = down ? shade(DOOR_COLORS[idx], 0.3) : DOOR_COLORS[idx];
         g.beginPath();
-        g.roundRect(px + 4, py + TILE - (on ? 8 : 12), TILE - 8, on ? 3 : 7, 2);
+        g.roundRect(px + 4, py + TILE - (down ? 8 : 12) - lift, TILE - 8, down ? 3 : 7, 2);
         g.fill();
-      } else if (ch >= 'a' && ch <= 'd') {
+        // スイッチの一続きの左端で、人数の目印と残り時間を描く
+        if (row[x - 1] !== ch) {
+          let n = 1;
+          while (row[x + n] === ch) n++;
+          drawSwitchInfo(g, m, st, idx, px, py, n * TILE, now);
+        }
+      } else if (ch >= 'a' && ch <= 'e') {
         const idx = ch.charCodeAt(0) - 97;
         const open = doors[idx];
         const col = DOOR_COLORS[idx];
-        if (open) {
+        // 時間切れが近いと点滅して知らせる
+        const closing = open && st.plates[idx] < (m.channels?.[idx]?.need ?? 1) && st.timers[idx] > 0 && st.timers[idx] < 60;
+        if (open && !(closing && Math.floor(now / 120) % 2 === 0)) {
           g.strokeStyle = col;
           g.globalAlpha = 0.35;
           g.lineWidth = 2;
@@ -315,6 +349,7 @@ export function drawLiveTiles(
           g.setLineDash([]);
           g.globalAlpha = 1;
         } else {
+          g.globalAlpha = open ? 0.5 : 1;
           g.fillStyle = shade(col, -0.35);
           g.fillRect(px, py, TILE, TILE);
           g.fillStyle = col;
@@ -327,10 +362,227 @@ export function drawLiveTiles(
           g.moveTo(px + 6, py + TILE - 6);
           g.lineTo(px + TILE - 6, py + 6);
           g.stroke();
+          g.globalAlpha = 1;
         }
+      } else if (ch >= 'A' && ch <= 'E') {
+        drawBridge(g, row, x, y, ch.charCodeAt(0) - 65, doors[ch.charCodeAt(0) - 65], now);
       }
     }
   }
+}
+
+/** 光の橋：現れている間は光る板、消えている間は輪郭の粒だけ */
+function drawBridge(g: CanvasRenderingContext2D, row: string, x: number, y: number, idx: number, on: boolean, now: number) {
+  const px = x * TILE, py = y * TILE;
+  const col = DOOR_COLORS[idx];
+  const left = row[x - 1] !== row[x], right = row[x + 1] !== row[x];
+  if (on) {
+    const gr = g.createLinearGradient(0, py, 0, py + TILE);
+    gr.addColorStop(0, shade(col, 0.55));
+    gr.addColorStop(0.25, col);
+    gr.addColorStop(1, 'rgba(20,40,90,0.15)');
+    g.globalAlpha = 0.85;
+    g.fillStyle = gr;
+    g.fillRect(px, py, TILE, TILE * 0.6);
+    g.globalAlpha = 1;
+    g.fillStyle = '#ffffff';
+    g.fillRect(px, py, TILE, 2);
+    // 流れる光の筋
+    const t = (now / 6 + x * 9) % 96;
+    if (t < TILE) {
+      g.fillStyle = 'rgba(255,255,255,0.35)';
+      g.beginPath();
+      g.moveTo(px + t, py + 2);
+      g.lineTo(px + t + 8, py + 2);
+      g.lineTo(px + t + 2, py + TILE * 0.6);
+      g.lineTo(px + t - 6, py + TILE * 0.6);
+      g.fill();
+    }
+    // 下にこぼれる光
+    const glow = g.createLinearGradient(0, py + TILE * 0.6, 0, py + TILE * 1.6);
+    glow.addColorStop(0, `${col}55`);
+    glow.addColorStop(1, `${col}00`);
+    g.fillStyle = glow;
+    g.fillRect(px, py + TILE * 0.6, TILE, TILE);
+    if (left || right) {
+      g.fillStyle = shade(col, 0.6);
+      g.fillRect(left ? px : px + TILE - 3, py - 2, 3, TILE * 0.6 + 4);
+    }
+  } else {
+    g.fillStyle = `${col}66`;
+    for (let i = 0; i < 4; i++) g.fillRect(px + 2 + i * 8, py, 4, 2);
+    const k = (now / 1600 + hash(x, y, 3)) % 1;
+    g.fillStyle = `rgba(255,255,255,${0.5 * (1 - k)})`;
+    g.beginPath();
+    g.arc(px + 6 + hash(x, y, 4) * 20, py - k * 22, 1.6, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+
+/** 二人スイッチの人数の目印と、離したあとの残り時間 */
+function drawSwitchInfo(
+  g: CanvasRenderingContext2D, m: MapDef, st: LiveState, idx: number, px: number, py: number, w: number, now: number,
+) {
+  const ch = m.channels?.[idx];
+  const need = ch?.need ?? 1;
+  const col = DOOR_COLORS[idx];
+  const cx = px + w / 2, cy = py - 46;
+  if (need > 1) {
+    // 人の頭の形の目印を並べた札。踏んでいる人数ぶん光る
+    const bw = need * 24 + 8;
+    g.fillStyle = 'rgba(12,16,32,0.6)';
+    g.beginPath();
+    g.roundRect(cx - bw / 2, cy - 14, bw, 28, 14);
+    g.fill();
+    g.strokeStyle = `${col}aa`;
+    g.lineWidth = 1.5;
+    g.stroke();
+    g.fillStyle = 'rgba(12,16,32,0.6)';
+    g.fillRect(cx - 1.5, cy + 14, 3, py + TILE - 12 - cy - 14);
+    for (let i = 0; i < need; i++) {
+      const hx = cx + (i - (need - 1) / 2) * 24;
+      const lit = i < st.plates[idx];
+      if (lit) {
+        const gl = g.createRadialGradient(hx, cy, 2, hx, cy, 16);
+        gl.addColorStop(0, `${col}aa`);
+        gl.addColorStop(1, `${col}00`);
+        g.fillStyle = gl;
+        g.beginPath();
+        g.arc(hx, cy, 16, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.fillStyle = lit ? col : 'rgba(255,255,255,0.08)';
+      g.strokeStyle = lit ? '#fff' : `${col}cc`;
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(hx, cy, 9, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.fillStyle = lit ? '#fff' : `${col}cc`;
+      for (const ex of [-3, 3]) {
+        g.beginPath();
+        g.ellipse(hx + ex, cy - 1, 1.5, 2.5, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+  }
+  const hold = ch?.hold ?? 0;
+  const t = st.timers[idx];
+  if (hold > 0 && t > 0 && st.plates[idx] < need) {
+    // 残り時間の輪（終わりが近いと点滅）
+    const ry = cy - (need > 1 ? 32 : 18);
+    if (t >= 60 || Math.floor(now / 120) % 2) {
+      g.strokeStyle = 'rgba(10,14,30,0.6)';
+      g.lineWidth = 6;
+      g.beginPath();
+      g.arc(cx, ry, 10, 0, Math.PI * 2);
+      g.stroke();
+      g.strokeStyle = col;
+      g.lineWidth = 4;
+      g.beginPath();
+      g.arc(cx, ry, 10, -Math.PI / 2, -Math.PI / 2 + (t / hold) * Math.PI * 2);
+      g.stroke();
+    }
+  }
+}
+
+/** 昇降リフト：滑車から吊った床。スイッチが入ると上がる */
+function drawLifts(g: CanvasRenderingContext2D, m: MapDef, st: LiveState, now: number) {
+  (m.lifts ?? []).forEach((l, i) => {
+    const off = st.lifts[i] ?? 0;
+    const x0 = l.x * TILE, x1 = (l.x + l.w) * TILE, w = x1 - x0;
+    const top = liftTop(l, off);
+    const col = DOOR_COLORS[l.ch - 1];
+    const on = st.doors[l.ch - 1];
+    const py = l.top * TILE - TILE * 2.5;
+    // 案内の柱
+    for (const rx of [x0 + 6, x1 - 6]) {
+      const gr = g.createLinearGradient(rx - 3, 0, rx + 3, 0);
+      gr.addColorStop(0, '#5b6470');
+      gr.addColorStop(0.5, '#a9b3bf');
+      gr.addColorStop(1, '#5b6470');
+      g.fillStyle = gr;
+      g.globalAlpha = 0.55;
+      g.fillRect(rx - 3, py, 6, l.bottom * TILE - py);
+      g.globalAlpha = 1;
+    }
+    g.fillStyle = '#4a525e';
+    g.fillRect(x0, py - 6, w, 8);
+    // 滑車
+    const wx = (x0 + x1) / 2;
+    g.strokeStyle = '#2b3038';
+    g.lineWidth = 1.5;
+    for (const sx of [x0 + 12, x1 - 12]) {
+      g.beginPath();
+      g.moveTo(sx, py + 10);
+      g.lineTo(sx, top);
+      g.stroke();
+    }
+    g.save();
+    g.translate(wx, py + 4);
+    g.rotate(-off / 14);
+    g.fillStyle = '#c9d0d9';
+    g.strokeStyle = '#3b424c';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(0, 0, 13, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    for (let k = 0; k < 3; k++) {
+      g.rotate(Math.PI / 3);
+      g.fillRect(-11, -1.5, 22, 3);
+    }
+    g.fillStyle = col;
+    g.beginPath();
+    g.arc(0, 0, 4, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+    g.strokeStyle = '#2b3038';
+    g.beginPath();
+    g.moveTo(x0 + 12, py + 10);
+    g.lineTo(wx - 10, py + 10);
+    g.moveTo(wx + 10, py + 10);
+    g.lineTo(x1 - 12, py + 10);
+    g.stroke();
+
+    // 床
+    const gr = g.createLinearGradient(0, top, 0, top + LIFT_THICK);
+    gr.addColorStop(0, '#d5dbe3');
+    gr.addColorStop(0.4, '#9aa4b1');
+    gr.addColorStop(1, '#5d6673');
+    g.fillStyle = gr;
+    g.beginPath();
+    g.roundRect(x0, top, w, LIFT_THICK, 3);
+    g.fill();
+    g.save();
+    g.beginPath();
+    g.rect(x0 + 4, top + LIFT_THICK - 7, w - 8, 5);
+    g.clip();
+    for (let sx = x0 - 8; sx < x1; sx += 10) {
+      g.fillStyle = '#f4c430';
+      g.beginPath();
+      g.moveTo(sx, top + LIFT_THICK);
+      g.lineTo(sx + 5, top + LIFT_THICK);
+      g.lineTo(sx + 10, top + LIFT_THICK - 8);
+      g.lineTo(sx + 5, top + LIFT_THICK - 8);
+      g.fill();
+    }
+    g.restore();
+    g.fillStyle = '#ffffff';
+    g.globalAlpha = 0.5;
+    g.fillRect(x0 + 2, top, w - 4, 2);
+    g.globalAlpha = 1;
+    // 動いている間は色のランプが光る
+    const blink = on && off > 0 ? 0.6 + 0.4 * Math.sin(now / 90) : on ? 1 : 0.35;
+    for (const lx of [x0 + 8, x1 - 8]) {
+      g.fillStyle = col;
+      g.globalAlpha = blink;
+      g.beginPath();
+      g.arc(lx, top + 5, 3, 0, Math.PI * 2);
+      g.fill();
+      g.globalAlpha = 1;
+    }
+  });
 }
 
 // ---------- キャラとフック ----------

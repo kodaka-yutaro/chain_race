@@ -1,5 +1,5 @@
 import {
-  createWorld, emptyInput, inZone, newRunner, stepWorld, TICK_RATE, TILE, WIRE_ATTACHED,
+  CHANNELS, createWorld, emptyInput, inZone, newRunner, stepWorld, TICK_RATE, TILE, WIRE_ATTACHED,
   WIRE_FLYING, type Input, type MapDef, type Runner, type World,
 } from '../shared/physics';
 import { mapById as stageOrLobby, stageById } from '../shared/maps';
@@ -17,7 +17,7 @@ export class ClientGame {
   private seq = 0;
   private others = new Map<number, { prev: RunnerView; cur: RunnerView; at: number }>();
   private names: Record<number, string> = {};
-  private doors = [false, false, false, false];
+  private doors = Array<boolean>(CHANNELS).fill(false);
   private ctx: CanvasRenderingContext2D;
   private staticLayer: HTMLCanvasElement;
   private keys = new Set<string>();
@@ -106,6 +106,8 @@ export class ClientGame {
     this.world = createWorld(this.map);
     this.world.tick = s.tick;
     this.world.doorsOpen = [...s.doors];
+    this.world.timers = [...s.timers];
+    this.world.lifts = [...s.lifts];
     this.world.runners = [this.me, ...s.others.map((v) => viewToRunner(v, this.map))];
     for (const p of this.pending) this.predictStep(p.input);
     this.smoothX = beforeX - this.me.x;
@@ -287,7 +289,7 @@ export class ClientGame {
       const sh = this.staticLayer.height / this.map.height, sw = this.staticLayer.width;
       for (let y = mh; y < this.cam.y + vh; y += TILE) g.drawImage(this.staticLayer, 0, this.staticLayer.height - sh, sw, sh, 0, y, mw, TILE);
     }
-    drawLiveTiles(g, this.map, this.doors, Math.floor(this.cam.x / TILE) - 1, Math.floor(this.cam.y / TILE) - 1,
+    drawLiveTiles(g, this.map, { ...this.world, doors: this.doors }, Math.floor(this.cam.x / TILE) - 1, Math.floor(this.cam.y / TILE) - 1,
       Math.ceil((this.cam.x + vw) / TILE) + 1, Math.ceil((this.cam.y + vh) / TILE) + 1, now);
     this.drawZones(g);
 
