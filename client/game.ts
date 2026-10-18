@@ -108,6 +108,7 @@ export class ClientGame {
     this.world.doorsOpen = [...s.doors];
     this.world.timers = [...s.timers];
     this.world.lifts = [...s.lifts];
+    this.world.saws = [...s.saws];
     this.world.runners = [this.me, ...s.others.map((v) => viewToRunner(v, this.map))];
     for (const p of this.pending) this.predictStep(p.input);
     this.smoothX = beforeX - this.me.x;

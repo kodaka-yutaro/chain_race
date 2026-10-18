@@ -226,3 +226,91 @@ test('二人スイッチは2人で踏むと開き、離しても3秒だけ開い
   settle(w, 20);
   assert.ok(!w.doorsOpen[4], 'いつまでも閉じない');
 });
+
+// ---------- からくり工場 ----------
+
+const factory = () => createWorld(mapById('factory')!);
+
+function onPlank(w: World, id: number, tx: number) {
+  const r = place(w, id, tx);
+  r.x = tx * TILE;
+  r.y = 24 * TILE - TEE_SIZE / 2 - 1;
+  return r;
+}
+
+test('シーソーの片側に跳んで着地すると、反対側の仲間が棚まで飛ぶ', () => {
+  const w = factory();
+  const a = onPlank(w, 1, 17.5);
+  const b = onPlank(w, 2, 22.5);
+  settle(w, 10);
+  let launched = false, onLedge = false;
+  for (let i = 0; i < 250 && !onLedge; i++) {
+    const m = new Map<number, Input>();
+    m.set(1, inp({ jump: i < 3 }));
+    // 飛んだら頂点で二段ジャンプし、右の棚へ寄る
+    m.set(2, inp({ jump: launched && b.vy > -2 && b.vy < 2, right: launched && b.y < 9 * TILE }));
+    stepWorld(w, m);
+    if (b.vy < -15) launched = true;
+    if (b.grounded && b.y < 9 * TILE && b.x > 26 * TILE) onLedge = true;
+  }
+  assert.ok(launched, '飛ばない');
+  assert.ok(onLedge, `棚に届かない b=(${b.x / TILE},${b.y / TILE})`);
+  assert.equal(w.saws[0], -1);
+});
+
+test('シーソーに1人で乗って跳んでも、棚には届かない', () => {
+  const w = factory();
+  const r = onPlank(w, 1, 23.5);
+  settle(w, 10);
+  let minY = r.y;
+  for (let i = 0; i < 200; i++) {
+    stepWorld(w, new Map([[1, inp({ jump: i % 60 < 3 || (i % 60 >= 20 && i % 60 < 23) })]]));
+    minY = Math.min(minY, r.y);
+  }
+  assert.ok(minY > 11 * TILE, `1人で棚の高さまで届く minY=${minY / TILE}`);
+});
+
+test('棚の上のスイッチで、下の仲間をリフトで通路へ運べる', () => {
+  const w = factory();
+  const top = place(w, 1, 41);
+  top.y = 8 * TILE;
+  const rider = place(w, 2, 46);
+  settle(w, 220);
+  assert.equal(w.lifts[0], 0);
+  for (let i = 0; i < 60; i++) stepWorld(w, new Map([[2, inp({ right: rider.x < 51 * TILE })]]));
+  assert.ok(rider.x > 50 * TILE && rider.y < 9 * TILE && rider.grounded, `通路に移れない (${rider.x / TILE},${rider.y / TILE})`);
+});
+
+test('飛び石の橋は、1人で走ってジャンプしても越えられない', () => {
+  const w = factory();
+  const r = place(w, 1, 64);
+  settle(w);
+  let died = false;
+  for (let i = 0; i < 200 && !died; i++) {
+    const x = r.x / TILE;
+    const ev = stepWorld(w, new Map([[1, inp({ right: true, jump: (x > 70 && x < 71.5) || (r.vy > 0 && x > 72 && x < 80) })]]));
+    died = ev.killed.includes(1);
+  }
+  assert.ok(died, '1人で穴を越えられてしまう');
+});
+
+test('飛び石の橋は、島のスイッチを交互に踏めば2人で渡れる', () => {
+  const w = factory();
+  const a = place(w, 1, 68.5);
+  const b = place(w, 2, 70);
+  settle(w);
+  // a がスイッチ 2 を踏んでいる間に b が島 1 へ。b が島のスイッチ 2 に乗ったら a が渡る
+  const walk = (r: typeof a, tx: number, ticks = 160) => {
+    for (let i = 0; i < ticks; i++) {
+      const ev = stepWorld(w, new Map([[r.id, inp({ right: r.x < tx * TILE, left: r.x > tx * TILE + 8 })]]));
+      assert.ok(ev.killed.length === 0, `落ちた ${r.id} x=${r.x / TILE}`);
+    }
+  };
+  walk(b, 87.6);
+  walk(a, 91.6);
+  walk(b, 109.6);
+  walk(a, 113.6);
+  walk(b, 131.6);
+  walk(a, 135);
+  assert.ok(a.x > 133 * TILE && b.x > 131 * TILE);
+});
