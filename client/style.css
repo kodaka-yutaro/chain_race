@@ -144,7 +144,6 @@ body.touch .touch-row { grid-column: 1 / -1; display: flex; gap: 8px; justify-se
   transition: transform 0.05s;
 }
 .stick.held { border-color: rgba(255,255,255,0.6); }
-.stick.aim .knob { background: radial-gradient(circle at 35% 35%, #ffe2d8, #ff7a59); }
 .stick span {
   position: absolute; left: 50%; bottom: -18px; transform: translateX(-50%); white-space: nowrap;
   font-size: 11px; color: rgba(255,255,255,0.65);
@@ -154,12 +153,16 @@ body.touch .touch-row { grid-column: 1 / -1; display: flex; gap: 8px; justify-se
   background: rgba(40,50,86,0.85); border: 2px solid rgba(255,255,255,0.3);
 }
 .tbtn.held { filter: brightness(1.5); transform: scale(0.96); }
-.tbtn.jump { grid-column: 2; grid-row: 2; align-self: start; margin-top: 4px; }
-.tbtn.fire { grid-column: 2; grid-row: 2; align-self: end; background: rgba(120,70,40,0.9); }
+.touch-btns { grid-column: 3; grid-row: 2; position: relative; width: min(40vw, 170px); aspect-ratio: 1; }
+.touch-btns .tbtn { position: absolute; }
+.tbtn.jump { right: 0; bottom: 0; width: 92px; height: 92px; font-size: 15px; }
+.tbtn.fire { left: 0; top: 0; background: rgba(120,70,40,0.9); }
+.touch-hint {
+  grid-column: 1 / -1; grid-row: 3; font-size: 11px; color: rgba(255,255,255,0.6); text-shadow: 0 1px 2px #000;
+}
 .tbtn.small { width: auto; height: 34px; border-radius: 17px; padding: 0 16px; font-size: 13px; }
 .tbtn.accent { background: var(--accent); color: #1b1b1b; border-color: var(--accent); }
 .stick.move { grid-column: 1; grid-row: 2; }
-.stick.aim { grid-column: 3; grid-row: 2; }
 
 /* 縦画面: ゲームは全画面、操作パネルは下の方に重ねる */
 @media (orientation: portrait) {
@@ -173,10 +176,14 @@ body.touch .touch-row { grid-column: 1 / -1; display: flex; gap: 8px; justify-se
   body.touch .touch-pad { grid-template-rows: auto auto; background: none; }
   body.touch .touch-row { position: fixed; top: 8px; right: 12px; justify-content: flex-end; }
   body.touch .stick { width: min(26vh, 140px); }
+  body.touch .touch-btns { width: min(30vh, 160px); }
 }
 /* 重ねても後ろが見えるよう半透明に */
 body.touch .touch-pad { pointer-events: none; }
 body.touch .touch-pad > *, body.touch .touch-row > * { pointer-events: auto; }
+body.touch .touch-btns { pointer-events: none; }
+body.touch .touch-btns > * { pointer-events: auto; }
+body.touch .touch-hint { pointer-events: none; }
 body.touch .touch-row { pointer-events: none; }
 body.touch .stick { background: radial-gradient(circle, rgba(10,14,30,0.35), rgba(10,14,30,0.15)); }
 body.touch .stick .knob { opacity: 0.85; }

@@ -25,6 +25,8 @@ export class ClientGame {
   private clicked = { left: false, right: false };
   private mouse = { x: 0, y: 0, left: false, right: false };
   private killQueued = false;
+  // スマホでフックをねらった向き。触っていない間も最後の向きでハンマーを振る
+  private touchAim = { x: 1, y: 0 };
   private acc = 0;
   private last = performance.now();
   private raf = 0;
@@ -145,11 +147,19 @@ export class ClientGame {
       i.left ||= touch.moveX < 0;
       i.right ||= touch.moveX > 0;
       i.jump ||= touch.jump || touch.jumpTap;
-      i.wire ||= touch.hook;
+      i.wire ||= touch.hook || touch.hookTap;
       i.fire ||= touch.fire || touch.fireTap;
-      i.aimX = touch.aimX * 100;
-      i.aimY = touch.aimY * 100;
-      touch.jumpTap = touch.fireTap = false;
+      if (touch.hook || touch.hookTap) {
+        // 触った場所を、マウスと同じようにマップの座標に直して自分からの向きにする
+        const r = this.canvas.getBoundingClientRect();
+        const tx = (touch.aimClientX - r.left) * (this.canvas.width / r.width) / this.cam.zoom + this.cam.x;
+        const ty = (touch.aimClientY - r.top) * (this.canvas.height / r.height) / this.cam.zoom + this.cam.y;
+        const ax = tx - (this.me.x + this.smoothX), ay = ty - (this.me.y + this.smoothY);
+        if (Math.hypot(ax, ay) >= 1) this.touchAim = { x: ax, y: ay };
+      }
+      i.aimX = this.touchAim.x;
+      i.aimY = this.touchAim.y;
+      touch.jumpTap = touch.fireTap = touch.hookTap = false;
     }
     return i;
   }
