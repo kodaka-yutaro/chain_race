@@ -1,4 +1,4 @@
-import type { Channel, Lift, MapDef, Zone } from './physics';
+import type { Channel, Lift, MapDef, Saw, Zone } from './physics';
 
 // ステージはすべてこのプロジェクトのオリジナル。四角形を重ねて組み立てる。
 class Builder {
@@ -6,6 +6,7 @@ class Builder {
   hints: MapDef['hints'] = [];
   zones: Zone[] = [];
   lifts: Lift[] = [];
+  saws: Saw[] = [];
   channels: Channel[] = [];
   constructor(public width: number, public height: number) {
     this.grid = Array.from({ length: height }, () => Array(width).fill('.'));
@@ -34,17 +35,22 @@ class Builder {
     this.lifts.push(l);
     return this;
   }
+  saw(s: Saw) {
+    this.saws.push(s);
+    return this;
+  }
   /** スイッチ n（1〜5）の設定 */
   channel(n: number, c: Channel) {
     this.channels[n - 1] = c;
     return this;
   }
-  build(meta: Omit<MapDef, 'width' | 'height' | 'tiles' | 'hints' | 'zones' | 'lifts' | 'channels'>): MapDef {
+  build(meta: Omit<MapDef, 'width' | 'height' | 'tiles' | 'hints' | 'zones' | 'lifts' | 'saws' | 'channels'>): MapDef {
     this.border();
     return {
       ...meta, width: this.width, height: this.height, tiles: this.grid.map((r) => r.join('')), hints: this.hints,
       zones: this.zones.length ? this.zones : undefined,
       lifts: this.lifts.length ? this.lifts : undefined,
+      saws: this.saws.length ? this.saws : undefined,
       channels: this.channels.length ? Array.from(this.channels, (c) => c ?? {}) : undefined,
     };
   }
@@ -164,31 +170,84 @@ function stage3(): MapDef {
   });
 }
 
-export const MAPS: MapDef[] = [stage1(), stage2(), stage3()];
+function stage4(): MapDef {
+  const b = new Builder(164, 30);
+  b.rect(0, 26, 164, 4, '#');
+  b.rect(3, 25, 1, 1, 'S');
+  b.rect(7, 1, 1, 25, '>');
+  // シーソーで仲間を高い棚へ飛ばす。棚と通路は金属なのでフックでは登れない
+  b.saw({ x: 20, half: 4, top: 24 });
+  b.rect(19, 25, 2, 1, 'X');
+  b.rect(26, 9, 19, 2, 'X');
+  b.rect(40, 8, 3, 1, '1');
+  // 棚の上のスイッチで、下に残った仲間をリフトで運ぶ
+  b.rect(45, 26, 4, 1, '.');
+  b.lift({ x: 45, w: 4, top: 9, bottom: 26, ch: 1 });
+  b.rect(49, 9, 11, 2, 'X');
+  b.rect(60, 9, 3, 17, 'X');
+  // 飛び石の橋：島のスイッチを交互に踏んで、1人ずつ前へ進む。トゲの付いた低い天井でジャンプでは越えられない
+  b.rect(67, 22, 67, 2, 'X');
+  b.rect(69, 21, 65, 1, '^');
+  b.rect(68, 25, 2, 1, '2');
+  const pits: [number, string][] = [[71, 'B'], [93, 'C'], [115, 'D']];
+  for (const [x, c] of pits) {
+    b.rect(x, 26, 16, 1, c);
+    b.rect(x, 27, 16, 1, '^');
+  }
+  b.rect(87, 25, 2, 1, '2');
+  b.rect(91, 25, 2, 1, '3');
+  b.rect(109, 25, 2, 1, '3');
+  b.rect(113, 25, 2, 1, '4');
+  b.rect(131, 25, 2, 1, '4');
+  // 最後は二人スイッチの扉
+  b.rect(138, 25, 3, 1, '5');
+  b.rect(146, 1, 2, 13, 'X');
+  b.rect(146, 14, 2, 12, 'e');
+  b.channel(5, { need: 2, hold: 2 * 50 });
+  b.rect(156, 1, 1, 25, 'F');
+  b.hint(3, 21, '2人以上で協力するステージ')
+    .hint(10, 17, 'シーソー: 仲間が片側に乗ったら、反対側に跳んで着地しよう')
+    .hint(10, 19, '高く跳んで着地するほど高く飛ぶ。飛んだ人は空中で二段ジャンプ')
+    .hint(29, 7, '上に着いたら、オレンジのスイッチでリフトを上げる')
+    .hint(66, 17, '飛び石の橋: 島のスイッチで、後ろの仲間に橋を架けよう')
+    .hint(66, 19, '交互に踏んで1人ずつ進む。天井のトゲに注意')
+    .hint(134, 19, '二人スイッチ: 2人で踏むと扉が開く（2秒）')
+    .hint(152, 21, 'ゴール！');
+  return b.build({
+    id: 'factory', name: 'からくり工場', minPlayers: 2,
+    description: '2人以上が必要な協力ステージ。シーソーで飛ばし、リフトで運び、飛び石の橋を交互に進む。',
+  });
+}
+
+export const MAPS: MapDef[] = [stage1(), stage2(), stage3(), stage4()];
 
 // 大部屋の広場：左にフリー入口、右に協力の台
 function lobby(): MapDef {
-  const b = new Builder(84, 22);
-  b.rect(0, 18, 84, 4, '#');
-  b.rect(42, 17, 1, 1, 'S');
+  // ステージが増えると左右の入口が増え、広場も広がる（3ステージで幅84）
+  const off = (MAPS.length - 3) * 9;
+  const W = 84 + off * 2, c = 42 + off;
+  const b = new Builder(W, 22);
+  b.rect(0, 18, W, 4, '#');
+  b.rect(c, 17, 1, 1, 'S');
   // 中央の遊び場（フックの練習用の天井とバネ）
-  b.rect(32, 4, 20, 2, '#');
-  b.rect(36, 12, 12, 1, '#');
-  b.rect(34, 17, 1, 1, 'J');
-  b.rect(50, 17, 1, 1, 'J');
+  b.rect(c - 10, 4, 20, 2, '#');
+  b.rect(c - 6, 12, 12, 1, '#');
+  b.rect(c - 8, 17, 1, 1, 'J');
+  b.rect(c + 8, 17, 1, 1, 'J');
   // 左右を区切る低い仕切り
-  b.rect(31, 16, 1, 2, 'X');
-  b.rect(53, 16, 1, 2, 'X');
+  b.rect(c - 11, 16, 1, 2, 'X');
+  b.rect(c + 11, 16, 1, 2, 'X');
   // 端のゾーンは壁際まで広げて、歩いて行くだけで入れるようにする
-  const free = [{ x: 1, w: 9 }, { x: 12, w: 7 }, { x: 21, w: 7 }];
-  const party = [{ x: 56, w: 7 }, { x: 65, w: 7 }, { x: 74, w: 9 }];
   MAPS.forEach((m, i) => {
-    b.zone({ id: `free-${m.id}`, kind: 'free', stageId: m.id, ...free[i], y: 13, h: 5 });
-    b.zone({ id: `party-${m.id}`, kind: 'party', stageId: m.id, ...party[i], y: 13, h: 5 });
+    const free = i === 0 ? { x: 1, w: 9 } : { x: 3 + i * 9, w: 7 };
+    const last = i === MAPS.length - 1;
+    const party = { x: c + 14 + i * 9, w: last ? 9 : 7 };
+    b.zone({ id: `free-${m.id}`, kind: 'free', stageId: m.id, ...free, y: 13, h: 5 });
+    b.zone({ id: `party-${m.id}`, kind: 'party', stageId: m.id, ...party, y: 13, h: 5 });
   });
   b.hint(2, 9, 'フリー入口: 入口で F を押すと、誰でもいるステージに入る')
-    .hint(56, 9, '協力の台: 乗って F でカウント開始、台の上の全員で出発')
-    .hint(35, 9, 'Enter でチャット');
+    .hint(c + 14, 9, '協力の台: 乗って F でカウント開始、台の上の全員で出発')
+    .hint(c - 7, 9, 'Enter でチャット');
   return b.build({ id: 'lobby', name: '大部屋', minPlayers: 1, description: '' });
 }
 export const LOBBY_MAP = lobby();

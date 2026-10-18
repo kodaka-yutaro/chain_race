@@ -1,5 +1,5 @@
 // 見た目の描画（背景・タイル・キャラ・フック）。ゲームの進行とは切り離してある。
-import { CHANNELS, isSolidChar, LIFT_THICK, liftTop, TEE_SIZE, TILE, type MapDef } from '../shared/physics';
+import { CHANNELS, isSolidChar, LIFT_THICK, liftTop, SAW_THICK, TEE_SIZE, TILE, type MapDef } from '../shared/physics';
 
 const R = TEE_SIZE / 2;
 
@@ -32,6 +32,7 @@ const THEMES: Record<string, Theme> = {
   hill: { sky: ['#5fb6e8', '#a8dcf2', '#e6f6ef'], far: '#8fb9c9', mid: '#6fa77a', near: '#4f8a5b', clouds: true, stars: false, cave: false, sun: '#fff6c9' },
   cave: { sky: ['#140f26', '#231a3d', '#2d2248'], far: '#2b2145', mid: '#382a58', near: '#45346b', clouds: false, stars: false, cave: true },
   tower: { sky: ['#40275e', '#c4577a', '#f7a267'], far: '#7a4f78', mid: '#5b3a63', near: '#3f2a4d', clouds: true, stars: false, cave: false, sun: '#ffd9a0' },
+  factory: { sky: ['#1b2433', '#3c4a5c', '#d98a4e'], far: '#4a5363', mid: '#384150', near: '#2a313d', clouds: false, stars: false, cave: false, sun: '#ffc27a' },
   lobby: { sky: ['#0f1a3a', '#253a73', '#5a6fa8'], far: '#2f3f72', mid: '#263463', near: '#1d2950', clouds: false, stars: true, cave: false },
 };
 
@@ -82,6 +83,8 @@ export function drawBackground(
     }
   }
 
+  if (mapId === 'factory') drawFactorySkyline(g, W, H, camX, camY, zoom, now);
+
   // 遠い山・中くらいの丘・手前の丘（スクロールの速さを変えて奥行きを出す）
   const layers: [string, number, number, number, number][] = th.cave
     ? [[th.far, 0.15, 0.15, 60, 1], [th.mid, 0.3, 0.25, 70, 2], [th.near, 0.5, 0.35, 80, 3]]
@@ -131,12 +134,59 @@ export function drawBackground(
   }
 }
 
+/** 工場の遠景：煙突と建屋の影、立ちのぼる煙、窓の明かり */
+function drawFactorySkyline(g: CanvasRenderingContext2D, W: number, H: number, camX: number, camY: number, zoom: number, now: number) {
+  const span = 900, par = 0.08;
+  const yoff = -camY * zoom * par * 0.3;
+  const base = H * 0.62 + yoff;
+  for (let k = -1; k < W / span + 2; k++) {
+    const ox = k * span - ((camX * zoom * par) % span);
+    const seed = Math.floor((camX * zoom * par) / span) + k;
+    for (let j = 0; j < 4; j++) {
+      const bx = ox + j * 220 + hash(seed, j, 1) * 60;
+      const bw = 120 + hash(seed, j, 2) * 80, bh = 60 + hash(seed, j, 3) * 90;
+      g.fillStyle = '#2e3644';
+      g.fillRect(bx, base - bh, bw, bh + H);
+      // のこぎり屋根
+      g.beginPath();
+      for (let t = 0; t < bw; t += 30) {
+        g.moveTo(bx + t, base - bh);
+        g.lineTo(bx + t + 30, base - bh - 16);
+        g.lineTo(bx + t + 30, base - bh);
+      }
+      g.fill();
+      // 窓の明かり
+      for (let wy = 0; wy < 2; wy++) for (let wx = 0; wx < bw / 22 - 1; wx++) {
+        if (hash(seed * 7 + j, wx, wy) < 0.45) continue;
+        g.fillStyle = `rgba(255,190,110,${0.35 + 0.25 * Math.sin(now / 1500 + wx + wy * 3)})`;
+        g.fillRect(bx + 10 + wx * 22, base - bh + 18 + wy * 24, 10, 12);
+      }
+      // 煙突と煙
+      if (hash(seed, j, 4) > 0.4) {
+        const cx = bx + bw * 0.7, ch = 80 + hash(seed, j, 5) * 70;
+        g.fillStyle = '#272e3a';
+        g.fillRect(cx, base - bh - ch, 18, ch);
+        g.fillStyle = '#b5543c';
+        g.fillRect(cx - 2, base - bh - ch + 10, 22, 6);
+        for (let p = 0; p < 6; p++) {
+          const t = ((now / 4000 + p / 6 + hash(seed, j, 6)) % 1);
+          g.fillStyle = `rgba(200,205,215,${0.22 * (1 - t)})`;
+          g.beginPath();
+          g.arc(cx + 9 + t * 60, base - bh - ch - t * 120, 10 + t * 26, 0, Math.PI * 2);
+          g.fill();
+        }
+      }
+    }
+  }
+}
+
 // ---------- タイル ----------
 
 const ROCK: Record<string, [string, string, string, string]> = {
   hill: ['#8a6b4f', '#73573f', '#5c4532', '#6cc04a'],
   cave: ['#5b5170', '#4a4160', '#3a324d', '#8f7dd0'],
   tower: ['#9b6b55', '#7f5644', '#644235', '#e0a95c'],
+  factory: ['#7a6a5e', '#62554b', '#4b413a', '#c9a227'],
   lobby: ['#6a6f8f', '#565b7a', '#444862', '#7fd1c2'],
 };
 
@@ -295,6 +345,8 @@ export interface LiveState {
   plates: number[];
   /** リフトの下がり量（px） */
   lifts: number[];
+  /** シーソーの傾き（-1 / 1） */
+  saws: number[];
 }
 
 /** 毎フレーム描く動くタイル（しびれ床の火花・スイッチ・扉・光の橋・リフト） */
@@ -303,6 +355,7 @@ export function drawLiveTiles(
 ) {
   const doors = st.doors;
   drawLifts(g, m, st, now);
+  drawSaws(g, m, st, now);
   for (let y = Math.max(0, y0); y <= Math.min(m.height - 1, y1); y++) {
     const row = m.tiles[y];
     for (let x = Math.max(0, x0); x <= Math.min(m.width - 1, x1); x++) {
@@ -484,6 +537,88 @@ function drawSwitchInfo(
       g.stroke();
     }
   }
+}
+
+// シーソーの見た目の傾き（ゆっくり追いかけ、跳ね上げた直後は少し揺れる）
+const sawAngle = new Map<string, { a: number; v: number; at: number }>();
+
+function drawSaws(g: CanvasRenderingContext2D, m: MapDef, st: LiveState, now: number) {
+  (m.saws ?? []).forEach((s, i) => {
+    const key = `${m.id}:${i}`;
+    const target = (st.saws[i] ?? -1) * 0.05;
+    const cur = sawAngle.get(key) ?? { a: target, v: 0, at: now };
+    const dt = Math.min(50, now - cur.at) / 16;
+    // ばねのように追いかける
+    cur.v += (target - cur.a) * 0.18 * dt;
+    cur.v *= Math.pow(0.78, dt);
+    cur.a += cur.v * dt;
+    cur.at = now;
+    sawAngle.set(key, cur);
+
+    const cx = s.x * TILE, y0 = s.top * TILE, half = s.half * TILE;
+    // 支点の台
+    const baseY = (s.top + 2) * TILE;
+    const gr = g.createLinearGradient(cx - 22, 0, cx + 22, 0);
+    gr.addColorStop(0, '#5a4a3c');
+    gr.addColorStop(0.5, '#9a7b5c');
+    gr.addColorStop(1, '#4a3c30');
+    g.fillStyle = gr;
+    g.beginPath();
+    g.moveTo(cx, y0 + SAW_THICK / 2);
+    g.lineTo(cx + 26, baseY - TILE);
+    g.lineTo(cx - 26, baseY - TILE);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#d7dce4';
+    g.beginPath();
+    g.arc(cx, y0 + SAW_THICK / 2, 6, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#3b424c';
+    g.beginPath();
+    g.arc(cx, y0 + SAW_THICK / 2, 2.5, 0, Math.PI * 2);
+    g.fill();
+
+    // 板（木の板に金具）
+    g.save();
+    g.translate(cx, y0 + SAW_THICK / 2);
+    g.rotate(cur.a);
+    const pg = g.createLinearGradient(0, -SAW_THICK / 2, 0, SAW_THICK / 2);
+    pg.addColorStop(0, '#e2b07a');
+    pg.addColorStop(0.5, '#b9824f');
+    pg.addColorStop(1, '#7d5333');
+    g.fillStyle = pg;
+    g.beginPath();
+    g.roundRect(-half, -SAW_THICK / 2, half * 2, SAW_THICK, 4);
+    g.fill();
+    g.strokeStyle = 'rgba(70,40,20,0.35)';
+    g.lineWidth = 1;
+    for (let k = 1; k < s.half * 2; k++) {
+      g.beginPath();
+      g.moveTo(-half + k * TILE, -SAW_THICK / 2 + 2);
+      g.lineTo(-half + k * TILE, SAW_THICK / 2 - 2);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(255,255,255,0.35)';
+    g.fillRect(-half + 3, -SAW_THICK / 2 + 1, half * 2 - 6, 2);
+    // 両端の金具と、跳ばす側を示す矢印
+    for (const sd of [-1, 1]) {
+      g.fillStyle = '#9aa4b1';
+      g.fillRect(sd < 0 ? -half : half - 8, -SAW_THICK / 2, 8, SAW_THICK);
+      const up = (st.saws[i] ?? -1) !== sd;
+      const bob = Math.sin(now / 200) * 2;
+      if (up) {
+        g.fillStyle = 'rgba(255,224,102,0.85)';
+        const ax = sd * (half - 26);
+        g.beginPath();
+        g.moveTo(ax, -SAW_THICK / 2 - 22 + bob);
+        g.lineTo(ax + 7, -SAW_THICK / 2 - 13 + bob);
+        g.lineTo(ax - 7, -SAW_THICK / 2 - 13 + bob);
+        g.closePath();
+        g.fill();
+      }
+    }
+    g.restore();
+  });
 }
 
 /** 昇降リフト：滑車から吊った床。スイッチが入ると上がる */

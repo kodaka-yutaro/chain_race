@@ -28,12 +28,19 @@ export const PHYS = {
   maxSpeed: 40,
   /** 昇降リフトの速さ（px/tick） */
   liftSpeed: 4,
+  /** シーソー：この速さより強く着地すると、反対側の人が飛ぶ */
+  sawMinImpact: 6,
+  /** 飛ぶ速さ = 着地の速さ × sawKick（上限 sawMaxLaunch） */
+  sawKick: 1.5,
+  sawMaxLaunch: 24,
 };
 
 /** スイッチの色の数（1-5 / a-e / A-E） */
 export const CHANNELS = 5;
 /** 昇降リフトの床の厚さ（px） */
 export const LIFT_THICK = 16;
+/** シーソーの板の厚さ（px） */
+export const SAW_THICK = 12;
 
 // タイル:
 //   .  空
@@ -61,6 +68,15 @@ export interface MapDef {
   channels?: Channel[];
   /** 昇降リフト（タイル座標） */
   lifts?: Lift[];
+  /** シーソー（タイル座標） */
+  saws?: Saw[];
+}
+
+/** 支点 x の左右に half マスずつ伸びた板。片側に強く着地すると、反対側に乗っている人が飛ぶ */
+export interface Saw {
+  x: number; half: number;
+  /** 板の上面が来る行 */
+  top: number;
 }
 
 export interface Channel {
@@ -144,6 +160,8 @@ export interface World {
   plates: number[];
   /** 各リフトの上端からの下がり量（px） */
   lifts: number[];
+  /** 各シーソーの傾き（-1 = 左が下、1 = 右が下） */
+  saws: number[];
 }
 
 export interface StepEvents {
@@ -188,8 +206,16 @@ function inLift(w: World, px: number, py: number): boolean {
   return false;
 }
 
+function inSaw(w: World, px: number, py: number): boolean {
+  for (const s of w.map.saws ?? []) {
+    const y0 = s.top * TILE;
+    if (px >= (s.x - s.half) * TILE && px < (s.x + s.half) * TILE && py >= y0 && py < y0 + SAW_THICK) return true;
+  }
+  return false;
+}
+
 export function isSolid(w: World, px: number, py: number): boolean {
-  return isSolidChar(charAtPx(w, px, py), w.doorsOpen) || inLift(w, px, py);
+  return isSolidChar(charAtPx(w, px, py), w.doorsOpen) || inLift(w, px, py) || inSaw(w, px, py);
 }
 
 function testBox(w: World, x: number, y: number): boolean {
@@ -246,6 +272,7 @@ export function createWorld(map: MapDef): World {
     map, tick: 0, runners: [], doorsOpen: Array<boolean>(CHANNELS).fill(false), timers: off(), plates: off(),
     // リフトは下にいる状態から始まる
     lifts: (map.lifts ?? []).map((l) => (l.bottom - l.top) * TILE),
+    saws: (map.saws ?? []).map(() => -1),
   };
 }
 
@@ -323,6 +350,32 @@ function updateSwitches(w: World) {
 }
 
 const overlapsX = (t: Runner, l: Lift) => t.x + R > l.x * TILE && t.x - R < (l.x + l.w) * TILE;
+
+/** シーソーに強く着地した人がいれば、反対側に乗っている人を飛ばす。fall は動く前の落ちる速さ */
+function kickSaws(w: World, fall: Map<Runner, number>) {
+  (w.map.saws ?? []).forEach((s, i) => {
+    const y0 = s.top * TILE, mid = s.x * TILE;
+    const on = w.runners.filter((t) => t.x + R > (s.x - s.half) * TILE && t.x - R < (s.x + s.half) * TILE
+      && Math.abs(t.y + R - y0) <= 2);
+    const side = (t: Runner) => (t.x < mid ? -1 : 1);
+    let hit: Runner | null = null;
+    for (const t of on) if ((fall.get(t) ?? 0) > PHYS.sawMinImpact && (!hit || fall.get(t)! > fall.get(hit)!)) hit = t;
+    if (hit) {
+      const v = Math.min(PHYS.sawMaxLaunch, fall.get(hit)! * PHYS.sawKick);
+      const sd = side(hit);
+      w.saws[i] = sd;
+      for (const o of on) {
+        if (side(o) === sd) continue;
+        o.vy = -v;
+        o.jumped &= ~2;
+      }
+      return;
+    }
+    // 片側だけに人が乗っていれば、そちらに傾く
+    const l = on.some((t) => side(t) < 0), r = on.some((t) => side(t) > 0);
+    if (l !== r) w.saws[i] = l ? -1 : 1;
+  });
+}
 
 /** リフトを動かす。乗っている人はいっしょに運び、ほかの人や天井につかえるなら止まる */
 function moveLifts(w: World) {
@@ -499,12 +552,15 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vy = saturatedAdd(-sp, sp, t.vy, -a * dy * 0.25);
   }
 
+  const fall = new Map<Runner, number>();
   for (const t of w.runners) {
     const m = PHYS.maxSpeed;
     t.vx = Math.max(-m, Math.min(m, t.vx));
     t.vy = Math.max(-m, Math.min(m, t.vy));
+    fall.set(t, t.vy);
     moveBox(w, t);
   }
+  kickSaws(w, fall);
 
   // ランナー同士の衝突（頭に乗れる）
   for (let i = 0; i < w.runners.length; i++) {

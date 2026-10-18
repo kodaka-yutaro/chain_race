@@ -113,7 +113,7 @@ export class Game {
       s.client.send({
         t: 'snap', gameId: this.id, tick: this.world.tick, me, lastSeq: s.lastSeq,
         others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen,
-        timers: this.world.timers, lifts: this.world.lifts, zones,
+        timers: this.world.timers, lifts: this.world.lifts, saws: this.world.saws, zones,
       });
     }
   }
