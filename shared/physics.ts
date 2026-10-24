@@ -1,6 +1,6 @@
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
 import { ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
-import { newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
+import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
 export const TILE = 32;
 export const TICK_RATE = 50;
@@ -235,7 +235,7 @@ export function isSolid(w: World, px: number, py: number): boolean {
   return solidBase(w,px,py)||!!wordPoint(w,px,py);
 }
 
-function testBox(w: World, x: number, y: number, ignoreWord=-1): boolean {
+function testBox(w: World, x: number, y: number, ignoreWord:number|ReadonlySet<number>=-1): boolean {
   const h = R - 0.01;
   return solidBase(w, x - h, y - h) || solidBase(w, x + h, y - h) || solidBase(w, x - h, y + h) || solidBase(w, x + h, y + h)
     || wordBoxSolid(w,x-h,y-h,h*2,h*2,ignoreWord);
@@ -252,7 +252,7 @@ function wordCollision(w:World):WordCollision {
   }};
 }
 
-function moveBox(w: World, t: Runner) {
+function moveBox(w: World, t: Runner, collision:WordCollision) {
   const dist = Math.max(Math.abs(t.vx), Math.abs(t.vy));
   const steps = Math.max(1, Math.ceil(dist));
   const f = 1 / steps;
@@ -260,6 +260,8 @@ function moveBox(w: World, t: Runner) {
     ddClamp(w, t);
     let nx = t.x + t.vx * f;
     let ny = t.y + t.vy * f;
+    if(t.vx&&testBox(w,nx,t.y))pushMinis(w,t,nx,t.y,collision);
+    if(t.vy<0&&testBox(w,t.x,ny))pushMinis(w,t,t.x,ny,collision);
     if (testBox(w, nx, ny)) {
       let hits = 0;
       if (testBox(w, t.x, ny)) { ny = t.y; t.vy = 0; hits++; }
@@ -567,12 +569,20 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         if (!o || !ddInteracts(t,o) || (!t.dd?.endlessHook && t.wireTick > PHYS.hookPlayerTicks)) releaseWire(t);
         else { t.wireX = o.x; t.wireY = o.y; }
       } else if (w.words.find(b=>b.id===t.wireWord)?.kind==='mini') {
-        // A loose mini block is pulled toward the player, not a floating anchor.
         const block=w.words.find(b=>b.id===t.wireWord)!;
         const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
-        if(d>38){
-          block.vx=Math.max(-6,Math.min(6,block.vx+dx/d*.95));
-          block.vy=Math.max(-6,Math.min(10,block.vy+dy/d*.95));
+        if(d>PHYS.hookLength+32)releaseWire(t);
+        else if(d>38){
+          // An outward hammer impulse tightens the chain and carries its holder.
+          const outward=((t.vx-block.vx)*dx+(t.vy-block.vy)*dy)/d;
+          if(outward>6){
+            const impulse=Math.min(24,outward*.85);
+            t.vx-=dx/d*impulse;t.vy-=dy/d*impulse;
+            block.vx+=dx/d*impulse*.12;block.vy+=dy/d*impulse*.12;
+          }
+          // Pull gently without clipping the much faster velocity of a hammer hit.
+          block.vx=saturatedAdd(-6,6,block.vx,dx/d*.95);
+          block.vy=saturatedAdd(-6,10,block.vy,dy/d*.95);
         }
       } else if (Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
         // 掛かった所へ引き寄せられる
@@ -595,6 +605,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       t.hammerCd = PHYS.hammerCooldown;
       t.hammerTick = w.tick;
       const hx = t.x + t.aimX * R * 1.5, hy = t.y + t.aimY * R * 1.5;
+      hammerMinis(w,t,hx,hy);
       for (const o of w.runners) {
         if (o === t || !ddInteracts(t,o) || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE / 2) continue;
         let dx = o.x - t.x, dy = o.y - t.y;
@@ -639,7 +650,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vy = Math.max(-m, Math.min(m, t.vy));
     ddMove(w,t);
     fall.set(t, t.vy);
-    moveBox(w, t);
+    moveBox(w, t, collision);
   }
   kickSaws(w, fall);
 

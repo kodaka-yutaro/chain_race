@@ -71,7 +71,8 @@ test('消去は自分の大中華と溜めだけに効き、ミニや仲間の�
 test('ミニ中華は何個でも出せて大中華の枠を使わず、地面へ落ちて止まる',()=>{
   const {w,r}=setup();
   for(let n=0;n<6;n++){
-    r.x=100+n*100;r.y=818;r.vx=r.vy=0;
+    // Stay behind the earlier boxes instead of teleporting inside a settled box.
+    r.x=650-n*100;r.y=818;r.vx=r.vy=0;
     tick(w,1,{miniSpit:true,aimX:1,aimY:0});tick(w,65);
   }
   assert.equal(w.words.length,6);assert.ok(w.words.every(b=>b.kind==='mini'&&b.solid));

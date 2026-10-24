@@ -228,7 +228,7 @@ function wordPractice():MapDef {
   b.hint(3,17,'中華吐息の稽古場 · R 大中華 / T ミニ / X 大を消す')
     .hint(3,19,'狙った方向へ吐く → 文字の上に乗る・フックを掛ける')
     .hint(18,12,'岸の手前で右へ吐こう。動く文字に乗って谷を渡ろう')
-    .hint(51,17,'大は自分で消すまで残る。ミニは落ちる箱、フックで引こう');
+    .hint(51,17,'ミニは押す・引く・叩く！ 頭上で鎖につなぎ、ハンマーで一緒に上昇');
   return b.build({id:'word-practice',name:'中華吐息の稽古場',description:'「中華」を吐いて動く足場にする練習コース。文字の線には乗れて、フックも掛かる。',minPlayers:1,wordBlocks:true});
 }
 // The breath is a standard ability in every built-in course, including DD imports.
