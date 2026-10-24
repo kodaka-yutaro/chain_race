@@ -19,6 +19,16 @@ export function drawWords(g:CanvasRenderingContext2D,w:World) {
       g.fillStyle='#28695e';g.fillRect(b.x+2,b.y+MINI_SIZE-5,MINI_SIZE-4,3);
       g.font='bold 13px system-ui';g.textAlign='center';g.textBaseline='middle';g.fillStyle='#163e39';
       g.fillText('中華',cx,cy+1,MINI_SIZE-5);
+      const hit=w.tick-(b.hitTick??-100);
+      if(hit>=0&&hit<10){
+        g.strokeStyle=`rgba(255,245,177,${1-hit/10})`;g.lineWidth=2;
+        g.strokeRect(b.x-2,b.y-2,MINI_SIZE+4,MINI_SIZE+4);
+        for(let i=0;i<6;i++){
+          const a=i*Math.PI/3,d=20+hit*1.8;
+          g.beginPath();g.moveTo(cx+Math.cos(a)*d,cy+Math.sin(a)*d);
+          g.lineTo(cx+Math.cos(a)*(d+5),cy+Math.sin(a)*(d+5));g.stroke();
+        }
+      }
     }else{
     for(const r of WORD_RECTS){
       const x=b.x+r.x,y=b.y+r.y;

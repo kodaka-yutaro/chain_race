@@ -256,7 +256,7 @@ export class ClientGame {
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
       const blocked=s.blockedUntil>this.world.tick;
-      const message=blocked?'前が狭いので出せません。広い場所を狙おう':s.charge?'大中華をふくらませて…':big?'大は1人1つ。「大を消す」で消去 · ミニは落ちる／フックで引ける':s.cooldown?`大中華まで ${(s.cooldown/50).toFixed(1)}秒 · ミニは使えます`:'大は動く足場 · ミニは落ちる箱／個数制限なし';
+      const message=blocked?'出せる隙間がありません。少し移動してみよう':s.charge?'大中華をふくらませて…':big?'大は1人1つ。「大を消す」で消去 · ミニは押す・引く・叩く':s.cooldown?`大中華まで ${(s.cooldown/50).toFixed(1)}秒 · ミニは使えます`:'ミニを頭上へ → 鎖でつかむ → ハンマーで一緒に上昇！';
       this.wordPanel.querySelector('.word-status')!.textContent=message;
       this.wordPanel.querySelector<HTMLButtonElement>('.word-spit')!.disabled=!!s.charge||!!s.cooldown||big||this.waitingForParty;
       this.wordPanel.querySelector<HTMLButtonElement>('.word-mini')!.disabled=!!s.miniCooldown||this.waitingForParty;

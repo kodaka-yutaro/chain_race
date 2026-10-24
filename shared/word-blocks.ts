@@ -40,6 +40,7 @@ for(let ch=0;ch<2;ch++)for(let y=0;y<18;y++){
 export interface WordBlock {
   id:number; owner:number; x:number; y:number; vx:number; vy:number;
   kind?:'mini';
+  hitTick?:number;
   /** -1 means it remains until its owner removes it or leaves the course. */
   born:number; expires:number; solid:boolean; mouthX:number; mouthY:number;
 }
@@ -66,12 +67,12 @@ export function wordPoint(w:World,x:number,y:number):WordBlock|undefined {
     return cy>=0&&cy<18&&col>=0&&col<16&&WORD_PIXELS[ch][cy][col]==='#';
   });
 }
-export const wordBoxSolid=(w:World,x:number,y:number,width:number,height:number,ignore=-1)=>
-  w.words.some(b=>b.solid&&b.id!==ignore&&wordBoxHit(b,x,y,width,height));
+export const wordBoxSolid=(w:World,x:number,y:number,width:number,height:number,ignore:number|ReadonlySet<number>=-1)=>
+  w.words.some(b=>b.solid&&(typeof ignore==='number'?b.id!==ignore:!ignore.has(b.id))&&wordBoxHit(b,x,y,width,height));
 
 export interface WordCollision {
   staticRect(x:number,y:number,width:number,height:number):boolean;
-  runnerBox(x:number,y:number,ignoreWord:number):boolean;
+  runnerBox(x:number,y:number,ignoreWord:number|ReadonlySet<number>):boolean;
 }
 function fits(w:World,b:WordBlock,collision:WordCollision,checkRunners:boolean) {
   if(rects(b).some(r=>collision.staticRect(b.x+r.x,b.y+r.y,r.w,r.h)||wordBoxSolid(w,b.x+r.x,b.y+r.y,r.w,r.h,b.id)))return false;
@@ -98,6 +99,94 @@ function move(w:World,b:WordBlock,dx:number,dy:number,collision:WordCollision) {
   for(const [t,p] of carried){t.x=p.x;t.y=p.y;}
   return true;
 }
+
+/** Plan a whole chain first, then move it atomically. Walls and large words stay fixed. */
+function moveMinis(w:World,roots:WordBlock[],dx:number,dy:number,collision:WordCollision,exclude?:Runner) {
+  const group=new Set(roots),ids=new Set(roots.map(b=>b.id));
+  for(const b of group){
+    const next={...b,x:b.x+dx,y:b.y+dy};
+    if(collision.staticRect(next.x,next.y,MINI_SIZE,MINI_SIZE))return false;
+    for(const o of w.words){
+      if(!o.solid||group.has(o)||!wordBoxHit(o,next.x,next.y,MINI_SIZE,MINI_SIZE))continue;
+      if(o.kind!=='mini')return false;
+      group.add(o);ids.add(o.id);
+    }
+  }
+  const carried=new Map<Runner,{x:number;y:number}>();
+  for(const t of w.runners){
+    if(t===exclude)continue;
+    if([...group].some(b=>standing(b,t)||wordBoxHit({...b,x:b.x+dx,y:b.y+dy},t.x-14,t.y-14,28,28)))
+      carried.set(t,{x:t.x+dx,y:t.y+dy});
+  }
+  for(const [t,p] of carried){
+    if(collision.runnerBox(p.x,p.y,ids)||[...group].some(b=>wordBoxHit({...b,x:b.x+dx,y:b.y+dy},p.x-14,p.y-14,28,28)))return false;
+    for(const o of w.runners){
+      if(o===t)continue;
+      const q=carried.get(o)??o;
+      if(Math.hypot(p.x-q.x,p.y-q.y)<27.5&&Math.hypot(t.x-o.x,t.y-o.y)>=27.5)return false;
+    }
+  }
+  for(const b of group){b.x+=dx;b.y+=dy;}
+  for(const [t,p] of carried){t.x=p.x;t.y=p.y;}
+  return true;
+}
+
+/** Walking and jumping can push minis; landing still treats them as a floor. */
+export function pushMinis(w:World,t:Runner,nx:number,ny:number,collision:WordCollision) {
+  const h=13.99;
+  if(collision.staticRect(nx-h,ny-h,h*2,h*2))return false;
+  if(w.words.some(b=>b.solid&&b.kind!=='mini'&&wordBoxHit(b,nx-h,ny-h,h*2,h*2)))return false;
+  const roots=w.words.filter(b=>b.solid&&b.kind==='mini'&&wordBoxHit(b,nx-h,ny-h,h*2,h*2));
+  return roots.length>0&&moveMinis(w,roots,nx-t.x,ny-t.y,collision,t);
+}
+
+function emitMini(w:World,t:Runner,ax:number,ay:number,collision:WordCollision):boolean {
+  // All failed attempts roll back, including any boxes or riders in a push chain.
+  const boxes=w.words.map(b=>({b,x:b.x,y:b.y}));
+  const runners=w.runners.map(r=>({r,x:r.x,y:r.y}));
+  const origin={x:t.x,y:t.y};
+  const restore=()=>{for(const p of boxes){p.b.x=p.x;p.b.y=p.y;}for(const p of runners){p.r.x=p.x;p.r.y=p.y;}};
+  const px=Math.abs(ax)>=Math.abs(ay)?Math.sign(ax)||1:0,py=px?0:Math.sign(ay)||-1;
+  for(let back=0;back<=64;back++){
+    restore();
+    const x=origin.x-ax*back,y=origin.y-ay*back;
+    // Check each successive retreat position: never materialize across a wall.
+    if(collision.runnerBox(x,y,-1)||w.runners.some(o=>o!==t&&Math.hypot(x-o.x,y-o.y)<27.5))break;
+    t.x=x;t.y=y;
+    const b:WordBlock={id:w.wordSeq+1,owner:t.id,kind:'mini',x:x+ax*46-MINI_SIZE/2,y:y-4+ay*46-MINI_SIZE/2,
+      vx:ax*3,vy:ay*3-.8,born:w.tick,expires:-1,solid:true,mouthX:x+ax*18,mouthY:y+ay*12};
+    // Include the short path from the mouth, so a thin fixed stroke cannot be skipped.
+    let fixed=false;
+    for(let d=0;d<=16;d+=4){
+      const sx=b.x-ax*d,sy=b.y-ay*d;
+      if(collision.staticRect(sx,sy,MINI_SIZE,MINI_SIZE)||w.words.some(o=>o.solid&&o.kind!=='mini'&&wordBoxHit(o,sx,sy,MINI_SIZE,MINI_SIZE))){fixed=true;break;}
+    }
+    if(fixed)continue;
+    for(let step=0;step<=MINI_SIZE;step++){
+      const hits=w.words.filter(o=>o.solid&&wordBoxHit(o,b.x,b.y,MINI_SIZE,MINI_SIZE));
+      if(!hits.length)break;
+      if(hits.some(o=>o.kind!=='mini')||!moveMinis(w,hits,px,py,collision,t))break;
+    }
+    if(!fits(w,b,collision,true))continue;
+    w.wordSeq++;w.words.push(b);
+    if(back){t.vx-=ax*3;t.vy-=ay*3;}
+    return true;
+  }
+  restore();return false;
+}
+
+/** The normal hammer's short arc also transfers an impulse into loose boxes. */
+export function hammerMinis(w:World,t:Runner,hx:number,hy:number) {
+  for(const b of w.words){
+    if(!b.solid||b.kind!=='mini')continue;
+    const cx=Math.max(b.x,Math.min(b.x+MINI_SIZE,hx)),cy=Math.max(b.y,Math.min(b.y+MINI_SIZE,hy));
+    if(Math.hypot(hx-cx,hy-cy)>22)continue;
+    const bx=b.x+MINI_SIZE/2-t.x,by=b.y+MINI_SIZE/2-t.y,d=Math.hypot(bx,by)||1;
+    const ax=t.aimX*.65+bx/d*.35,ay=t.aimY*.65+by/d*.35-.18,n=Math.hypot(ax,ay)||1;
+    b.vx=Math.max(-32,Math.min(32,b.vx+ax/n*20));
+    b.vy=Math.max(-32,Math.min(32,b.vy+ay/n*20-2));b.hitTick=w.tick;
+  }
+}
 export function stepWords(w:World,collision:WordCollision) {
   if(!w.map.wordBlocks){w.words=[];return;}
   const owners=new Set(w.runners.map(t=>t.id));
@@ -118,8 +207,8 @@ export function stepWords(w:World,collision:WordCollision) {
       // Small steps keep pulled blocks from passing through thin word strokes.
       const steps=Math.max(1,Math.ceil(Math.max(Math.abs(b.vx),Math.abs(b.vy))/4));
       for(let n=0;n<steps;n++){
-        if(b.vx&&!move(w,b,b.vx/steps,0,collision))b.vx=0;
-        if(b.vy&&!move(w,b,0,b.vy/steps,collision))b.vy=0;
+        if(b.vx&&!moveMinis(w,[b],b.vx/steps,0,collision))b.vx=0;
+        if(b.vy&&!moveMinis(w,[b],0,b.vy/steps,collision))b.vy=0;
       }
     }else{
       if(!move(w,b,b.vx,0,collision))b.vx=-b.vx;
@@ -138,9 +227,8 @@ export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
   if(!w.map.wordBlocks||t.stun>0){s.charge=0;s.prev=!!input.spit;s.prevMini=!!input.miniSpit;return;}
   if(input.miniSpit&&!s.prevMini&&!s.miniCooldown){
     const len=Math.hypot(t.aimX,t.aimY)||1,ax=t.aimX/len,ay=t.aimY/len;
-    const b:WordBlock={id:w.wordSeq+1,owner:t.id,kind:'mini',x:t.x+ax*46-MINI_SIZE/2,y:t.y-4+ay*46-MINI_SIZE/2,
-      vx:ax*3,vy:ay*3-.8,born:w.tick,expires:-1,solid:false,mouthX:t.x+ax*18,mouthY:t.y+ay*12};
-    if(fits(w,b,collision,true)){w.wordSeq++;w.words.push(b);s.miniCooldown=MINI_COOLDOWN;}
+    s.miniCooldown=MINI_COOLDOWN;
+    if(emitMini(w,t,ax,ay,collision))s.blockedUntil=0;
     else s.blockedUntil=w.tick+60;
   }
   if(s.charge>0){
