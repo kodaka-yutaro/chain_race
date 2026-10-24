@@ -8,7 +8,6 @@ import { releaseAllTouch, touch } from './touch';
 import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles, drawRunner } from './render';
 import { WEAPON_NAMES } from '../shared/ddrace';
 import { drawDD } from './dd-render';
-import { WORD_LIMIT } from '../shared/word-blocks';
 import { drawWords } from './word-render';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
@@ -47,6 +46,8 @@ export class ClientGame {
   private weaponPanel: HTMLElement | null = null;
   private weaponQueued: number | undefined;
   private spitQueued=false;
+  private miniQueued=false;
+  private clearWordQueued=false;
   private wordPanel:HTMLElement|null=null;
   private mouseAimed=false;
   private listeners: [EventTarget, string, (e: any) => void][] = [];
@@ -88,12 +89,23 @@ export class ClientGame {
 
   queueKill() { this.killQueued = true; }
   queueSpit() { if(this.map.wordBlocks)this.spitQueued=true; }
+  queueMini() { if(this.map.wordBlocks)this.miniQueued=true; }
+  queueClearWord() { if(this.map.wordBlocks)this.clearWordQueued=true; }
 
   private mountWordControls(){
     const panel=document.createElement('div');panel.className='word-controls';
-    const b=document.createElement('button');b.className='word-spit';b.textContent='中華を吐く [R]';b.onclick=()=>this.queueSpit();
-    const status=document.createElement('span');status.className='word-status';status.textContent='狙った方向に、動く文字の足場を吐き出す';
-    panel.append(b,status);this.canvas.parentElement!.append(panel);this.wordPanel=panel;
+    const row=document.createElement('div');row.className='word-buttons';
+    for(const [cls,label,key,run] of [
+      ['word-spit','大中華','R',()=>this.queueSpit()],
+      ['word-mini','ミニ中華','T',()=>this.queueMini()],
+      ['word-clear','大を消す','X',()=>this.queueClearWord()],
+    ] as const){
+      const b=document.createElement('button');b.className=cls;
+      b.append(document.createTextNode(label));const k=document.createElement('kbd');k.textContent=` [${key}]`;b.append(k);
+      b.onclick=()=>run();row.append(b);
+    }
+    const status=document.createElement('span');status.className='word-status';
+    panel.append(row,status);this.canvas.parentElement!.append(panel);this.wordPanel=panel;
   }
 
   private mountWeapons() {
@@ -180,7 +192,7 @@ export class ClientGame {
     const clicked = this.clicked;
     this.clicked = { left: false, right: false };
     const i = emptyInput();
-    if (document.querySelector('dialog[open]')) { this.spitQueued=false; releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false; return i; }
+    if (document.querySelector('dialog[open]')) { this.spitQueued=this.miniQueued=this.clearWordQueued=false; releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false; return i; }
     i.left = k.has('KeyA') || k.has('ArrowLeft');
     i.right = k.has('KeyD') || k.has('ArrowRight');
     i.up = k.has('KeyW') || k.has('ArrowUp');
@@ -190,6 +202,8 @@ export class ClientGame {
     i.fire = this.mouse.left || clicked.left || k.has('KeyQ');
     i.kill = this.killQueued;
     i.spit=this.spitQueued;this.spitQueued=false;
+    i.miniSpit=this.miniQueued;this.miniQueued=false;
+    i.clearWord=this.clearWordQueued;this.clearWordQueued=false;
     for(let n=0;n<6;n++)if(k.has(`Digit${n+1}`))this.weaponQueued=n;
     i.weapon=this.weaponQueued;this.weaponQueued=undefined;
     this.killQueued = false;
@@ -240,11 +254,13 @@ export class ClientGame {
     this.smoothY *= 0.85;
     this.render(now);
     if(this.wordPanel){
-      const s=this.me.spit,count=this.world.words.filter(b=>b.owner===this.youId).length;
+      const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
       const blocked=s.blockedUntil>this.world.tick;
-      const message=blocked?'前が狭いので出せません。広い場所を狙おう':s.charge?'ふくらませて…':count>=WORD_LIMIT?'足場は2枚まで。消えるまで待とう':s.cooldown?`次の吐息まで ${(s.cooldown/50).toFixed(1)}秒`:'中華吐息 · 乗れる／フック可 · 18秒で消える';
+      const message=blocked?'前が狭いので出せません。広い場所を狙おう':s.charge?'大中華をふくらませて…':big?'大は1人1つ。「大を消す」で消去 · ミニは落ちる／フックで引ける':s.cooldown?`大中華まで ${(s.cooldown/50).toFixed(1)}秒 · ミニは使えます`:'大は動く足場 · ミニは落ちる箱／個数制限なし';
       this.wordPanel.querySelector('.word-status')!.textContent=message;
-      this.canvas.parentElement?.querySelectorAll<HTMLButtonElement>('.word-spit,.word-action').forEach(b=>{b.disabled=!!s.charge||!!s.cooldown||count>=WORD_LIMIT||this.waitingForParty;b.textContent=s.charge?'ふくらませ中…':s.cooldown?`中華 ${Math.ceil(s.cooldown/50)}秒`:'中華を吐く'+(b.classList.contains('word-spit')?' [R]':'');});
+      this.wordPanel.querySelector<HTMLButtonElement>('.word-spit')!.disabled=!!s.charge||!!s.cooldown||big||this.waitingForParty;
+      this.wordPanel.querySelector<HTMLButtonElement>('.word-mini')!.disabled=!!s.miniCooldown||this.waitingForParty;
+      this.wordPanel.querySelector<HTMLButtonElement>('.word-clear')!.disabled=(!big&&!s.charge)||this.waitingForParty;
     }
     if(this.me.dd&&this.weaponPanel){
       const d=this.me.dd;
@@ -269,8 +285,9 @@ export class ClientGame {
     this.on(window, 'keydown', (e: KeyboardEvent) => {
       if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName)) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-      if (e.code === 'KeyK' && !e.repeat) this.killQueued = true;
       if (e.code === 'KeyR' && !e.repeat) this.queueSpit();
+      if (e.code === 'KeyT' && !e.repeat) this.queueMini();
+      if (e.code === 'KeyX' && !e.repeat) this.queueClearWord();
       if (e.code === 'KeyF' && !e.repeat) this.onInteract();
       this.keys.add(e.code);
       if (!e.repeat) this.tapped.add(e.code);

@@ -30,7 +30,7 @@ export function drawDD(g:CanvasRenderingContext2D,w:World,x0:number,y0:number,x1
     if(speed){text='加速';col='#86e5a1';}
     const blocked=c.doorCells.get(idx)?.some(n=>ddSwitchActive(w,n));
     if(blocked){g.fillStyle='#f05ac168';g.fillRect(px,py,32,32);g.strokeStyle='#ff8bd5';g.strokeRect(px+2,py+2,28,28);}
-    if(text){g.fillStyle=col+'22';g.fillRect(px,py,32,32);g.fillStyle=col;g.fillText(text,px+16,py+16,30);}
+    if(text){g.fillStyle='#101d32e8';g.fillRect(px+1,py+1,30,30);g.strokeStyle=col;g.lineWidth=1;g.strokeRect(px+2,py+2,28,28);g.fillStyle=col;g.fillText(text,px+16,py+16,28);}
   }
   for(const p of w.dd.shots){g.fillStyle=p.weapon===3?'#ffce70':'#e5f4ff';g.beginPath();g.arc(p.x,p.y,p.weapon===3?5:3,0,Math.PI*2);g.fill();}
   for(const b of w.dd.beams){g.strokeStyle=b.weapon===4?'#7ceeff':b.weapon===2?'#ffc879':'#ffb161';g.lineWidth=b.weapon===3?12:4;g.beginPath();g.moveTo(b.x,b.y);g.lineTo(b.ex,b.ey);g.stroke();}

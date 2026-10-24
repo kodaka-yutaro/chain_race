@@ -31,11 +31,11 @@ export function drawBackground(
 // ---------- タイル ----------
 
 const ROCK: Record<string, [string, string, string, string]> = {
-  hill: ['#98594e', '#754438', '#4e302e', '#4f9d8b'],
-  cave: ['#526e77', '#3b525e', '#273b49', '#7cbab0'],
-  tower: ['#a45c4d', '#773d37', '#512c30', '#e6ae58'],
-  factory: ['#897054', '#66513d', '#493b33', '#ce9b5b'],
-  lobby: ['#8c6254', '#6e4a41', '#4d3735', '#6fa58c'],
+  hill: ['#bd8063', '#96604d', '#6a453c', '#f0c979'],
+  cave: ['#839eab', '#637b8d', '#40586d', '#c6eee2'],
+  tower: ['#bf7c63', '#985342', '#703d35', '#f6cc7e'],
+  factory: ['#b59a72', '#8c7356', '#66533f', '#edd39a'],
+  lobby: ['#b8886b', '#90634e', '#674635', '#edcc8f'],
 };
 
 export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, height = m.height): HTMLCanvasElement {
@@ -69,20 +69,29 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
         if (!solid(at(x, y + 1))) g.fillRect(px, py + TILE - 4, TILE, 4);
         if (!solid(at(x - 1, y))) g.fillRect(px, py, 3, TILE);
         if (!solid(at(x + 1, y))) g.fillRect(px + TILE - 3, py, 3, TILE);
-        // Jade roof tiles retain the exact collision edge; the gold lip marks it.
+        // The golden cap marks the exact collision edge, unlike scenery roofs.
         if (!solid(at(x, y - 1))) {
           g.fillStyle = grass;
           g.fillRect(px, py, TILE, 6);
           g.fillStyle = shade(grass, -0.25);
           g.fillRect(px, py + 6, TILE, 2);
-          g.fillStyle = shade(grass, .3);g.fillRect(px,py,TILE,2);
+          g.fillStyle = '#fff1cf';g.fillRect(px,py,TILE,2);
           g.fillStyle = shade(grass, -.35);for(let i=0;i<4;i++)g.fillRect(px+i*8,py+2,2,4);
           g.fillStyle = '#e9b661';g.fillRect(px,py+8,TILE,2);
         }
+        // Light inner edges and a dark rim separate walls from any background.
+        g.fillStyle='#f4dab0';
+        if(!solid(at(x-1,y)))g.fillRect(px+2,py,1,TILE);
+        if(!solid(at(x+1,y)))g.fillRect(px+TILE-3,py,1,TILE);
+        if(!solid(at(x,y+1)))g.fillRect(px,py+TILE-3,TILE,1);
+        g.fillStyle='#172034';
+        if(!solid(at(x-1,y)))g.fillRect(px,py,2,TILE);
+        if(!solid(at(x+1,y)))g.fillRect(px+TILE-2,py,2,TILE);
+        if(!solid(at(x,y+1)))g.fillRect(px,py+TILE-2,TILE,2);
       } else if (ch === 'X') {
         const gr = g.createLinearGradient(px, py, px + TILE, py + TILE);
-        gr.addColorStop(0, '#8d99a6');
-        gr.addColorStop(1, '#55606b');
+        gr.addColorStop(0, '#c4d8e4');
+        gr.addColorStop(1, '#8097ac');
         g.fillStyle = gr;
         g.fillRect(px, py, TILE, TILE);
         g.fillStyle = 'rgba(255,255,255,0.25)';
@@ -91,19 +100,24 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
         g.fillStyle = 'rgba(0,0,0,0.3)';
         g.fillRect(px, py + TILE - 2, TILE, 2);
         g.fillRect(px + TILE - 2, py, 2, TILE);
-        g.fillStyle = '#3b434b';
+        g.strokeStyle='#17263f';g.lineWidth=2;g.strokeRect(px+1,py+1,TILE-2,TILE-2);
+        g.strokeStyle='#51657a';g.lineWidth=2;g.beginPath();g.moveTo(px+9,py+24);g.lineTo(px+24,py+9);g.stroke();
+        g.fillStyle = '#304158';
         for (const [rx, ry] of [[6, 6], [TILE - 6, 6], [6, TILE - 6], [TILE - 6, TILE - 6]]) {
           g.beginPath();
           g.arc(px + rx, py + ry, 2, 0, Math.PI * 2);
           g.fill();
         }
       } else if (ch === '~') {
-        g.fillStyle = 'rgba(255, 214, 64, 0.22)';
+        g.fillStyle = '#75551c';
         g.fillRect(px, py, TILE, TILE);
-        if (!(at(x, y - 1) === '~')) {
-          g.fillStyle = 'rgba(255, 230, 120, 0.6)';
-          g.fillRect(px, py, TILE, 3);
-        }
+        g.fillStyle='#bd8e2c';
+        for(let i=0;i<4;i++){g.beginPath();g.moveTo(px+i*8,py);g.lineTo(px+i*8+4,py);g.lineTo(px,py+i*8+4);g.lineTo(px,py+i*8);g.fill();}
+        g.fillStyle='#ffe481';
+        if(at(x,y-1)!=='~')g.fillRect(px,py,TILE,3);
+        if(at(x,y+1)!=='~')g.fillRect(px,py+TILE-3,TILE,3);
+        if(at(x-1,y)!=='~')g.fillRect(px,py,2,TILE);
+        if(at(x+1,y)!=='~')g.fillRect(px+TILE-2,py,2,TILE);
       } else if (ch === '^') {
         for (let i = 0; i < 2; i++) {
           const bx = px + i * 16;
@@ -115,7 +129,9 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
           g.moveTo(bx, py + TILE);
           g.lineTo(bx + 8, py + 4);
           g.lineTo(bx + 16, py + TILE);
+          g.closePath();
           g.fill();
+          g.strokeStyle='#1c2334';g.lineWidth=2;g.stroke();
           g.fillStyle = '#e63946';
           g.beginPath();
           g.moveTo(bx + 5, py + 14);

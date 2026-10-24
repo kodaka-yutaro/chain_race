@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createWorld, newRunner, emptyInput, stepWorld, isSolid, WIRE_ATTACHED, WIRE_IDLE, type World, type Input } from '../shared/physics';
 import { mapById } from '../shared/maps';
 import { newCourseMap, validateCourseMap } from '../shared/courses';
-import { WORD_CHARGE, WORD_FORM, WORD_COOLDOWN, WORD_LIFE, wordBoxHit, type WordBlock } from '../shared/word-blocks';
+import { WORD_CHARGE, WORD_FORM, WORD_COOLDOWN, MINI_SIZE, wordBoxHit, type WordBlock } from '../shared/word-blocks';
 import { HostHub, type Link } from '../client/host/hub';
 import type { ServerMsg } from '../shared/protocol';
 
@@ -26,22 +26,24 @@ test('文字の線にだけ当たり判定があり、中の穴と文字間は�
   assert.ok(wordBoxHit(b,355,400,20,20));
 });
 
-test('溜め・実体化・寿命があり、長押しでは連射せず非対応コースでは出ない',()=>{
+test('大中華は溜めて実体化し、長押しで連射せず時間では消えない',()=>{
   const {w,r}=setup();
   tick(w,1,{spit:true});assert.equal(r.spit.charge,WORD_CHARGE);assert.equal(w.words.length,0);
   tick(w,WORD_CHARGE,{spit:true});assert.equal(w.words.length,1);assert.equal(w.words[0].solid,false);
   tick(w,WORD_FORM,{spit:true});assert.equal(w.words[0].solid,true);
   tick(w,WORD_COOLDOWN,{spit:true});assert.equal(w.words.length,1);
-  tick(w,WORD_LIFE,{spit:true});assert.equal(w.words.length,0);
+  tick(w,1800,{spit:true});assert.equal(w.words.length,1);
+  tick(w,1,{clearWord:true});assert.equal(w.words.length,0);
   w.map={...w.map,wordBlocks:false};tick(w,1);tick(w,WORD_CHARGE+2,{spit:true});assert.equal(w.words.length,0);
 });
 
-test('再使用待ちと一人2個の制限、壁に埋まる発生を防ぐ',()=>{
+test('大中華は一人1個まで、消した後に再発生でき、壁に埋まらない',()=>{
   const {w,r}=setup();
   tick(w,WORD_CHARGE+WORD_FORM+1,{spit:true});tick(w,1);tick(w,1,{spit:true});assert.equal(w.words.length,1);
   // Cooldown finishes; the first word has travelled out of the next spawn area.
-  tick(w,WORD_COOLDOWN);tick(w,WORD_CHARGE+WORD_FORM+1,{spit:true});assert.equal(w.words.length,2);
-  tick(w,WORD_COOLDOWN);tick(w,WORD_CHARGE+WORD_FORM+1,{spit:true});assert.equal(w.words.length,2);
+  tick(w,WORD_COOLDOWN);tick(w,WORD_CHARGE+WORD_FORM+1,{spit:true});assert.equal(w.words.length,1);
+  tick(w,1,{clearWord:true});assert.equal(w.words.length,0);
+  tick(w,WORD_COOLDOWN);tick(w,WORD_CHARGE+WORD_FORM+1,{spit:true});assert.equal(w.words.length,1);
   w.words=[];r.spit.cooldown=0;tick(w,1);tick(w,WORD_CHARGE+1,{spit:true,aimX:-1});
   assert.equal(w.words.length,0);assert.ok(r.spit.blockedUntil>w.tick);
 });
@@ -54,6 +56,42 @@ test('動く文字に二人が乗って運ばれ、壁に向かう足場は跳�
   assert.ok(Math.abs(r.x-x-23)<.01);assert.ok(Math.abs(friend.x-fx-23)<.01);assert.ok(r.grounded&&friend.grounded);
   b.x=32;b.vx=-1.15;r.x=100;r.y=818;friend.x=180;friend.y=818;tick(w,1);
   assert.equal(b.x,32);assert.ok(b.vx>0);
+});
+
+test('消去は自分の大中華と溜めだけに効き、ミニや仲間の足場を消さない',()=>{
+  const {w,r}=setup();
+  const friend=newRunner(2,w.map);friend.x=650;w.runners.push(friend);
+  w.words=[block(),{...block(2),id:2,x:650},{...block(),id:3,kind:'mini',x:400,y:760,vx:0}];
+  tick(w,1,{clearWord:true});assert.deepEqual(w.words.map(b=>b.id),[2,3]);
+  tick(w,1,{spit:true});assert.ok(r.spit.charge>0);
+  tick(w,1,{clearWord:true});assert.equal(r.spit.charge,0);
+  tick(w,WORD_CHARGE+WORD_FORM+2);assert.equal(w.words.filter(b=>b.owner===1&&b.kind!=='mini').length,0);
+});
+
+test('ミニ中華は何個でも出せて大中華の枠を使わず、地面へ落ちて止まる',()=>{
+  const {w,r}=setup();
+  for(let n=0;n<6;n++){
+    r.x=100+n*100;r.y=818;r.vx=r.vy=0;
+    tick(w,1,{miniSpit:true,aimX:1,aimY:0});tick(w,65);
+  }
+  assert.equal(w.words.length,6);assert.ok(w.words.every(b=>b.kind==='mini'&&b.solid));
+  for(const b of w.words){assert.ok(Math.abs(b.y+MINI_SIZE-832)<1);assert.equal(b.vy,0);}
+  tick(w,1000);assert.equal(w.words.length,6);
+  w.map={...w.map,wordBlocks:false};tick(w,1,{miniSpit:true});assert.equal(w.words.length,0);
+});
+
+test('ミニは積める実体の箱になり、フックで箱を手元へ引ける',()=>{
+  const {w,r}=setup();
+  const bottom={...block(),kind:'mini' as const,x:400,y:799.8,vx:0,vy:0,expires:-1};
+  const top={...bottom,id:2,y:680};w.words=[bottom,top];
+  tick(w,100);assert.ok(Math.abs(top.y+MINI_SIZE-bottom.y)<1);
+  assert.ok(isSolid(w,top.x+16,top.y+16));
+  w.words=[bottom];bottom.x=360;r.x=200;r.y=818;r.vx=r.vy=0;
+  tick(w,25,{wire:true,aimX:1,aimY:0});
+  assert.equal(r.wireWord,bottom.id);assert.equal(r.wireState,WIRE_ATTACHED);
+  assert.ok(bottom.x<325,`mini x=${bottom.x}`);
+  assert.ok(Math.abs(r.x-200)<1,`runner x=${r.x}`);
+  tick(w,70);assert.equal(r.wireState,WIRE_IDLE);assert.equal(bottom.vy,0);
 });
 
 test('文字の上の人が低い天井に押し込まれない',()=>{
@@ -69,7 +107,7 @@ test('フックの支点は動く文字に追従し、文字が消えると外�
   r.x=200;r.y=440;r.vx=r.vy=0;
   tick(w,3,{wire:true,aimX:1,aimY:0});assert.equal(r.wireState,WIRE_ATTACHED);assert.equal(r.wireWord,b.id);
   const x=r.wireX;tick(w,10,{wire:true});assert.ok(Math.abs(r.wireX-x-11.5)<.01);
-  b.expires=w.tick+1;tick(w,1,{wire:true});assert.equal(r.wireState,WIRE_IDLE);assert.equal(r.wireWord,-1);
+  tick(w,1,{wire:true,clearWord:true});assert.equal(r.wireState,WIRE_IDLE);assert.equal(r.wireWord,-1);
 });
 
 test('コース保存に技の設定が残り、二人に同一の文字と溜め状態が配信される',()=>{
@@ -97,6 +135,18 @@ test('コース保存に技の設定が残り、二人に同一の文字と溜�
   const sa=a.messages.filter(m=>m.t==='snap').filter(m=>m.gameId===game.id).at(-1)!;
   const sb=b.messages.filter(m=>m.t==='snap').filter(m=>m.gameId===game.id).at(-1)!;
   assert.equal(sa.words?.length,1);assert.ok(sa.words![0].solid);assert.deepEqual(sa.words,sb.words);
+  game.world.runners[0].x=100;game.world.runners[0].vx=0;
+  a.link.onMessage({t:'input',gameId:game.id,list:[{seq:15,input:{...emptyInput(),miniSpit:true}}]});
+  for(let seq=16;seq<=28;seq++)a.link.onMessage({t:'input',gameId:game.id,list:[{seq,input:emptyInput()}]});
+  for(let i=0;i<20;i++)hub.tick();
+  const miniSnap=b.messages.filter(m=>m.t==='snap').filter(m=>m.gameId===game.id).at(-1)!;
+  assert.equal(miniSnap.words!.filter(b=>b.kind==='mini').length,1);
+  a.link.onMessage({t:'input',gameId:game.id,list:[{seq:29,input:{...emptyInput(),clearWord:true}}]});
+  for(let seq=30;seq<=42;seq++)a.link.onMessage({t:'input',gameId:game.id,list:[{seq,input:emptyInput()}]});
+  for(let i=0;i<10;i++)hub.tick();
+  const clearedA=a.messages.filter(m=>m.t==='snap').filter(m=>m.gameId===game.id).at(-1)!;
+  const clearedB=b.messages.filter(m=>m.t==='snap').filter(m=>m.gameId===game.id).at(-1)!;
+  assert.equal(clearedA.words!.length,1);assert.equal(clearedA.words![0].kind,'mini');assert.deepEqual(clearedA.words,clearedB.words);
 });
 
 test('稽古場は吐いた文字に乗り、谷を渡ってゴールできる',()=>{
