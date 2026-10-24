@@ -163,5 +163,7 @@ export function drawChinatown(g:G,width:number,height:number,now=0,camera=0,titl
   // Nearby lanterns form a third continuous parallax layer.
   const ls=Math.min(scale,2.5),near=camera*.4,first=Math.floor(near/70)-1,count=Math.ceil(width/(70*ls))+3;g.save();g.scale(ls,ls);
   for(let i=first;i<first+count;i++){const x=i*70-near,y=30+Math.sin(i*Math.PI/3)*11;line(g,x,y-12,x+70,30+Math.sin((i+1)*Math.PI/3)*11-12,'#bd956f',1);lantern(g,x+35,y,.8,wrap(i,3)?'#d75d53':'#dfaa64');}g.restore();
-  g.fillStyle='#1a2035';g.globalAlpha=title?.03:.13;g.fillRect(0,0,width,height);g.restore();
+  // A cool veil pushes scenery behind the warm, crisp collision surfaces.
+  // One fill keeps the animated street inexpensive even on phones.
+  g.fillStyle='#14253d';g.globalAlpha=title?.03:.46;g.fillRect(0,0,width,height);g.restore();
 }

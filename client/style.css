@@ -97,6 +97,10 @@ label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); fo
 #hud-timer.running { color: #ffe066; }
 #hud-stage, #hud-mode { font-size: 16px; padding-top: 8px; color: var(--muted); }
 .help { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.7); font-size: 12px; pointer-events: none; }
+.game-actions { position: absolute; right: 12px; bottom: 40px; display: flex; gap: 8px; }
+.game-actions button { min-height: 44px; background: #101d31ed; border-color: #9fb9c6; font-size: 13px; }
+.game-actions kbd { margin-left: 5px; color: #ffe4aa; }
+body.touch .game-actions { display: none; }
 .toast { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; }
 .alert { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--danger); color: #fff; padding: 10px 18px; border-radius: 10px; z-index: 10; }
 .overlay { position: absolute; inset: 0; background: rgba(10, 14, 28, 0.6); display: flex; align-items: center; justify-content: center; }
@@ -208,15 +212,18 @@ body.touch canvas, body.touch .touch-pad, body.touch .touch-pad * { touch-action
 /* コース工房 */
 .editor-ability { display:flex; flex-direction:row; align-items:center; gap:10px; margin-top:14px; padding:14px; border:1px solid #a67b44; border-radius:10px; background:#3b2b2377; }
 .editor-ability input { width:22px; height:22px; accent-color:#ffc870; }
-.word-controls { position:absolute; top:64px; left:12px; z-index:3; display:flex; flex-direction:column; align-items:flex-start; gap:7px; max-width:calc(100% - 125px); }
-.word-spit { min-height:48px; color:#342013; background:linear-gradient(#ffe193,#efab49); border-color:#ffe193; box-shadow:0 3px 0 #73382b; font-weight:800; }
+.word-controls { position:absolute; top:64px; left:12px; z-index:3; display:flex; flex-direction:column; gap:7px; width:min(360px,calc(100% - 24px)); }
+.word-buttons { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+.word-buttons button { min-height:48px; padding:6px 4px; font-size:13px; font-weight:800; touch-action:manipulation; }
+.word-buttons kbd { font-size:10px; }
+.word-spit { color:#342013; background:linear-gradient(#ffe193,#efab49); border-color:#ffe193; box-shadow:0 3px 0 #73382b; }
+.word-mini { color:#113a37; background:#9ee5d3; border-color:#c9fff1; box-shadow:0 3px 0 #28695e; }
+.word-clear { color:#fff0d7; background:#592f3c; border-color:#d99c8c; }
 .word-status { color:#ffe4a1; background:#13202fe6; padding:5px 8px; border-radius:5px; font-size:11px; }
-.word-action { display:none!important; }
-.word-enabled .word-action { display:inline-flex!important; }
-body.touch .word-controls { top:96px; pointer-events:none; }
-body.touch .word-action { position:fixed; left:50%; bottom:calc(185px + env(safe-area-inset-bottom)); transform:translateX(-50%); min-width:112px; height:48px; justify-content:center; align-items:center; color:#ffe7a1; background:#78382eeb; border:2px solid #eeb759; font-size:14px; }
-@media (orientation:landscape) { body.touch .word-action { bottom:calc(115px + env(safe-area-inset-bottom)); } }
-body.touch .word-spit { display:none; }
+body.touch .word-controls { top:auto; left:50%; bottom:calc(205px + env(safe-area-inset-bottom)); transform:translateX(-50%); pointer-events:none; }
+body.touch .word-buttons { pointer-events:auto; }
+body.touch .word-buttons kbd { display:none; }
+@media (orientation:landscape) { body.touch .word-controls { bottom:calc(125px + env(safe-area-inset-bottom)); } }
 .dd-tools { position: absolute; z-index: 3; left: 50%; top: 72px; transform: translateX(-50%); max-width: calc(100% - 16px); background: #091724e8; border: 1px solid #a78b53; border-radius: 12px; padding: 6px; color: #ffe2a1; font-size: 11px; text-align: center; }
 .dd-weapons { display: flex; gap: 4px; }
 .dd-weapons button { min-width: 42px; min-height: 44px; padding: 4px 6px; }

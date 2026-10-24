@@ -121,7 +121,7 @@ export class HostHub {
           g.pushInput(c, e.seq, {
             left: !!i.left, right: !!i.right, up: !!i.up, down: !!i.down, jump: !!i.jump, wire: !!i.wire,
             fire: !!i.fire, kill: !!i.kill, aimX: Number(i.aimX) || 0, aimY: Number(i.aimY) || 0,
-            spit:!!i.spit,
+            spit:!!i.spit,miniSpit:!!i.miniSpit,clearWord:!!i.clearWord,
             weapon: Number.isInteger(i.weapon) && i.weapon! >= 0 && i.weapon! < 6 ? i.weapon : undefined,
           });
         }

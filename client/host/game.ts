@@ -79,8 +79,11 @@ export class Game {
     s.queue.push({ seq, input });
     while (s.queue.length > MAX_QUEUE) {
       const dropped=s.queue.shift()!;
-      // Keep a short ability tap when a slow frame sends a burst of movement.
+      // Preserve one-shot actions even when a slow frame sends a burst of input.
       if(dropped.input.spit)s.queue[0].input={...s.queue[0].input,spit:true};
+      if(dropped.input.miniSpit)s.queue[0].input={...s.queue[0].input,miniSpit:true};
+      if(dropped.input.clearWord)s.queue[0].input={...s.queue[0].input,clearWord:true};
+      if(dropped.input.kill)s.queue[0].input={...s.queue[0].input,kill:true};
     }
   }
 
@@ -91,7 +94,7 @@ export class Game {
       if (next) { s.last = next.input; s.lastSeq = next.seq; }
       inputs.set(id, s.last);
       // kill は1回だけ効かせる
-      if (s.last.kill) s.last = { ...s.last, kill: false };
+      if (s.last.kill || s.last.clearWord) s.last = { ...s.last, kill: false, clearWord: false };
     }
     if (this.stageId.startsWith('user-') && this.size < 2) inputs.forEach((_, id) => inputs.set(id, emptyInput()));
     const ev = this.stageId.startsWith('user-') && this.size < 2 ? { finished: [], killed: [] } : stepWorld(this.world, inputs);

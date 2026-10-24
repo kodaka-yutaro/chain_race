@@ -122,6 +122,8 @@ export interface Input {
   aimY: number;
   weapon?: number;
   spit?: boolean;
+  miniSpit?: boolean;
+  clearWord?: boolean;
 }
 
 export const emptyInput = (): Input => ({
@@ -564,6 +566,14 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         // 仲間をつかめるのは少しの間だけ
         if (!o || !ddInteracts(t,o) || (!t.dd?.endlessHook && t.wireTick > PHYS.hookPlayerTicks)) releaseWire(t);
         else { t.wireX = o.x; t.wireY = o.y; }
+      } else if (w.words.find(b=>b.id===t.wireWord)?.kind==='mini') {
+        // A loose mini block is pulled toward the player, not a floating anchor.
+        const block=w.words.find(b=>b.id===t.wireWord)!;
+        const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
+        if(d>38){
+          block.vx=Math.max(-6,Math.min(6,block.vx+dx/d*.95));
+          block.vy=Math.max(-6,Math.min(10,block.vy+dy/d*.95));
+        }
       } else if (Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
         // 掛かった所へ引き寄せられる
         const d = Math.hypot(t.wireX - t.x, t.wireY - t.y);

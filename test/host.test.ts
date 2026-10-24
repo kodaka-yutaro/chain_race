@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LOBBY_MAP } from '../shared/maps';
-import { emptyInput, TILE } from '../shared/physics';
+import { emptyInput, findSpawn, TILE } from '../shared/physics';
 import { PARTY_COUNTDOWN_TICKS, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import { HostHub, type Link } from '../client/host/hub';
 
@@ -14,6 +14,22 @@ function fakeLink(hub: HostHub) {
 
 const last = <T extends ServerMsg['t']>(got: ServerMsg[], t: T) =>
   [...got].reverse().find((m) => m.t === t) as Extract<ServerMsg, { t: T }> | undefined;
+
+test('リスポーンは遅延した入力でも届き、同じコースに残って自分だけスタートへ戻る',()=>{
+  const hub=new HostHub('restart-test','部屋'),a=fakeLink(hub),b=fakeLink(hub);
+  a.say({t:'hello',name:'赤',guest:true});b.say({t:'hello',name:'青',guest:true});
+  a.say({t:'stageJoin',stageId:'hill'});b.say({t:'stageJoin',stageId:'hill'});
+  const start=last(a.got,'gameStart')!,game=[...hub.games].find(g=>g.id===start.gameId)!;
+  const me=game.world.runners[0],friend=game.world.runners[1],spawn=findSpawn(game.world.map);
+  me.x=500;me.raceStart=0;me.finishedTime=4;friend.x=650;
+  a.say({t:'input',gameId:game.id,list:[{seq:1,input:{...emptyInput(),kill:true}}]});
+  for(let seq=2;seq<=14;seq++)a.say({t:'input',gameId:game.id,list:[{seq,input:emptyInput()}]});
+  hub.tick();
+  assert.equal(me.x,spawn.x);assert.equal(me.y,spawn.y);assert.equal(me.raceStart,-1);assert.equal(me.finishedTime,-1);
+  assert.equal(friend.x,650);assert.equal(game.size,2);assert.equal(last(a.got,'gameStart'),start);
+  for(let seq=15;seq<=30;seq++){a.say({t:'input',gameId:game.id,list:[{seq,input:{...emptyInput(),right:true}}]});hub.tick();}
+  assert.ok(me.x>spawn.x+5,'respawn must not repeat on later frames');
+});
 
 test('大部屋の主のブラウザで、入室から協力の台で出発するまで進む', () => {
   const counts: number[] = [];

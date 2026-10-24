@@ -350,11 +350,20 @@ function showResult(title: string, body: (Node | string)[]) {
 }
 function hideResult() { $('#result').classList.add('hidden'); }
 
-$('#btn-retry').addEventListener('click', () => { game?.queueKill(); hideResult(); });
+function restartFromStart() { game?.queueKill(); hideResult(); }
+$('#btn-retry').addEventListener('click', restartFromStart);
+$('#btn-respawn').addEventListener('click', restartFromStart);
 $('#btn-close-result').addEventListener('click', hideResult);
 $('#btn-leave-game').addEventListener('click', () => send({ t: 'leaveGame' }));
+$('#btn-game-lobby').addEventListener('click', () => send({ t: 'leaveGame' }));
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && game && gameMode !== 'lobby') send({ t: 'leaveGame' });
+  if (!game || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  // Esc belongs to an open dialog or text field until it has been dismissed.
+  if (document.querySelector('dialog[open]') || (e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')) return;
+  if (e.code === 'KeyK' || (e.code === 'Escape' && gameMode !== 'lobby')) {
+    e.preventDefault();
+    restartFromStart();
+  }
 });
 
 let toastTimer = 0;
@@ -373,8 +382,7 @@ function alertBar(text: string) {
 }
 
 mountTouchControls($('#screen-game'), [
-  { label: '中華を吐く', cls: 'word-action accent', run: () => game?.queueSpit() },
-  { label: 'やり直し', cls: '', run: () => game?.queueKill() },
+  { label: 'スタートへ', cls: '', run: restartFromStart },
   { label: '大部屋へ', cls: '', run: () => send({ t: 'leaveGame' }) },
 ]);
 mountTouchControls($('#screen-hub'), [

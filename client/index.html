@@ -152,8 +152,12 @@
       </div>
       <div class="help">
         A/D 移動 · Space ジャンプ（空中でもう一度） · 右クリック/E フック ·
-        左クリック/Q 攻撃 · 1〜6 武器 · K やり直し · Esc 大部屋へ
+        左クリック/Q 攻撃 · 1〜6 武器 · Esc / K スタートへ
       </div>
+      <nav class="game-actions" aria-label="コースの操作">
+        <button id="btn-respawn">↺ スタートへ <kbd>Esc</kbd></button>
+        <button id="btn-game-lobby">大部屋へ戻る</button>
+      </nav>
       <div id="toast" class="toast hidden"></div>
       <div id="result" class="overlay hidden">
         <div class="result-card">
@@ -161,7 +165,7 @@
           <div id="result-body"></div>
           <div class="ad-slot" data-slot="result"></div>
           <div class="buttons">
-            <button id="btn-retry" class="primary">もう一度（K）</button>
+            <button id="btn-retry" class="primary">もう一度（Esc / K）</button>
             <button id="btn-close-result">続けて見る</button>
             <button id="btn-leave-game">大部屋へ戻る</button>
           </div>
