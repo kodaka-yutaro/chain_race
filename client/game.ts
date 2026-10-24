@@ -498,7 +498,7 @@ export class ClientGame {
       const count = st?.count ?? 0;
       const label = party
         ? `協力の台 ${count}/${PARTY_CAPACITY}人${stage && stage.minPlayers > 1 ? `（${stage.minPlayers}人〜）` : ''}`
-        : `フリー入口 ${count}人プレイ中`;
+        : stage?.solo?'1人用 · 自分だけで出発':`フリー入口 ${count}人プレイ中`;
       g.fillText(label, x + w / 2, y - 10);
       if (party && st && st.countdown > 0) {
         g.font = 'bold 64px system-ui, sans-serif';
