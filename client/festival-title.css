@@ -1,0 +1,81 @@
+/* The illustrated cover owns the title screen; the game keeps its own contrast. */
+#screen-title { padding:0 28px 14px; background:#fff1c6; color:#63362e; min-height:100svh; }
+.festival-art { position:absolute; inset:0; z-index:-3; overflow:hidden; background:#ffe6a0; }
+.festival-art img { display:block; width:100%; height:100%; object-fit:cover; object-position:center 42%; }
+#title-city { z-index:1; image-rendering:auto; }
+.city-shade { z-index:-1; background:linear-gradient(0deg,#fff3d5 0%,#fff0d08c 12%,transparent 33%,transparent 88%,#fff4d6bd); }
+.city-nav { z-index:3; padding:16px 0; max-width:none; }
+.city-brand { gap:8px; color:#69372e; font-size:10px; letter-spacing:.13em; font-weight:800; }
+.city-seal { border:2px solid #fff2bd; border-radius:10px; background:#cc3b3c; box-shadow:2px 3px 0 #bc812b; color:#fff4d0; width:35px; height:35px; }
+.city-nav button { min-height:40px; padding:8px 14px; color:#793a31; border:2px solid #e7b35b; border-radius:30px; background:#fff8e4ed; font-weight:800; font-size:11px; letter-spacing:0; box-shadow:0 3px 0 #dba763; }
+.city-hero { z-index:2; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; width:100%; max-width:none; margin:0; padding:0 0 12px; gap:0; min-height:540px; height:calc(100svh - 130px); }
+.city-heading { padding:0; width:auto; max-width:100%; }
+.festival-kicker { display:none; }
+.city-title { font-family:"Hiragino Maru Gothic ProN","Arial Rounded MT Bold","Yu Gothic",Meiryo,sans-serif; font-weight:1000; line-height:1; transform:rotate(-3deg); filter:drop-shadow(0 4px 0 #792e2a); }
+.race-title { color:#d73b46; font:1000 clamp(25px,2.4vw,32px)/1.1 "Arial Rounded MT Bold","Yu Gothic",sans-serif; letter-spacing:.03em; padding:0; transform:none; -webkit-text-stroke:5px #fffdf1; paint-order:stroke fill; text-shadow:0 3px 0 #ffca50; }
+.flame-title { font-size:clamp(76px,6.8vw,100px); line-height:1.08; letter-spacing:.02em; padding:0 .08em; -webkit-text-stroke:9px #fffdf1; paint-order:stroke fill; text-shadow:0 5px 0 #ffc13c,0 8px 0 #cf4a31; color:#ef4d35; animation:festival-glow 2s ease-in-out infinite; }
+.flame-title::before { padding:0 .08em; background:linear-gradient(0deg,#d52b3e 8%,#f45a35 47%,#ffca3b 88%); background-clip:text; -webkit-background-clip:text; color:transparent; background-size:100% 160%; animation:flame-color 2s ease-in-out infinite alternate; }
+.flame-title::after { top:-4%; height:21%; left:13%; right:13%; z-index:-1; opacity:.9; }
+.tournament-title { color:#fffdf0; background:#209f9e; border:4px solid #fffdf1; border-radius:16px 8px 16px 8px; padding:.2em .7em .3em; font-size:clamp(17px,2.1vw,26px); letter-spacing:.09em; box-shadow:0 4px 0 #136b6a; margin-top:5px; text-shadow:0 2px 0 #126e75; }
+.city-copy { color:#7f4132; font-size:12px; letter-spacing:.16em; font-weight:800; text-shadow:0 1px 2px #fff; margin:14px 0 10px; line-height:1.4; }
+.festival-tags { display:none; }
+.festival-play { display:flex; align-items:center; justify-content:center; gap:28px; width:min(330px,90%); min-height:60px; border:3px solid #fff7d5; border-radius:40px; color:#fff9dc; background:linear-gradient(160deg,#ef6049,#d72f3e); box-shadow:0 5px 0 #9e3531,0 8px 0 #ffd575,0 12px 22px #8d4d2540; font-size:20px; letter-spacing:.08em; font-weight:900; transition:transform .15s; }
+.festival-play span { font-size:26px; }
+.festival-play:hover { transform:translateY(-2px); }
+.festival-play:active { transform:translateY(2px); }
+.play-note { margin:12px 0 0; font-size:10px; color:#875043; font-weight:700; letter-spacing:.03em; text-shadow:0 1px 1px #fff; }
+.city-bottom { z-index:3; max-width:none; align-items:center; gap:10px; margin-top:auto; }
+.city-bottom .footer { color:#774e42; font-size:9px; line-height:1.6; }
+.city-bottom a { color:#884e38; }
+.city-bottom #music-toggle { color:#724635; border-color:#d5ae67; background:#fff8e2ed; border-radius:20px; font-weight:700; }
+.city-bottom .music-console label { color:#805b49; }
+#entry-dialog { border:0; padding:0; background:transparent; width:min(430px,calc(100% - 32px)); overflow:visible; max-height:calc(100dvh - 32px); }
+#entry-dialog::backdrop { background:#53292980; backdrop-filter:blur(6px); }
+#entry-dialog .title-card { position:relative; width:100%; border:3px solid #e9b860; border-radius:26px; color:#653e32; background:#fff5dc; padding:30px; box-shadow:0 10px 0 #9f553c,0 25px 90px #43221c80; max-height:calc(100dvh - 44px); overflow:auto; }
+#entry-dialog .title-card::before,#entry-dialog .title-card::after { display:none; }
+.entry-close { position:absolute; right:12px; top:10px; min-width:40px; min-height:40px; padding:0; border:0; border-radius:50%; background:#f9dfb7; color:#a54738; font-size:26px; line-height:1; }
+#entry-dialog .entrance-kicker { color:#bd794a; letter-spacing:.12em; font-size:9px; padding-right:30px; }
+#entry-dialog .entrance-title { color:#ac3b38; font-family:"Hiragino Maru Gothic ProN","Yu Gothic",sans-serif; font-weight:900; font-size:26px; }
+#entry-dialog .entrance-copy { color:#8c6857; }
+#entry-dialog .tabs { border-color:#dfb98a; }
+#entry-dialog .tab { color:#946b56; }
+#entry-dialog .tab.active { color:#bd3a38; box-shadow:0 3px 0 #d74d41; }
+#entry-dialog label { color:#6b4d3e; font-size:12px; }
+#entry-dialog input { color:#5c4034; background:#fffdf5; border:2px solid #e5bc85; border-radius:12px; }
+#entry-dialog button.primary { color:#fff7dc; background:linear-gradient(#f3694c,#db3d41); border:2px solid #fff4d6; border-radius:14px; box-shadow:0 4px 0 #b74b38; font-weight:900; }
+#entry-dialog .note { color:#99735d; }
+#entry-dialog .city-route { border-color:#e8cba0; color:#ad7754; }
+#entry-dialog .city-route b { color:#966343; }
+#entry-dialog button.link { color:#9a5744; }
+#entry-dialog .error { color:#b52f3d; }
+@keyframes festival-glow { 50% { filter:drop-shadow(0 -3px 4px #ffc23d80); } }
+@media(min-width:1600px) { .festival-art img { object-position:center 38%; }.city-hero { padding-bottom:28px; } }
+@media(max-width:650px) {
+  #screen-title { padding:0 12px 14px; }
+  .city-nav { padding:12px 0; gap:8px; }
+  .city-brand { font-size:8px; max-width:155px; letter-spacing:.04em; }
+  .city-seal { width:28px; height:28px; flex-shrink:0; font-size:11px; border-radius:8px; }
+  .city-nav button { font-size:9px; min-height:36px; padding:6px 9px; }
+  .festival-art img { object-position:center 34%; }
+  .city-hero { min-height:610px; height:calc(100svh - 145px); justify-content:flex-end; padding:0 0 15px; gap:0; }
+  .city-heading { padding:0; }
+  .festival-kicker { font-size:10px; letter-spacing:.08em; }
+  .race-title { font-size:28px; -webkit-text-stroke-width:4px; }
+  .flame-title { font-size:clamp(70px,22vw,95px); line-height:1.08; -webkit-text-stroke-width:7px; }
+  .tournament-title { font-size:18px; border-width:3px; }
+  .city-copy { font-size:11px; margin:11px 0 12px; }
+  .festival-play { min-height:56px; font-size:19px; width:min(310px,92%); }
+  .city-bottom { flex-direction:row; align-items:center; }
+  .city-bottom .footer { text-align:left; max-width:220px; font-size:8px; }
+  .city-bottom .music-console label { display:none; }
+  .city-bottom #music-toggle { font-size:9px; padding:6px 9px; }
+  #entry-dialog .title-card { padding:26px; }
+  #entry-dialog .entrance-title { font-size:24px; }
+}
+@media(max-height:600px) and (min-width:651px) {
+  .city-nav { padding:10px 0; }
+  .city-hero { min-height:350px; height:calc(100svh - 110px); padding-bottom:5px; }
+  .race-title { font-size:25px; }.flame-title { font-size:72px; }.tournament-title { font-size:17px; }
+  .city-copy,.festival-kicker,.play-note { display:none; }.festival-play { margin-top:15px; min-height:48px; width:270px; font-size:17px; }
+}
+@media(prefers-reduced-motion:reduce) { .flame-title,.flame-title::before,.flame-title::after { animation:none; }.festival-play { transition:none; } }

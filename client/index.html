@@ -19,27 +19,33 @@
   <div id="app">
     <!-- タイトル -->
     <section id="screen-title" class="screen">
+      <picture class="festival-art"><source media="(max-width: 650px) and (orientation: portrait)" srcset="/art/festival-mobile.webp" /><img src="/art/festival-key-art.webp" width="1672" height="941" fetchpriority="high" alt="白いはちまきの丸い青い主人公が、個性豊かな街の人々や小籠包の屋台、寺院、獅子舞に囲まれて元気に走る中華街のお祭り" /></picture>
       <canvas id="title-city" aria-hidden="true"></canvas>
       <div class="city-shade" aria-hidden="true"></div>
       <nav class="city-nav" aria-label="大会メニュー">
-        <div class="city-brand"><span class="city-seal" aria-hidden="true">KD</span><span>KDKING GAMES / 夜遊び部</span></div>
+        <div class="city-brand"><span class="city-seal" aria-hidden="true">KD</span><span>KDKING GAMES / 中華街へようこそ</span></div>
         <button id="copy-invite" type="button">招待リンクを共有 ↗</button>
         <input id="invite-fallback" aria-label="招待URL" readonly hidden />
       </nav>
       <div class="city-hero">
         <div class="city-heading">
-          <p class="festival-kicker">— CHINATOWN NIGHT RUN —</p>
+          <p class="festival-kicker">走って、跳んで、つながって！</p>
           <h1 class="city-title" aria-label="KDレース 中華街 パルクール大会">
             <span class="race-title">KDレース</span>
             <span class="flame-title" data-text="中華街" aria-hidden="true">中華街</span>
             <span class="tournament-title">パルクール大会</span>
           </h1>
-          <p class="city-copy">提灯のあかりを、飛び越えて。<br />ふたりのフックで、夜の街を駆けぬけよう。</p>
+          <p class="city-copy">湯気も、笑顔も、満員御礼。</p>
           <div class="festival-tags"><span>協力パルクール</span><span>コースをつくる</span><span>スマホでも参加</span></div>
         </div>
+        <button id="open-entry" class="festival-play" type="button">大会に参加する <span aria-hidden="true">→</span></button>
+        <p class="play-note">名前だけで参加 · 友達と同じ大部屋へ</p>
+      </div>
+      <dialog id="entry-dialog" aria-labelledby="entrance-title">
       <div class="title-card">
+        <button id="close-entry" class="entry-close" type="button" aria-label="タイトルに戻る">×</button>
         <p class="entrance-kicker">WELCOME TO THE NIGHT MARKET</p>
-        <h2 class="entrance-title">今夜の大会に参加</h2>
+        <h2 id="entrance-title" class="entrance-title">さあ、中華街へ！</h2>
         <p class="entrance-copy">友達にリンクを送って、同じ大部屋へ。<br />まずは、呼んでほしい名前をどうぞ。</p>
 
         <div id="logged-in" class="hidden">
@@ -73,7 +79,7 @@
         </div>
         <p class="city-route"><b>なまえ</b><span>→</span><b>大部屋</b><span>→</span><b>仲間とスタート</b></p>
       </div>
-      </div>
+      </dialog>
       <div class="city-bottom">
         <footer class="footer">URLで集まる、仲間のための大会。<br /><a href="/about.html">遊び方・クレジット</a> · <a href="/privacy.html">プライバシー</a> · 運営: <a href="https://kdking-tools.com/">kdking</a></footer>
         <div class="music-dock music-console"><button id="music-toggle" type="button" aria-pressed="false">♫ BGM OFF</button><label>音量<input id="music-volume" type="range" min="0" max="100" value="30" aria-label="BGMの音量" /></label></div>

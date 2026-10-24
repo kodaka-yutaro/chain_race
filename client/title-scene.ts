@@ -1,11 +1,19 @@
 import './chinatown.css';
-import { drawChinatown } from './chinatown';
+import './festival-title.css';
 import { mountMusic } from './music';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#title-city')!;
 const g = canvas.getContext('2d')!;
 const title = document.querySelector<HTMLElement>('#screen-title')!;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+const entry=document.querySelector<HTMLDialogElement>('#entry-dialog')!;
+document.querySelector('#open-entry')!.addEventListener('click',()=>{
+  entry.showModal();
+  const input=entry.querySelector<HTMLInputElement>('.tab-pane:not(.hidden) input');
+  input?.focus({preventScroll:true});
+});
+document.querySelector('#close-entry')!.addEventListener('click',()=>entry.close());
+entry.addEventListener('click',e=>{if(e.target===entry){const r=entry.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)entry.close();}});
 let frame = 0, last = -100;
 function draw(now: number) {
   frame = 0;
@@ -14,13 +22,23 @@ function draw(now: number) {
     last = now;
     const w = Math.max(1, Math.ceil(title.clientWidth / 2)), h = Math.max(1, Math.ceil(title.clientHeight / 2));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    drawChinatown(g, w, h, reduced.matches ? 0 : now, 0, true);
+    g.clearRect(0,0,w,h);
+    const time=reduced.matches?0:now;
+    // Only small peripheral confetti moves over the illustrated cover.
+    for(let i=0;i<32;i++){
+      const side=i%2, x=(side?.8:.03)*w+(Math.sin(i*37.9)*.5+.5)*w*.16;
+      const y=((i*79+time*(.009+i%3*.003))%(h+30))-15;
+      g.save();g.translate(x+Math.sin(time/1500+i)*5,y);g.rotate(i+time/1600);
+      g.fillStyle=['#e94a4b','#efb93c','#3caa9d','#fff4b5'][i%4];g.globalAlpha=.75;
+      g.fillRect(-2,-1,4,i%3?2:5);g.restore();
+    }
   }
   if (!reduced.matches) frame = requestAnimationFrame(draw);
 }
 function restart() { if (frame) cancelAnimationFrame(frame); last = -100; frame = requestAnimationFrame(draw); }
 new ResizeObserver(restart).observe(title);
 new MutationObserver(() => {
+  if(title.classList.contains('hidden')&&entry.open)entry.close();
   const dock = document.querySelector('.music-dock')!;
   (title.classList.contains('hidden') ? document.body : document.querySelector('.city-bottom')!).append(dock);
   restart();
