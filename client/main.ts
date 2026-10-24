@@ -373,6 +373,7 @@ function alertBar(text: string) {
 }
 
 mountTouchControls($('#screen-game'), [
+  { label: '中華を吐く', cls: 'word-action accent', run: () => game?.queueSpit() },
   { label: 'やり直し', cls: '', run: () => game?.queueKill() },
   { label: '大部屋へ', cls: '', run: () => send({ t: 'leaveGame' }) },
 ]);

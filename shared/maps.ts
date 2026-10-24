@@ -221,7 +221,17 @@ function stage4(): MapDef {
   });
 }
 
-export const MAPS: MapDef[] = [stage1(), stage2(), stage3(), stage4(), sunny, kobra];
+function wordPractice():MapDef {
+  const b=new Builder(86,30);
+  b.rect(0,26,26,4,'#').rect(49,22,37,8,'#').rect(26,29,23,1,'^');
+  b.rect(5,25,1,1,'S').rect(10,1,1,25,'>').rect(80,1,1,21,'F');
+  b.hint(3,17,'中華吐息の稽古場 · R /「中華を吐く」')
+    .hint(3,19,'狙った方向へ吐く → 文字の上に乗る・フックを掛ける')
+    .hint(18,12,'岸の手前で右へ吐こう。動く文字に乗って谷を渡ろう')
+    .hint(51,17,'18秒で消える足場。後で二人の仕掛けにも使えます');
+  return b.build({id:'word-practice',name:'中華吐息の稽古場',description:'「中華」を吐いて動く足場にする練習コース。文字の線には乗れて、フックも掛かる。',minPlayers:1,wordBlocks:true});
+}
+export const MAPS: MapDef[] = [wordPractice(),stage1(), stage2(), stage3(), stage4(), sunny, kobra];
 
 // 大部屋の広場：左にフリー入口、右に協力の台
 function lobby(): MapDef {

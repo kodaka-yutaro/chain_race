@@ -32,7 +32,8 @@ export function validateCourseMap(value: unknown, playable = true): MapDef {
     return { need: c.need === 2 ? 2 : 1, hold: Math.max(0, Math.min(500, Math.floor(Number(c.hold) || 0))) };
   });
   return { id: '', name: m.name.trim(), description: m.description, minPlayers: 2,
-    width: m.width, height: m.height, tiles: [...m.tiles], hints: [], channels };
+    width: m.width, height: m.height, tiles: [...m.tiles], hints: [], channels,
+    ...(m.wordBlocks===true?{wordBlocks:true}:{}) };
 }
 export function newCourseMap(width = 80, height = 30): MapDef {
   const rows: string[][] = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) =>

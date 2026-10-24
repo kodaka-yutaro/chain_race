@@ -206,6 +206,17 @@ body.touch .lobby-bar .me-label { display: none; }
 body.touch canvas, body.touch .touch-pad, body.touch .touch-pad * { touch-action: none; }
 
 /* コース工房 */
+.editor-ability { display:flex; flex-direction:row; align-items:center; gap:10px; margin-top:14px; padding:14px; border:1px solid #a67b44; border-radius:10px; background:#3b2b2377; }
+.editor-ability input { width:22px; height:22px; accent-color:#ffc870; }
+.word-controls { position:absolute; top:64px; left:12px; z-index:3; display:flex; flex-direction:column; align-items:flex-start; gap:7px; max-width:calc(100% - 125px); }
+.word-spit { min-height:48px; color:#342013; background:linear-gradient(#ffe193,#efab49); border-color:#ffe193; box-shadow:0 3px 0 #73382b; font-weight:800; }
+.word-status { color:#ffe4a1; background:#13202fe6; padding:5px 8px; border-radius:5px; font-size:11px; }
+.word-action { display:none!important; }
+.word-enabled .word-action { display:inline-flex!important; }
+body.touch .word-controls { top:96px; pointer-events:none; }
+body.touch .word-action { position:fixed; left:50%; bottom:calc(185px + env(safe-area-inset-bottom)); transform:translateX(-50%); min-width:112px; height:48px; justify-content:center; align-items:center; color:#ffe7a1; background:#78382eeb; border:2px solid #eeb759; font-size:14px; }
+@media (orientation:landscape) { body.touch .word-action { bottom:calc(115px + env(safe-area-inset-bottom)); } }
+body.touch .word-spit { display:none; }
 .dd-tools { position: absolute; z-index: 3; left: 50%; top: 72px; transform: translateX(-50%); max-width: calc(100% - 16px); background: #091724e8; border: 1px solid #a78b53; border-radius: 12px; padding: 6px; color: #ffe2a1; font-size: 11px; text-align: center; }
 .dd-weapons { display: flex; gap: 4px; }
 .dd-weapons button { min-width: 42px; min-height: 44px; padding: 4px 6px; }

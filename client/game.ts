@@ -8,6 +8,8 @@ import { releaseAllTouch, touch } from './touch';
 import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles, drawRunner } from './render';
 import { WEAPON_NAMES } from '../shared/ddrace';
 import { drawDD } from './dd-render';
+import { WORD_LIMIT } from '../shared/word-blocks';
+import { drawWords } from './word-render';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
 
@@ -44,6 +46,9 @@ export class ClientGame {
   private waitingForParty = false;
   private weaponPanel: HTMLElement | null = null;
   private weaponQueued: number | undefined;
+  private spitQueued=false;
+  private wordPanel:HTMLElement|null=null;
+  private mouseAimed=false;
   private listeners: [EventTarget, string, (e: any) => void][] = [];
 
   constructor(
@@ -65,6 +70,8 @@ export class ClientGame {
     this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
     this.bindInput();
     if(this.map.dd) this.mountWeapons();
+    this.canvas.parentElement?.classList.toggle('word-enabled',!!this.map.wordBlocks);
+    if(this.map.wordBlocks)this.mountWordControls();
     this.resize();
     this.raf = requestAnimationFrame(this.frame);
   }
@@ -80,6 +87,14 @@ export class ClientGame {
   }
 
   queueKill() { this.killQueued = true; }
+  queueSpit() { if(this.map.wordBlocks)this.spitQueued=true; }
+
+  private mountWordControls(){
+    const panel=document.createElement('div');panel.className='word-controls';
+    const b=document.createElement('button');b.className='word-spit';b.textContent='中華を吐く [R]';b.onclick=()=>this.queueSpit();
+    const status=document.createElement('span');status.className='word-status';status.textContent='狙った方向に、動く文字の足場を吐き出す';
+    panel.append(b,status);this.canvas.parentElement!.append(panel);this.wordPanel=panel;
+  }
 
   private mountWeapons() {
     const panel=document.createElement('div');panel.className='dd-tools';
@@ -102,6 +117,7 @@ export class ClientGame {
     this.stopped = true;
     releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false;
     touch.aimOnly=false;this.weaponPanel?.remove();
+    this.wordPanel?.remove();this.canvas.parentElement?.classList.remove('word-enabled');
     cancelAnimationFrame(this.raf);
     for (const [t, ev, fn] of this.listeners) t.removeEventListener(ev, fn);
   }
@@ -138,6 +154,7 @@ export class ClientGame {
     this.world.lifts = [...s.lifts];
     this.world.saws = [...s.saws];
     if(s.dd) this.world.dd=structuredClone(s.dd);
+    this.world.words=structuredClone(s.words??[]);this.world.wordSeq=s.wordSeq??0;
     this.world.runners = [this.me, ...s.others.map((v) => viewToRunner(v, this.map))];
     for (const p of this.pending) this.predictStep(p.input);
     this.smoothX = beforeX - this.me.x;
@@ -163,7 +180,7 @@ export class ClientGame {
     const clicked = this.clicked;
     this.clicked = { left: false, right: false };
     const i = emptyInput();
-    if (document.querySelector('dialog[open]')) { releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false; return i; }
+    if (document.querySelector('dialog[open]')) { this.spitQueued=false; releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false; return i; }
     i.left = k.has('KeyA') || k.has('ArrowLeft');
     i.right = k.has('KeyD') || k.has('ArrowRight');
     i.up = k.has('KeyW') || k.has('ArrowUp');
@@ -172,6 +189,7 @@ export class ClientGame {
     i.wire = this.mouse.right || clicked.right || k.has('KeyE') || k.has('ShiftLeft');
     i.fire = this.mouse.left || clicked.left || k.has('KeyQ');
     i.kill = this.killQueued;
+    i.spit=this.spitQueued;this.spitQueued=false;
     for(let n=0;n<6;n++)if(k.has(`Digit${n+1}`))this.weaponQueued=n;
     i.weapon=this.weaponQueued;this.weaponQueued=undefined;
     this.killQueued = false;
@@ -179,6 +197,7 @@ export class ClientGame {
     const wy = this.mouse.y / this.cam.zoom + this.cam.y;
     i.aimX = wx - (this.me.x + this.smoothX);
     i.aimY = wy - (this.me.y + this.smoothY);
+    if(!this.mouseAimed){i.aimX=this.me.aimX;i.aimY=this.me.aimY;}
     if (Math.hypot(i.aimX, i.aimY) < 1) { i.aimX = 1; i.aimY = 0; }
     if (touch.active) {
       i.left ||= touch.moveX < 0;
@@ -220,6 +239,13 @@ export class ClientGame {
     this.smoothX *= 0.85;
     this.smoothY *= 0.85;
     this.render(now);
+    if(this.wordPanel){
+      const s=this.me.spit,count=this.world.words.filter(b=>b.owner===this.youId).length;
+      const blocked=s.blockedUntil>this.world.tick;
+      const message=blocked?'前が狭いので出せません。広い場所を狙おう':s.charge?'ふくらませて…':count>=WORD_LIMIT?'足場は2枚まで。消えるまで待とう':s.cooldown?`次の吐息まで ${(s.cooldown/50).toFixed(1)}秒`:'中華吐息 · 乗れる／フック可 · 18秒で消える';
+      this.wordPanel.querySelector('.word-status')!.textContent=message;
+      this.canvas.parentElement?.querySelectorAll<HTMLButtonElement>('.word-spit,.word-action').forEach(b=>{b.disabled=!!s.charge||!!s.cooldown||count>=WORD_LIMIT||this.waitingForParty;b.textContent=s.charge?'ふくらませ中…':s.cooldown?`中華 ${Math.ceil(s.cooldown/50)}秒`:'中華を吐く'+(b.classList.contains('word-spit')?' [R]':'');});
+    }
     if(this.me.dd&&this.weaponPanel){
       const d=this.me.dd;
       for(const b of this.weaponPanel.querySelectorAll<HTMLButtonElement>('[data-weapon]')){
@@ -244,6 +270,7 @@ export class ClientGame {
       if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName)) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (e.code === 'KeyK' && !e.repeat) this.killQueued = true;
+      if (e.code === 'KeyR' && !e.repeat) this.queueSpit();
       if (e.code === 'KeyF' && !e.repeat) this.onInteract();
       this.keys.add(e.code);
       if (!e.repeat) this.tapped.add(e.code);
@@ -269,6 +296,7 @@ export class ClientGame {
     this.on(window, 'resize', () => this.resize());
     this.on(this.canvas, 'contextmenu', (e) => e.preventDefault());
     this.on(this.canvas, 'mousemove', (e: MouseEvent) => {
+      this.mouseAimed=true;
       const r = this.canvas.getBoundingClientRect();
       this.mouse.x = (e.clientX - r.left) * (this.canvas.width / r.width);
       this.mouse.y = (e.clientY - r.top) * (this.canvas.height / r.height);
@@ -346,6 +374,7 @@ export class ClientGame {
     drawLiveTiles(g, this.map, { ...this.world, doors: this.doors }, Math.floor(this.cam.x / TILE) - 1, Math.floor(this.cam.y / TILE) - 1,
       Math.ceil((this.cam.x + vw) / TILE) + 1, Math.ceil((this.cam.y + vh) / TILE) + 1, now);
     drawDD(g,this.world,Math.floor(this.cam.x/TILE)-1,Math.floor(this.cam.y/TILE)-1,Math.ceil((this.cam.x+vw)/TILE)+1,Math.ceil((this.cam.y+vh)/TILE)+1);
+    drawWords(g,this.world);
     this.drawZones(g);
 
     const views = this.othersInterpolated(now);
@@ -353,11 +382,13 @@ export class ClientGame {
       ...views.map((v) => ({
         id: v.id, x: v.x, y: v.y, vx: v.vx, grounded: v.g, ws: v.ws, wx: v.wx, wy: v.wy, wr: v.wr,
         stun: v.st, aimX: v.ax, aimY: v.ay, hammerAge: this.world.tick - v.ct,
+        spitCharge:v.spit?.charge??0,spitAge:v.spit?this.world.tick-v.spit.started:100,
       })),
       {
         id: this.me.id, x: meX, y: meY, vx: this.me.vx, grounded: this.me.grounded, ws: this.me.wireState,
         wx: this.me.wireX, wy: this.me.wireY, wr: this.me.wireRunner, stun: this.me.stun, aimX: this.me.aimX,
         aimY: this.me.aimY, hammerAge: this.world.tick - this.me.hammerTick,
+        spitCharge:this.me.spit.charge,spitAge:this.world.tick-this.me.spit.started,
       },
     ];
     const pos = new Map(all.map((r) => [r.id, r]));
@@ -500,5 +531,6 @@ function viewToRunner(v: RunnerView, map: MapDef): Runner {
   r.finishedTime = v.ft; r.raceStart = v.rs; r.grounded = v.g;
   r.prevWire = v.ws !== 0;
   if(v.dd)r.dd={...v.dd};
+  if(v.spit)r.spit={...v.spit};r.wireWord=v.wg??-1;r.wireLocalX=v.wlx??0;r.wireLocalY=v.wly??0;
   return r;
 }

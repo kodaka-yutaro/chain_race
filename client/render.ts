@@ -576,6 +576,7 @@ export interface RunnerLook {
   id: number; x: number; y: number; vx: number; grounded: boolean;
   stun: number; aimX: number; aimY: number; hammerAge: number;
   name: string; me: boolean;
+  spitCharge?:number; spitAge?:number;
 }
 
 export function drawHook(g: CanvasRenderingContext2D, id: number, x0: number, y0: number, x1: number, y1: number) {
@@ -618,6 +619,7 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   const stunned = r.stun > 0;
   const face = r.aimX >= 0 ? 1 : -1;
   const body = stunned ? '#a9b4c2' : color;
+  const puff=r.spitCharge?Math.sin((1-r.spitCharge/19)*Math.PI/2):0;
 
   // 足（歩くと交互に動く、空中では縮める）
   const walking = r.grounded && Math.abs(r.vx) > 0.6;
@@ -654,7 +656,7 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   g.strokeStyle = shade(body, -0.5);
   g.lineWidth = 2;
   g.beginPath();
-  g.arc(r.x, r.y, R, 0, Math.PI * 2);
+  g.ellipse(r.x, r.y, R+puff*4, R-puff*2,0, 0, Math.PI * 2);
   g.fill();
   g.stroke();
 
@@ -711,6 +713,13 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
     }
   }
 
+  if(puff>0){
+    g.fillStyle='#fff1c977';
+    for(const side of [-1,1]){g.beginPath();g.ellipse(r.x+side*11,r.y+5,3+puff*3,4,0,0,Math.PI*2);g.fill();}
+  }
+  if(puff>0 || (r.spitAge!==undefined&&r.spitAge>=18&&r.spitAge<32)){
+    g.fillStyle='#38202e';g.beginPath();g.ellipse(r.x+face*6,r.y+7,puff>0?2:4,puff>0?1:5,0,0,Math.PI*2);g.fill();
+  }
   // 名前の札
   if (r.name) {
     g.font = 'bold 12px system-ui, "Hiragino Sans", sans-serif';
