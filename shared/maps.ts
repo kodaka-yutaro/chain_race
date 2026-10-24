@@ -1,4 +1,5 @@
 import sunny from './dd-sunny.json';
+import kobra from './dd-kobra.json';
 import type { Channel, Lift, MapDef, Saw, Zone } from './physics';
 
 // オリジナルのステージと、出典を記載したDDNet移植版。
@@ -220,7 +221,7 @@ function stage4(): MapDef {
   });
 }
 
-export const MAPS: MapDef[] = [stage1(), stage2(), stage3(), stage4(), sunny];
+export const MAPS: MapDef[] = [stage1(), stage2(), stage3(), stage4(), sunny, kobra];
 
 // 大部屋の広場：左にフリー入口、右に協力の台
 function lobby(): MapDef {

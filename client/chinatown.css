@@ -50,6 +50,8 @@ button { min-height:44px; }
 body:has(#screen-title:not(.hidden)) .music-dock { position:static; }
 body:has(#screen-game:not(.hidden)) .music-console label,body:has(#screen-hub:not(.hidden)) .music-console label { display:none; }
 body:has(#screen-game:not(.hidden)) .music-dock,body:has(#screen-hub:not(.hidden)) .music-dock { bottom:auto; top:90px; }
+@media(max-width:650px) { body:has(#screen-game:not(.hidden) .dd-tools) .music-dock { top:198px; right:8px; } }
+@media(max-height:500px) { body:has(#screen-game:not(.hidden) .dd-tools) .music-dock { top:152px; right:8px; } }
 #screen-hubs { padding-top:30px; }
 .panel,.result-card { border:1px solid #52645d; }
 @keyframes flame-glow { 0%,100% { filter:drop-shadow(0 -3px 4px #eb5d3155); } 50% { filter:drop-shadow(0 -7px 9px #ff742d99); } }

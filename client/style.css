@@ -206,6 +206,13 @@ body.touch .lobby-bar .me-label { display: none; }
 body.touch canvas, body.touch .touch-pad, body.touch .touch-pad * { touch-action: none; }
 
 /* コース工房 */
+.dd-tools { position: absolute; z-index: 3; left: 50%; top: 72px; transform: translateX(-50%); max-width: calc(100% - 16px); background: #091724e8; border: 1px solid #a78b53; border-radius: 12px; padding: 6px; color: #ffe2a1; font-size: 11px; text-align: center; }
+.dd-weapons { display: flex; gap: 4px; }
+.dd-weapons button { min-width: 42px; min-height: 44px; padding: 4px 6px; }
+.dd-weapons button:disabled { opacity: .3; }
+.dd-status { padding: 4px 0; }
+.dd-aim-toggle { min-height: 32px; font-size: 11px; padding: 4px 10px; }
+@media (max-height: 500px) { .dd-tools { top: 45px; } .dd-weapons button { min-height: 36px; } }
 .course-dialog { color: var(--text); background: var(--panel); border: 1px solid #53668c; border-radius: 18px; width: min(680px, 94vw); max-height: 85dvh; padding: 22px; }
 .course-dialog::backdrop { background: #080d20ba; }
 .course-dialog .cards { margin-top: 16px; }

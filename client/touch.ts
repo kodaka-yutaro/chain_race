@@ -9,6 +9,7 @@ export const touch = {
   aimMode: false,
   aimX: 1,
   aimY: 0,
+  aimOnly: false,
   jumpFromStick: true,
   jump: false,
   // 短いタップを次の tick まで覚えておく
@@ -131,7 +132,7 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
     <div class="stick move"><div class="knob"></div><span>移動</span></div>
     <div class="stick aim"><div class="knob"></div><span>倒してフック / 離して解除</span></div>
     <div class="touch-btns">
-      <button class="tbtn fire">ハンマー</button>
+      <button class="tbtn fire">攻撃</button>
       <button class="tbtn jump">ジャンプ</button>
     </div>
     <div class="touch-hint">左を上へ弾くとジャンプ · 右でフック · 専用ジャンプボタンも使えます</div>`;
@@ -141,7 +142,7 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
 
   stick(pad.querySelector('.aim')!, (x, y, held) => {
     touch.aimMode = held;
-    if (Math.hypot(x, y) > .22) { touch.aimX = x; touch.aimY = y; touch.hook = true; }
+    if (Math.hypot(x, y) > .22) { touch.aimX = x; touch.aimY = y; touch.hook = !touch.aimOnly; }
     else touch.hook = false;
   });
   let jumpedUp = false;
