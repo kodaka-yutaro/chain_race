@@ -87,3 +87,37 @@ test('頭上の箱を打ち上げても天井へ埋まらず、鎖を離すと�
   tick(free.w,1,{miniSpit:true,wire:true,fire:true,aimX:0,aimY:-1});tick(free.w,12);
   assert.equal(free.r.wireState,WIRE_IDLE);assert.ok(Math.abs(free.r.y-y)<1);assert.ok(free.w.words[0].y<y-170);
 });
+
+test('左右どちらに叩いても飛ぶミニに鎖で引かれ、歩く速さを超えて移動する',()=>{
+  for(const dir of [-1,1]){
+    const {w,r}=arena();r.x=700;const start=r.x;
+    tick(w,1,{miniSpit:true,wire:true,fire:true,aimX:dir,aimY:0});
+    let speed=0;
+    for(let i=0;i<12;i++){
+      tick(w,1,{wire:true,aimX:dir,aimY:0,right:dir===1,left:dir===-1});
+      speed=Math.max(speed,r.vx*dir);
+    }
+    assert.ok(speed>12,`speed=${speed}`);assert.ok((r.x-start)*dir>125,`distance=${(r.x-start)*dir}`);separate(w);
+  }
+});
+
+test('鎖はハンマーを条件にせず、離れて飛んでいく箱の速度をどの方向にも伝える',()=>{
+  for(const [dx,dy] of [[1,0],[-1,0],[0,-1],[.707,-.707]]){
+    const {w,r}=arena();r.x=700;r.y=500;
+    const b=mini(w,r.x+dx*55-16,r.y+dy*55-16);b.vx=dx*20;b.vy=dy*20;
+    tick(w,1,{wire:true,aimX:dx,aimY:dy});
+    assert.equal(r.wireState,WIRE_ATTACHED);assert.equal(b.hitTick,undefined);
+    assert.ok(r.vx*dx+r.vy*dy>12);assert.ok(b.vx*dx+b.vy*dy<20,'箱にも反作用がある');
+  }
+});
+
+test('ミニは持ち主ごとに5個。6個目は古い箱と交換し、生成失敗では既存の5個を残す',()=>{
+  const {w,r}=arena(11,8);r.x=318;
+  const friend=newRunner(2,w.map);friend.x=800;friend.y=946;w.runners.push(friend);
+  for(let i=0;i<5;i++){mini(w,500+i*40);mini(w,900+i*40).owner=2;}
+  const own=w.words.filter(b=>b.owner===1).map(b=>b.id),others=w.words.filter(b=>b.owner===2).map(b=>b.id);
+  tick(w,1,{miniSpit:true});assert.deepEqual(w.words.filter(b=>b.owner===1).map(b=>b.id),own);
+  r.x=1200;tick(w,12);tick(w,1,{miniSpit:true});
+  assert.equal(w.words.filter(b=>b.owner===1).length,5);assert.ok(!w.words.some(b=>b.id===own[0]));
+  assert.deepEqual(w.words.filter(b=>b.owner===2).map(b=>b.id),others);
+});

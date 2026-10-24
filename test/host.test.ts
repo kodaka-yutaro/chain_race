@@ -74,6 +74,18 @@ test('満員や名前の不正な人は入れない', () => {
   assert.equal(hub.members.size, 0);
 });
 
+test('スマホの遅いフレームでも、同時に押したミニ・攻撃・ジャンプを取りこぼさない',()=>{
+  const hub=new HostHub('touch-burst','入力確認'),a=fakeLink(hub);
+  a.say({t:'hello',name:'赤',guest:true});a.say({t:'stageJoin',stageId:'word-practice'});
+  const start=last(a.got,'gameStart')!,game=[...hub.games].find(g=>g.id===start.gameId)!;
+  for(let i=0;i<30;i++)hub.tick();
+  a.say({t:'input',gameId:game.id,list:[{seq:1,input:{...emptyInput(),miniSpit:true,fire:true,jump:true,wire:true}}]});
+  for(let seq=2;seq<=14;seq++)a.say({t:'input',gameId:game.id,list:[{seq,input:{...emptyInput(),wire:true}}]});
+  hub.tick();
+  assert.equal(game.world.words.length,1);assert.equal(game.world.words[0].hitTick,game.world.tick);
+  assert.ok(game.world.runners[0].vy<0);assert.ok(game.world.words[0].vx>15);
+});
+
 test('コース選択から同じKobraに合流し、武器と仕掛けの状態を二人に配信する', () => {
   const hub=new HostHub('dd-test','中華街'),a=fakeLink(hub),b=fakeLink(hub);
   a.say({t:'hello',name:'赤',guest:true});b.say({t:'hello',name:'青',guest:true});

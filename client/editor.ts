@@ -11,7 +11,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     <p class="note">ひとりで作って、テストなしでプレリリース。2人以上で全員ゴールすると正式公開になります。</p>
     <div class="editor-meta"><label>コース名<input data-name maxlength="40"></label><label>説明<input data-desc maxlength="280"></label></div>
     <label class="editor-ability"><input type="checkbox" data-word-blocks>「中華」を吐き出す技を使えるようにする</label>
-    <p class="note">大中華は動く足場。R で1人1つ出せて、X で自分で消すまで残ります。T のミニ中華は個数制限のない落ちる箱。体で押し、フックで引き、ハンマーで飛ばせます。頭上のミニを鎖でつかんで叩くと一緒に上昇！ スマホにも専用ボタンがあります。</p>
+    <p class="note">大中華は R で1人1つ、X で消去。T のミニは1人5個で、6個目は古い箱と入れ替わります。押す・引く・叩くといった動きは「中華吐息の稽古場」「点心横丁・ひとり旅」で試せます。</p>
     <div class="buttons"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo>元に戻す</button><button data-redo>やり直す</button><label>表示倍率<select data-zoom><option value="12">小</option><option value="24" selected>中</option><option value="36">大</option></select></label></div>
     <div class="tile-tools" role="group" aria-label="置くタイル"></div>
     <div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div>

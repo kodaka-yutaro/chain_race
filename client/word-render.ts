@@ -38,8 +38,6 @@ export function drawWords(g:CanvasRenderingContext2D,w:World) {
       g.fillStyle='#fff3b344';g.fillRect(x,y,2,r.h);
     }
     if(!b.solid){g.strokeStyle='#fff4b3';g.lineWidth=1;g.setLineDash([3,5]);for(const r of WORD_RECTS)g.strokeRect(b.x+r.x,b.y+r.y,r.w,r.h);g.setLineDash([]);}
-    g.font='bold 11px system-ui';g.textAlign='center';g.fillStyle='#fff0b5';
-    g.fillText(b.solid?'大中華 · 持ち主が消すまで残る':'実体化中…',cx,b.y-10);
     }
     g.restore();
     if(age<16){

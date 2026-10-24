@@ -125,7 +125,7 @@ test('大部屋の広場に、ステージごとのフリー入口と協力の�
   const zones = LOBBY_MAP.zones ?? [];
   for (const m of MAPS) {
     assert.ok(zones.some((z) => z.kind === 'free' && z.stageId === m.id), `${m.id} のフリー入口がない`);
-    assert.ok(zones.some((z) => z.kind === 'party' && z.stageId === m.id), `${m.id} の協力の台がない`);
+    assert.equal(zones.some((z) => z.kind === 'party' && z.stageId === m.id), !m.solo, `${m.id} の人数に入口が合わない`);
   }
   const w = createWorld(LOBBY_MAP);
   const r = newRunner(1, LOBBY_MAP);

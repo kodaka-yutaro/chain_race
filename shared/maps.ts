@@ -226,13 +226,32 @@ function wordPractice():MapDef {
   b.rect(0,26,26,4,'#').rect(49,22,37,8,'#').rect(26,29,23,1,'^');
   b.rect(5,25,1,1,'S').rect(10,1,1,25,'>').rect(80,1,1,21,'F');
   b.hint(3,17,'中華吐息の稽古場 · R 大中華 / T ミニ / X 大を消す')
-    .hint(3,19,'狙った方向へ吐く → 文字の上に乗る・フックを掛ける')
+    .hint(3,19,'大は1人1つ・Xで消去\nミニは5個まで。6個目で古い箱と交換')
     .hint(18,12,'岸の手前で右へ吐こう。動く文字に乗って谷を渡ろう')
-    .hint(51,17,'ミニは押す・引く・叩く！ 頭上で鎖につなぎ、ハンマーで一緒に上昇');
+    .hint(51,17,'ミニは押す・引く・叩く！\n飛ぶ箱につないだ鎖に引っ張られる');
   return b.build({id:'word-practice',name:'中華吐息の稽古場',description:'「中華」を吐いて動く足場にする練習コース。文字の線には乗れて、フックも掛かる。',minPlayers:1,wordBlocks:true});
 }
+
+function soloChinatown():MapDef {
+  const b=new Builder(112,32);
+  b.rect(0,28,112,4,'#').rect(5,27,1,1,'S').rect(9,1,1,27,'>').rect(106,1,1,27,'F');
+  // A forgiving first lap: every fall has a safe street below it.
+  b.rect(18,26,4,2,'#');
+  b.rect(34,20,2,8,'X').rect(36,20,16,8,'#');
+  b.rect(63,24,7,1,'X');
+  b.rect(84,25,4,3,'#').rect(94,22,4,6,'#');
+  b.hint(3,20,'点心横丁・ひとり旅\n自分だけのコース')
+    .hint(3,22,'移動＋鎖＋攻撃は同時押し\nスマホは攻撃の横に「ミニ」')
+    .hint(15,18,'ミニは1人5個まで\n6個目は一番古い箱と交換')
+    .hint(27,12,'飛ぶ箱の方向に鎖で引かれる\n上へ叩けば屋根へ！')
+    .hint(36,15,'大中華は1人1つ\nX /「大を消す」で消去')
+    .hint(55,19,'横のミニを鎖でつかむ\n横へ叩いて加速してみよう')
+    .hint(76,19,'鎖を離すと箱からの力がなくなる\nジャンプ・フックでも進める')
+    .hint(100,17,'おつかれさま！\n先の旗がゴール');
+  return b.build({id:'solo-chinatown',name:'点心横丁・ひとり旅',description:'1人用。点心の屋台から屋根へ、横丁を抜けてゴールへ。ミニを押す・叩く・鎖で引かれる動きをゆっくり試せます。',minPlayers:1,solo:true,wordBlocks:true});
+}
 // The breath is a standard ability in every built-in course, including DD imports.
-export const MAPS: MapDef[] = [wordPractice(),stage1(), stage2(), stage3(), stage4(), sunny, kobra]
+export const MAPS: MapDef[] = [wordPractice(),soloChinatown(),stage1(), stage2(), stage3(), stage4(), sunny, kobra]
   .map(map => ({ ...map, wordBlocks: true }));
 
 // 大部屋の広場：左にフリー入口、右に協力の台
@@ -257,7 +276,7 @@ function lobby(): MapDef {
     const last = i === MAPS.length - 1;
     const party = { x: c + 14 + i * 9, w: last ? 9 : 7 };
     b.zone({ id: `free-${m.id}`, kind: 'free', stageId: m.id, ...free, y: 13, h: 5 });
-    b.zone({ id: `party-${m.id}`, kind: 'party', stageId: m.id, ...party, y: 13, h: 5 });
+    if(!m.solo)b.zone({ id: `party-${m.id}`, kind: 'party', stageId: m.id, ...party, y: 13, h: 5 });
   });
   b.hint(2, 9, 'フリー入口: 入口で F を押すと、誰でもいるステージに入る')
     .hint(c + 14, 9, '協力の台: 乗って F でカウント開始、台の上の全員で出発')

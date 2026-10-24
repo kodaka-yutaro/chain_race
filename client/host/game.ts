@@ -84,6 +84,8 @@ export class Game {
       if(dropped.input.miniSpit)s.queue[0].input={...s.queue[0].input,miniSpit:true};
       if(dropped.input.clearWord)s.queue[0].input={...s.queue[0].input,clearWord:true};
       if(dropped.input.kill)s.queue[0].input={...s.queue[0].input,kill:true};
+      if(dropped.input.fire)s.queue[0].input={...s.queue[0].input,fire:true};
+      if(dropped.input.jump)s.queue[0].input={...s.queue[0].input,jump:true};
     }
   }
 

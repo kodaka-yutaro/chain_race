@@ -1,5 +1,6 @@
 // 左スティックで移動、右スティックで照準とフック。専用ボタンでジャンプとハンマー。
 // 画面の直接タップによるフックも利用できる。
+import { bindPress, releasePresses } from './press';
 
 export const isTouch = () => matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
@@ -15,6 +16,7 @@ export const touch = {
   // 短いタップを次の tick まで覚えておく
   jumpTap: false,
   fireTap: false,
+  miniTap: false,
   hook: false,
   hookTap: false,
   fire: false,
@@ -31,6 +33,23 @@ try { touch.jumpFromStick = localStorage.getItem('kd.stickJump') !== 'off'; } ca
 const releases: (() => void)[] = [];
 export function releaseAllTouch() {
   for (const r of releases) r();
+  releasePresses();
+}
+
+type AimSource={x:number;y:number;stick:boolean;hook:boolean};
+const aimSources=new Map<object,AimSource>();
+export function setTouchAim(owner:object,source?:AimSource){
+  const hadHook=touch.hook;
+  aimSources.delete(owner);if(source)aimSources.set(owner,source);
+  const active=[...aimSources.values()].reverse();
+  const aim=active.find(s=>s.hook)??active[0];
+  touch.hook=active.some(s=>s.hook);
+  if(!hadHook&&touch.hook)touch.hookTap=true;
+  if(aim){
+    touch.aimMode=aim.stick;
+    if(aim.stick){touch.aimX=aim.x;touch.aimY=aim.y;}
+    else{touch.aimClientX=aim.x;touch.aimClientY=aim.y;}
+  }
 }
 
 function stick(el: HTMLElement, onMove: (x: number, y: number, held: boolean) => void) {
@@ -68,31 +87,20 @@ function stick(el: HTMLElement, onMove: (x: number, y: number, held: boolean) =>
   releases.push(release);
 }
 
-function button(el: HTMLElement, onDown: () => void, onUp: () => void = () => {}) {
-  let id: number | null = null;
-  el.addEventListener('pointerdown', (e) => { if (id !== null) return; id = e.pointerId; el.classList.add('held'); el.setPointerCapture(e.pointerId); onDown(); e.preventDefault(); });
-  const up = () => { id = null; el.classList.remove('held'); onUp(); };
-  const end = (e: PointerEvent) => { if (id === e.pointerId) up(); };
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
-  el.addEventListener('lostpointercapture', end);
-  releases.push(up);
-}
-
 /** 画面（canvas）に触ったら、その方向へフックを伸ばす */
 function hookArea(el: HTMLElement) {
   let id: number | null = null;
-  const aim = (e: PointerEvent) => { touch.aimClientX = e.clientX; touch.aimClientY = e.clientY; };
+  const owner={};
+  const aim = (e: PointerEvent) => setTouchAim(owner,{x:e.clientX,y:e.clientY,stick:false,hook:true});
   el.addEventListener('pointerdown', (e) => {
     if (id !== null) return;
     id = e.pointerId;
     el.setPointerCapture(e.pointerId);
     aim(e);
-    touch.hook = touch.hookTap = true;
     e.preventDefault();
   });
   el.addEventListener('pointermove', (e) => { if (e.pointerId === id) aim(e); });
-  const release = () => { id = null; touch.hook = false; };
+  const release = () => { id = null; setTouchAim(owner); };
   const end = (e: PointerEvent) => { if (e.pointerId === id) release(); };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
@@ -119,7 +127,7 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
     const allUp = (e: TouchEvent) => { if (e.touches.length === 0) releaseAllTouch(); };
     document.addEventListener('touchend', allUp);
     document.addEventListener('touchcancel', allUp);
-    const cancel = () => { releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false; };
+    const cancel = () => { releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = touch.miniTap = false; };
     window.addEventListener('blur', cancel);
     window.addEventListener('pagehide', cancel);
     document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
@@ -133,17 +141,18 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
     <div class="stick aim"><div class="knob"></div><span>倒してフック / 離して解除</span></div>
     <div class="touch-btns">
       <button class="tbtn fire">攻撃</button>
+      <button class="tbtn mini" aria-label="ミニ中華を吐く">ミニ</button>
       <button class="tbtn jump">ジャンプ</button>
     </div>
-    <div class="touch-hint">左を上へ弾くとジャンプ · 右でフック · 専用ジャンプボタンも使えます</div>`;
+    <div class="touch-hint">移動・フック・攻撃を同時押しできます</div>`;
   screen.append(pad);
   const canvas = screen.querySelector<HTMLElement>('canvas');
   if (canvas) hookArea(canvas);
 
+  const aimOwner={};
   stick(pad.querySelector('.aim')!, (x, y, held) => {
-    touch.aimMode = held;
-    if (Math.hypot(x, y) > .22) { touch.aimX = x; touch.aimY = y; touch.hook = !touch.aimOnly; }
-    else touch.hook = false;
+    if(held&&Math.hypot(x,y)>.22)setTouchAim(aimOwner,{x,y,stick:true,hook:!touch.aimOnly});
+    else setTouchAim(aimOwner);
   });
   let jumpedUp = false;
   stick(pad.querySelector('.move')!, (x, y, held) => {
@@ -152,8 +161,9 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
     if (held && touch.jumpFromStick && y < -.75 && !jumpedUp) { touch.jumpTap = true; jumpedUp = true; }
     if (!held || y > -.35) jumpedUp = false;
   });
-  button(pad.querySelector('.jump')!, () => { touch.jump = touch.jumpTap = true; }, () => { touch.jump = false; });
-  button(pad.querySelector('.fire')!, () => { touch.fire = touch.fireTap = true; }, () => { touch.fire = false; });
+  bindPress(pad.querySelector('.jump')!, () => { touch.jump = touch.jumpTap = true; }, () => { touch.jump = false; });
+  bindPress(pad.querySelector('.fire')!, () => { touch.fire = touch.fireTap = true; }, () => { touch.fire = false; });
+  bindPress(pad.querySelector('.mini')!, () => { touch.miniTap = true; });
   const jumpToggle = pad.querySelector<HTMLButtonElement>('.stick-jump-toggle')!;
   jumpToggle.onclick = () => {
     touch.jumpFromStick = !touch.jumpFromStick;
@@ -161,6 +171,6 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
     document.querySelectorAll<HTMLButtonElement>('.stick-jump-toggle').forEach(b => { b.textContent = `左↑ジャンプ ${touch.jumpFromStick ? 'ON' : 'OFF'}`; b.setAttribute('aria-pressed', String(touch.jumpFromStick)); });
   };
   for (const b of pad.querySelectorAll<HTMLElement>('.touch-row .tbtn[data-i]')) {
-    button(b, () => actions[Number(b.dataset.i)].run());
+    bindPress(b, () => actions[Number(b.dataset.i)].run());
   }
 }
