@@ -1,6 +1,7 @@
+import sunny from './dd-sunny.json';
 import type { Channel, Lift, MapDef, Saw, Zone } from './physics';
 
-// ステージはすべてこのプロジェクトのオリジナル。四角形を重ねて組み立てる。
+// オリジナルのステージと、出典を記載したDDNet移植版。
 class Builder {
   grid: string[][];
   hints: MapDef['hints'] = [];
@@ -219,7 +220,7 @@ function stage4(): MapDef {
   });
 }
 
-export const MAPS: MapDef[] = [stage1(), stage2(), stage3(), stage4()];
+export const MAPS: MapDef[] = [stage1(), stage2(), stage3(), stage4(), sunny];
 
 // 大部屋の広場：左にフリー入口、右に協力の台
 function lobby(): MapDef {
@@ -253,6 +254,8 @@ function lobby(): MapDef {
 export const LOBBY_MAP = lobby();
 
 /** 遊べるステージだけを探す */
-export const stageById = (id: string) => MAPS.find((m) => m.id === id);
+const custom = new Map<string, MapDef>();
+export function registerCourse(map: MapDef) { if (map.id.startsWith('user-')) custom.set(map.id, structuredClone(map)); }
+export const stageById = (id: string) => MAPS.find((m) => m.id === id) ?? custom.get(id);
 /** 大部屋を含むすべてのマップから探す */
 export const mapById = (id: string) => (id === LOBBY_MAP.id ? LOBBY_MAP : stageById(id));

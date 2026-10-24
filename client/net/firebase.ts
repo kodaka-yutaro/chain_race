@@ -1,3 +1,4 @@
+import { canRelease, validateCourseMap, type Course } from '../../shared/courses';
 import { initializeApp, type FirebaseOptions } from 'firebase/app';
 import {
   createUserWithEmailAndPassword, getAuth, signInAnonymously, signInWithEmailAndPassword, signOut,
@@ -45,6 +46,28 @@ export function firebaseBackend(config: FirebaseOptions): Backend {
 
   return {
     local: false,
+    async listCourses() {
+      const snap = await getDocs(query(collection(db, 'courses'), orderBy('createdAt', 'desc'), limit(100)));
+      return snap.docs.map(d => d.data() as Course).filter(c => {
+        try { return c.map.id === c.id && !!validateCourseMap(c.map); } catch { return false; }
+      });
+    },
+    async publishCourse(map, authorName) {
+      const a = await this.account();
+      if (!a) throw new Error('コースの投稿にはログインしてください');
+      const id = 'user-' + randomId();
+      const c: Course = { id, author: a.uid, authorName, createdAt: Date.now(), status: 'prerelease', map: { ...validateCourseMap(map), id } };
+      await setDoc(doc(db, 'courses', id), c); return c;
+    },
+    async releaseCourse(id, results) {
+      if (!canRelease(results)) throw new Error('2人以上での協力クリアが必要です');
+      await ensureUser();
+      await runTransaction(db, async tx => {
+        const ref = doc(db, 'courses', id), snap = await tx.get(ref);
+        if (!snap.exists() || snap.get('status') !== 'prerelease') return;
+        tx.update(ref, { status: 'released', firstClear: { names: results.map(r => r.name), time: Math.max(...results.map(r => r.time)), at: Date.now() } });
+      });
+    },
 
     async account() {
       await auth.authStateReady();

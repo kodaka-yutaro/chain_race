@@ -38,20 +38,22 @@ const ROCK: Record<string, [string, string, string, string]> = {
   lobby: ['#6a6f8f', '#565b7a', '#444862', '#7fd1c2'],
 };
 
-export function buildTileLayer(m: MapDef): HTMLCanvasElement {
+export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, height = m.height): HTMLCanvasElement {
   const c = document.createElement('canvas');
-  c.width = m.width * TILE;
-  c.height = m.height * TILE;
+  c.width = width * TILE;
+  c.height = height * TILE;
   const g = c.getContext('2d')!;
+  g.translate(-x0 * TILE, -y0 * TILE);
   const [rock, rockDark, rockEdge, grass] = ROCK[m.id] ?? ROCK.hill;
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= m.width || y >= m.height ? 'X' : m.tiles[y][x]);
   const solid = (ch: string) => isSolidChar(ch, Array(CHANNELS).fill(false));
 
-  for (let y = 0; y < m.height; y++) {
-    for (let x = 0; x < m.width; x++) {
+  for (let y = y0; y < Math.min(m.height, y0 + height); y++) {
+    for (let x = x0; x < Math.min(m.width, x0 + width); x++) {
       const ch = m.tiles[y][x];
       const px = x * TILE, py = y * TILE;
-      if (ch === '#') {
+      if (ch === 'U') { g.fillStyle = '#85e6b766'; g.fillRect(px, py, TILE, TILE); }
+      if (ch === '#' || ch === 'O') {
         const gr = g.createLinearGradient(px, py, px, py + TILE);
         gr.addColorStop(0, rock);
         gr.addColorStop(1, rockDark);

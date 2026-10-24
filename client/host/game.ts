@@ -23,6 +23,8 @@ export class Game {
   readonly world: World;
   readonly slots = new Map<number, Slot>();
   private cleared = false;
+  private starters = new Set<number>();
+  private teamBroken = false;
 
   constructor(
     readonly stageId: string,
@@ -53,14 +55,16 @@ export class Game {
     if (this.mode === 'lobby') r.x += Math.round((Math.random() * 8 - 4) * TILE);
     else r.x += (this.slots.size % 3) * TILE;
     this.world.runners.push(r);
+    this.starters.add(c.id);
     this.slots.set(c.id, { client: c, queue: [], last: emptyInput(), lastSeq: 0, queuedSeq: 0 });
     c.game = this;
-    c.send({ t: 'gameStart', gameId: this.id, stageId: this.stageId, mode: this.mode, youId: c.id, names: this.names() });
+    c.send({ t: 'gameStart', gameId: this.id, stageId: this.stageId, mode: this.mode, youId: c.id, names: this.names(), map: this.stageId.startsWith('user-') ? this.world.map : undefined });
     this.broadcast({ t: 'names', names: this.names() });
   }
 
   remove(c: Client) {
     if (!this.slots.delete(c.id)) return;
+    this.teamBroken = true;
     this.world.runners = this.world.runners.filter((r) => r.id !== c.id);
     for (const r of this.world.runners) if (r.wireRunner === c.id) { r.wireState = 0; r.wireRunner = -1; }
     c.game = null;
@@ -85,7 +89,8 @@ export class Game {
       // kill は1回だけ効かせる
       if (s.last.kill) s.last = { ...s.last, kill: false };
     }
-    const ev = stepWorld(this.world, inputs);
+    if (this.stageId.startsWith('user-') && this.size < 2) inputs.forEach((_, id) => inputs.set(id, emptyInput()));
+    const ev = this.stageId.startsWith('user-') && this.size < 2 ? { finished: [], killed: [] } : stepWorld(this.world, inputs);
 
     for (const f of ev.finished) {
       const s = this.slots.get(f.runnerId);
@@ -93,12 +98,12 @@ export class Game {
       // 記録の保存は各プレイヤーが自分のブラウザから行う
       this.broadcast({ t: 'finish', runnerId: f.runnerId, name: s.client.name, time: f.time });
     }
-    if (this.mode === 'party' && !this.cleared && this.world.runners.length > 0
+    if (this.mode === 'party' && !this.cleared && this.world.runners.length >= this.world.map.minPlayers && !this.teamBroken && this.starters.size === this.world.runners.length
       && this.world.runners.every((r) => r.finishedTime >= 0)) {
       this.cleared = true;
       this.broadcast({
-        t: 'partyClear',
-        results: this.world.runners.map((r) => ({ name: this.slots.get(r.id)!.client.name, time: r.finishedTime })),
+        t: 'partyClear', stageId: this.stageId, gameId: this.id,
+        results: this.world.runners.map((r) => ({ id: r.id, name: this.slots.get(r.id)!.client.name, time: r.finishedTime })),
       });
     }
     if (this.cleared && this.world.runners.some((r) => r.finishedTime < 0)) this.cleared = false;
@@ -114,6 +119,7 @@ export class Game {
         t: 'snap', gameId: this.id, tick: this.world.tick, me, lastSeq: s.lastSeq,
         others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen,
         timers: this.world.timers, lifts: this.world.lifts, saws: this.world.saws, zones,
+        waiting: this.stageId.startsWith('user-') && this.size < this.world.map.minPlayers,
       });
     }
   }

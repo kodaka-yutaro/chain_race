@@ -66,3 +66,8 @@ body:has(#screen-game:not(.hidden)) .music-dock,body:has(#screen-hub:not(.hidden
 @media(prefers-reduced-motion:reduce) { .flame-title,.flame-title::before,.flame-title::after { animation:none; } }
 .flame-title { white-space:nowrap; }
 @media(max-width:650px) { .flame-title { font-size:clamp(64px,22vw,94px); }.city-nav button { white-space:nowrap; }.city-brand { letter-spacing:.08em; }.city-copy { letter-spacing:.03em; } }
+body.touch .touch-row { flex-wrap:wrap; gap:5px; }
+body.touch .touch-row .stick-jump-toggle { font-size:10px; padding:0 9px; }
+body.touch .stick-jump-toggle[aria-pressed=true] { background:#334d45; color:#f6d997; }
+body.touch #screen-editor { padding-bottom:80px; }
+@media(max-width:600px) { #screen-hubs .bar .me-label { order:5; font-size:12px; width:100%; }.city-brand { max-width:155px; }.music-dock { bottom:max(12px,env(safe-area-inset-bottom)); }.editor-viewport { max-height:45dvh; } }

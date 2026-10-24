@@ -1,3 +1,4 @@
+import { canRelease, validateCourseMap, type Course } from '../../shared/courses';
 import { HUB_CAPACITY } from '../../shared/protocol';
 import { HUB_STALE_MS, mergeHubs, randomId, type Account, type Backend, type HubInfo } from './backend';
 
@@ -17,6 +18,18 @@ export function localBackend(): Backend {
 
   return {
     local: true,
+    async listCourses() { return read<Course[]>('cr.courses', []); },
+    async publishCourse(map, authorName) {
+      const id = 'user-' + randomId(), a = me();
+      if (!a) throw new Error('コースの投稿にはログインしてください');
+      const c: Course = { id, author: a.uid, authorName, createdAt: Date.now(), status: 'prerelease', map: { ...validateCourseMap(map), id } };
+      write('cr.courses', [c, ...read<Course[]>('cr.courses', [])]); return c;
+    },
+    async releaseCourse(id, results) {
+      if (!canRelease(results)) throw new Error('2人以上での協力クリアが必要です');
+      const all = read<Course[]>('cr.courses', []), c = all.find(c => c.id === id);
+      if (c && c.status === 'prerelease') { c.status = 'released'; c.firstClear = { names: results.map(r => r.name), time: Math.max(...results.map(r => r.time)), at: Date.now() }; write('cr.courses', all); }
+    },
     async account() { return me(); },
     async register(name, password) {
       const all = accounts();

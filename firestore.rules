@@ -30,6 +30,35 @@ service cloud.firestore {
       }
     }
 
+    // 投稿時は未クリア。公開済みのタイルは変更不可（修正は別IDで再投稿）。
+    match /courses/{courseId} {
+      allow read: if true;
+      allow create: if isAccount()
+        && request.resource.data.keys().hasOnly(['id', 'author', 'authorName', 'createdAt', 'status', 'map'])
+        && request.resource.data.id == courseId
+        && courseId.matches('user-[a-f0-9]{18}')
+        && request.resource.data.author == request.auth.uid
+        && request.resource.data.authorName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+        && request.resource.data.status == 'prerelease'
+        && request.resource.data.createdAt is number
+        && request.resource.data.map.id == courseId
+        && request.resource.data.map.name is string && request.resource.data.map.name.size() > 0 && request.resource.data.map.name.size() <= 40
+        && request.resource.data.map.description is string && request.resource.data.map.description.size() <= 280
+        && request.resource.data.map.minPlayers == 2
+        && request.resource.data.map.width is int && request.resource.data.map.width >= 20 && request.resource.data.map.width <= 240
+        && request.resource.data.map.height is int && request.resource.data.map.height >= 16 && request.resource.data.map.height <= 100
+        && request.resource.data.map.tiles is list && request.resource.data.map.tiles.size() == request.resource.data.map.height;
+      // 既存の記録と同じブラウザ信頼モデル。ホストのpartyClear後にだけアプリが呼ぶ。
+      allow update: if signedIn()
+        && resource.data.status == 'prerelease' && request.resource.data.status == 'released'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'firstClear'])
+        && request.resource.data.firstClear.keys().hasOnly(['names', 'time', 'at'])
+        && request.resource.data.firstClear.names is list
+        && request.resource.data.firstClear.names.size() >= 2 && request.resource.data.firstClear.names.size() <= 8
+        && request.resource.data.firstClear.time is number && request.resource.data.firstClear.time >= 0
+        && request.resource.data.firstClear.at is number;
+    }
+
     // アカウントの表示名
     match /users/{uid} {
       allow read: if true;

@@ -1,4 +1,4 @@
-import type { Input, Runner } from './physics';
+import type { MapDef, Input, Runner } from './physics';
 
 /** 大部屋の定員。作った人のブラウザが全員分の通信を受け持つので控えめにする */
 export const HUB_CAPACITY = 16;
@@ -34,6 +34,7 @@ export type ClientMsg =
   | { t: 'hello'; name: string; guest: boolean }
   | { t: 'chat'; text: string }
   | { t: 'interact' }
+  | { t: 'courseJoin'; map: MapDef }
   | { t: 'leaveGame' }
   /** 取りこぼしに備えて直近の入力をまとめて送る */
   | { t: 'input'; gameId: string; list: { seq: number; input: Input }[] };
@@ -43,11 +44,11 @@ export type ServerMsg =
   | { t: 'welcome'; you: UserInfo }
   | { t: 'hubState'; hub: HubState }
   | { t: 'chat'; from: string; fromId?: number; text: string; system?: boolean }
-  | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string> }
+  | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string>; map?: MapDef }
   | { t: 'names'; names: Record<number, string> }
-  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[] }
+  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean }
   | { t: 'finish'; runnerId: number; name: string; time: number }
-  | { t: 'partyClear'; results: { name: string; time: number }[] }
+  | { t: 'partyClear'; stageId: string; gameId: string; results: { id: number; name: string; time: number }[] }
   | { t: 'error'; message: string };
 
 /** 届かなくてもよい（次のぶんで上書きされる）メッセージ */

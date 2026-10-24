@@ -19,7 +19,8 @@ export class ClientGame {
   private names: Record<number, string> = {};
   private doors = Array<boolean>(CHANNELS).fill(false);
   private ctx: CanvasRenderingContext2D;
-  private staticLayer: HTMLCanvasElement;
+  private staticLayer: HTMLCanvasElement | null;
+  private chunks = new Map<string, HTMLCanvasElement>();
   private keys = new Set<string>();
   private tapped = new Set<string>();
   private clicked = { left: false, right: false };
@@ -38,6 +39,7 @@ export class ClientGame {
   private snapInterval = 40;
   private lastSnapAt = 0;
   private stopped = false;
+  private waitingForParty = false;
   private listeners: [EventTarget, string, (e: any) => void][] = [];
 
   constructor(
@@ -50,12 +52,13 @@ export class ClientGame {
     private onInteract: () => void = () => {},
   ) {
     this.map = stageOrLobby(stageId)!;
+    this.waitingForParty = stageId.startsWith('user-');
     this.world = createWorld(this.map);
     this.me = newRunner(youId, this.map);
     this.world.runners.push(this.me);
     this.names = names;
     this.ctx = canvas.getContext('2d')!;
-    this.staticLayer = buildTileLayer(this.map);
+    this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
     this.bindInput();
     this.resize();
     this.raf = requestAnimationFrame(this.frame);
@@ -75,6 +78,7 @@ export class ClientGame {
 
   stop() {
     this.stopped = true;
+    releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false;
     cancelAnimationFrame(this.raf);
     for (const [t, ev, fn] of this.listeners) t.removeEventListener(ev, fn);
   }
@@ -82,6 +86,7 @@ export class ClientGame {
   private lastSnapTick = -1;
 
   onSnap(s: Snap) {
+    this.waitingForParty = !!s.waiting;
     // 届く順番が入れ替わることがあるので、古いものは捨てる
     if (s.tick <= this.lastSnapTick) return;
     this.lastSnapTick = s.tick;
@@ -117,6 +122,7 @@ export class ClientGame {
   }
 
   private predictStep(input: Input) {
+    if (this.waitingForParty) return;
     const inputs = new Map<number, Input>([[this.me.id, input]]);
     // 他プレイヤーの入力は分からないので、フックだけは握ったままとみなす
     for (const r of this.world.runners) {
@@ -132,6 +138,7 @@ export class ClientGame {
     const clicked = this.clicked;
     this.clicked = { left: false, right: false };
     const i = emptyInput();
+    if (document.querySelector('dialog[open]')) { releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false; return i; }
     i.left = k.has('KeyA') || k.has('ArrowLeft');
     i.right = k.has('KeyD') || k.has('ArrowRight');
     i.up = k.has('KeyW') || k.has('ArrowUp');
@@ -152,7 +159,8 @@ export class ClientGame {
       i.jump ||= touch.jump || touch.jumpTap;
       i.wire ||= touch.hook || touch.hookTap;
       i.fire ||= touch.fire || touch.fireTap;
-      if (touch.hook || touch.hookTap) {
+      if (touch.aimMode) this.touchAim = { x: touch.aimX, y: touch.aimY };
+      else if (touch.hook || touch.hookTap) {
         // 触った場所を、マウスと同じようにマップの座標に直して自分からの向きにする
         const r = this.canvas.getBoundingClientRect();
         const tx = (touch.aimClientX - r.left) * (this.canvas.width / r.width) / this.cam.zoom + this.cam.x;
@@ -199,7 +207,7 @@ export class ClientGame {
 
   private bindInput() {
     this.on(window, 'keydown', (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName)) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (e.code === 'KeyK' && !e.repeat) this.killQueued = true;
       if (e.code === 'KeyF' && !e.repeat) this.onInteract();
@@ -284,9 +292,20 @@ export class ClientGame {
     g.save();
     g.scale(z, z);
     g.translate(-this.cam.x, -this.cam.y);
-    g.drawImage(this.staticLayer, 0, 0);
+    if (this.staticLayer) g.drawImage(this.staticLayer, 0, 0);
+    else {
+      const used = new Set<string>();
+      for (let y = Math.max(0, Math.floor(this.cam.y / TILE / 16)); y <= Math.min(Math.ceil(this.map.height / 16) - 1, Math.floor((this.cam.y + vh) / TILE / 16)); y++)
+        for (let x = Math.max(0, Math.floor(this.cam.x / TILE / 16)); x <= Math.min(Math.ceil(this.map.width / 16) - 1, Math.floor((this.cam.x + vw) / TILE / 16)); x++) {
+          const key = `${x},${y}`; used.add(key);
+          let chunk = this.chunks.get(key);
+          if (!chunk) { chunk = buildTileLayer(this.map, x * 16, y * 16, 16, 16); this.chunks.set(key, chunk); }
+          g.drawImage(chunk, x * 16 * TILE, y * 16 * TILE);
+        }
+      for (const key of this.chunks.keys()) if (!used.has(key)) this.chunks.delete(key);
+    }
     // 操作パネルの下に見えるマップの外は、いちばん下の段をくり返して地面が続いているように見せる
-    if (this.cam.y + vh > mh) {
+    if (this.staticLayer && this.cam.y + vh > mh) {
       const sh = this.staticLayer.height / this.map.height, sw = this.staticLayer.width;
       for (let y = mh; y < this.cam.y + vh; y += TILE) g.drawImage(this.staticLayer, 0, this.staticLayer.height - sh, sw, sh, 0, y, mw, TILE);
     }
@@ -322,6 +341,12 @@ export class ClientGame {
     for (const r of all) {
       drawRunner(g, { ...r, name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
       drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);
+    }
+    if (touch.active) {
+      const len = Math.hypot(this.touchAim.x, this.touchAim.y) || 1;
+      const ax = this.touchAim.x / len, ay = this.touchAim.y / len;
+      g.strokeStyle = '#fff9'; g.lineWidth = 2; g.setLineDash([4, 5]);
+      g.beginPath(); g.moveTo(meX + ax * 22, meY + ay * 22); g.lineTo(meX + ax * 105, meY + ay * 105); g.stroke(); g.setLineDash([]);
     }
     this.drawBubbles(g, all, now);
     this.drawZonePrompt(g, meX, meY);

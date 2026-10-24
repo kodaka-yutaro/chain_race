@@ -1,4 +1,5 @@
-import { LOBBY_MAP, MAPS, stageById } from '../../shared/maps';
+import { validateCourseMap } from '../../shared/courses';
+import { LOBBY_MAP, MAPS, registerCourse, stageById } from '../../shared/maps';
 import { inZone, type Zone } from '../../shared/physics';
 import {
   HUB_CAPACITY, PARTY_CAPACITY, PARTY_COUNTDOWN_TICKS, validName,
@@ -93,6 +94,15 @@ export class HostHub {
         c.lastChat = now;
         for (const m of this.members) m.send({ t: 'chat', from: c.name, fromId: c.id, text });
         return;
+      }
+      case 'courseJoin': {
+        if (c.game !== this.lobby || !msg.map || !/^user-[a-f0-9]{18}$/.test(msg.map.id)) return;
+        const map = { ...validateCourseMap(msg.map), id: msg.map.id };
+        let g = [...this.games].find(g => g.stageId === map.id && g.mode === 'party');
+        if (g && JSON.stringify(g.world.map) !== JSON.stringify(map)) { c.send({ t: 'error', message: 'コースの版が違います。一覧を更新してください' }); return; }
+        if (g && (g.size >= PARTY_CAPACITY || g.world.runners.some(r => r.raceStart >= 0))) { c.send({ t: 'error', message: 'このコースは出発済みです。全員が大部屋に戻ってから参加してください' }); return; }
+        if (!g) { registerCourse(map); g = new Game(map.id, 'party', gg => { this.games.delete(gg); this.pushState(); }); this.games.add(g); }
+        this.moveTo(c, g); this.pushState(); return;
       }
       case 'interact':
         return this.interact(c);

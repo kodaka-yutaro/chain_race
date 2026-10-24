@@ -40,8 +40,11 @@ export function mountMusic(button: HTMLButtonElement, slider: HTMLInputElement) 
     } catch { enabled = false; button.textContent = '音声を再試行'; button.setAttribute('aria-pressed', 'false'); }
   }
   button.addEventListener('click', async () => {
-    if (enabled) { enabled = false; clearInterval(timer); await ctx?.suspend(); label(); }
-    else await start();
+    button.disabled = true;
+    try {
+      if (enabled) { enabled = false; clearInterval(timer); await ctx?.suspend(); label(); }
+      else await start();
+    } finally { button.disabled = false; }
   });
   slider.addEventListener('input', () => {
     volume = Number(slider.value) / 100;
@@ -51,7 +54,7 @@ export function mountMusic(button: HTMLButtonElement, slider: HTMLInputElement) 
   document.addEventListener('visibilitychange', () => {
     if (!enabled || !ctx) return;
     if (document.hidden) { clearInterval(timer); void ctx.suspend(); }
-    else { void ctx.resume().then(() => { next = ctx!.currentTime + .04; timer = window.setInterval(schedule, 70); }); }
+    else { void ctx.resume().then(() => { if (!enabled || document.hidden) return; clearInterval(timer); next = ctx!.currentTime + .04; timer = window.setInterval(schedule, 70); }).catch(() => { enabled = false; label(); }); }
   });
   label();
 }

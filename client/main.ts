@@ -1,3 +1,6 @@
+import { mountEditor } from './editor';
+import type { Course } from '../shared/courses';
+import { registerCourse } from '../shared/maps';
 import { MAPS, mapById } from '../shared/maps';
 import type { Input } from '../shared/physics';
 import { validName, type ClientMsg, type GameMode, type HubState, type ServerMsg, type UserInfo } from '../shared/protocol';
@@ -39,7 +42,7 @@ let gameStage = '';
 let recentInputs: { seq: number; input: Input }[] = [];
 let rankStage = MAPS[0].id;
 
-type Screen = 'title' | 'hubs' | 'hub' | 'game';
+type Screen = 'title' | 'hubs' | 'hub' | 'game' | 'editor';
 function show(s: Screen) {
   for (const x of $$('.screen')) x.classList.add('hidden');
   const target = $(`#screen-${s}`);
@@ -196,6 +199,8 @@ function onMessage(m: ServerMsg) {
       onFinish(m);
       return;
     case 'partyClear':
+      if (m.gameId !== gameId || m.stageId !== gameStage) return;
+      if (gameStage.startsWith('user-')) promoteCourse(m);
       showResult('パーティ全員ゴール！', [
         el('ul', { className: 'list' }, ...m.results.map((r) => el('li', {}, `${r.name}　${r.time.toFixed(2)} 秒`))),
       ]);
@@ -286,6 +291,7 @@ function loadRanking(where: string) {
 
 function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
   stopGame();
+  if (m.map && m.map.id === m.stageId) registerCourse(m.map);
   gameMode = m.mode;
   gameId = m.gameId;
   gameStage = m.stageId;
@@ -294,10 +300,11 @@ function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
   show(lobby ? 'hub' : 'game');
   const canvas = $<HTMLCanvasElement>(lobby ? '#lobby-canvas' : '#game-canvas');
   if (!lobby) {
-    $('#hud-stage').textContent = mapById(m.stageId)?.name ?? '';
+    $('#hud-stage').textContent = (mapById(m.stageId)?.name ?? '') + (m.stageId === 'dd-sunny' ? '（移植プレリリース）' : '');
     $('#hud-mode').textContent = m.mode === 'party' ? 'パーティ' : 'フリー';
   }
   hideResult();
+  if (m.stageId.startsWith('user-')) toast('同じ大部屋の友だちが「コース一覧」から参加すると動き出します');
   game = new ClientGame(canvas, m.stageId, m.youId, m.names, (i) => {
     // 取りこぼしに備えて直近3つをまとめて送る
     recentInputs.push(i);
@@ -374,6 +381,59 @@ mountTouchControls($('#screen-hub'), [
   { label: 'チャット', cls: '', run: () => $('#screen-hub').classList.toggle('chat-open') },
 ]);
 
+
+let courses: Course[] = [];
+const catalogue = document.createElement('dialog'); catalogue.className = 'course-dialog'; document.body.append(catalogue);
+async function openCourses() {
+  catalogue.replaceChildren(el('h2', { textContent: 'みんなのコース' }));
+  const close = el('button', { textContent: '閉じる' }); close.onclick = () => catalogue.close(); catalogue.append(close);
+  if (!catalogue.open) catalogue.showModal();
+  const note = el('p', { className: 'note', textContent: '読み込み中…' }); catalogue.append(note);
+  try { courses = await backend.listCourses(); note.textContent = courses.length ? '同じ大部屋で同じコースに参加してください。2人揃うと動き出します。' : 'まだ投稿がありません。「コースをつくる」から最初のコースを投稿しよう。'; }
+  catch { note.textContent = 'コースを読み込めません。通信状態または公開設定を確認してください。'; return; }
+  const filters = el('div', { className: 'buttons' }), list = el('div', { className: 'cards' });
+  const render = (filter: string) => {
+    list.replaceChildren();
+    for (const c of courses.filter(c => filter === 'all' || c.status === filter)) {
+      const play = el('button', { textContent: 'このコースに参加', disabled: !conn || gameMode !== 'lobby' });
+      play.onclick = () => { send({ t: 'courseJoin', map: c.map }); catalogue.close(); };
+      const card = el('article', { className: 'card' },
+        el('span', { className: 'course-badge', textContent: c.status === 'released' ? '正式公開' : 'プレリリース · 未クリア' }),
+        el('h3', { textContent: c.map.name }), el('p', { textContent: c.map.description }),
+        el('p', { className: 'note', textContent: `${c.authorName} · ${c.map.width} × ${c.map.height} · 2人〜` }), play);
+      if (c.firstClear) card.append(el('p', { className: 'note', textContent: `初クリア: ${c.firstClear.names.join(' ＆ ')} · ${c.firstClear.time.toFixed(2)}秒` }));
+      if (!conn) card.append(el('p', { className: 'note', textContent: '大部屋に入ると参加できます' }));
+      list.append(card);
+    }
+    if (!list.children.length) list.append(el('p', { className: 'note', textContent: 'この分類のコースはまだありません' }));
+    filters.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.filter === filter)));
+  };
+  for (const [value, text] of [['all', 'すべて'], ['released', '正式公開'], ['prerelease', 'プレリリース']]) {
+    const b = el('button', { textContent: text }); b.dataset.filter = value; b.onclick = () => render(value); filters.append(b);
+  }
+  catalogue.append(filters, list); render('all');
+}
+async function promoteCourse(m: Extract<ServerMsg, { t: 'partyClear' }>) {
+  const line = el('p', { textContent: '初クリアを確認しています…' });
+  // partyClear の結果パネルの描画後に追加する
+  queueMicrotask(() => $('#result-body').append(line));
+  try {
+    await backend.releaseCourse(m.stageId, m.results);
+    line.textContent = '協力クリア達成！このコースは正式公開になりました。';
+  } catch {
+    line.textContent = '正式公開の保存に失敗しました。';
+    const retry = el('button', { textContent: '保存を再試行' }); retry.onclick = () => { retry.remove(); promoteCourse(m); }; line.append(retry);
+  }
+}
+for (const b of $$('[data-courses]')) b.onclick = openCourses;
+$('#btn-editor').onclick = () => {
+  show('editor');
+  mountEditor($('#screen-editor'), async map => {
+    const a = await backend.account(); if (!a) throw new Error('投稿にはアカウントでログインしてください。下書きは残っています。');
+    await backend.publishCourse(map, a.name);
+  });
+  $('#screen-editor [data-close]').onclick = () => show('hubs');
+};
 refreshTitle();
 show('title');
 if (backend.local) console.info('Firebase 未設定のため、同じブラウザのタブ同士だけでつながるローカル動作です');

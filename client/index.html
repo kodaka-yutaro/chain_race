@@ -83,7 +83,7 @@
     <!-- 大部屋一覧 -->
     <section id="screen-hubs" class="screen hidden">
       <header class="bar">
-        <h2>大部屋をえらぶ</h2>
+        <h2>大部屋をえらぶ</h2><button id="btn-editor">コースをつくる</button><button data-courses>コース一覧</button>
         <span class="me-label"></span>
         <button id="btn-back-title" class="link">タイトルへ</button>
       </header>
@@ -96,6 +96,12 @@
           </form>
         </div>
         <div class="panel">
+          <h3>DDNetからの移植</h3>
+          <p><b>Sunny Side Up</b> <span class="course-badge">移植プレリリース</span></p>
+          <p class="note">Ravie 作。元のタイル配置を取り込みました。大部屋の入口から遊べます。見た目・物理には本家との差があり、通しクリアは未確認です。</p>
+          <p><b>Kobra</b> <span class="course-badge">移植準備中</span></p>
+          <p class="note">Zerodin 作。元データを保存済み。武器・テレポート・ストッパーなどの対応が必要です。</p>
+          <p class="note"><a href="https://ddnet.org/maps/Sunny-32-Side-32-Up" target="_blank" rel="noopener">Sunny Side Up の出典</a> · <a href="https://ddnet.org/maps/Kobra" target="_blank" rel="noopener">Kobra の出典</a></p>
           <h3>ランキング</h3>
           <div class="stage-tabs" data-rank="hubs"></div>
           <ol class="ranking" data-rank-list="hubs"></ol>
@@ -110,7 +116,7 @@
       <header class="lobby-bar">
         <h2 id="hub-name"></h2>
         <span class="me-label"></span>
-        <button id="btn-leave-hub">大部屋を出る</button>
+        <button data-courses>コース一覧</button><button id="btn-leave-hub">大部屋を出る</button>
       </header>
       <aside class="lobby-side">
         <details open>
@@ -129,6 +135,7 @@
       </div>
     </section>
 
+    <section id="screen-editor" class="screen hidden"></section>
     <!-- ゲーム -->
     <section id="screen-game" class="screen hidden">
       <canvas id="game-canvas"></canvas>
