@@ -231,7 +231,9 @@ function wordPractice():MapDef {
     .hint(51,17,'大は自分で消すまで残る。ミニは落ちる箱、フックで引こう');
   return b.build({id:'word-practice',name:'中華吐息の稽古場',description:'「中華」を吐いて動く足場にする練習コース。文字の線には乗れて、フックも掛かる。',minPlayers:1,wordBlocks:true});
 }
-export const MAPS: MapDef[] = [wordPractice(),stage1(), stage2(), stage3(), stage4(), sunny, kobra];
+// The breath is a standard ability in every built-in course, including DD imports.
+export const MAPS: MapDef[] = [wordPractice(),stage1(), stage2(), stage3(), stage4(), sunny, kobra]
+  .map(map => ({ ...map, wordBlocks: true }));
 
 // 大部屋の広場：左にフリー入口、右に協力の台
 function lobby(): MapDef {
@@ -260,7 +262,7 @@ function lobby(): MapDef {
   b.hint(2, 9, 'フリー入口: 入口で F を押すと、誰でもいるステージに入る')
     .hint(c + 14, 9, '協力の台: 乗って F でカウント開始、台の上の全員で出発')
     .hint(c - 7, 9, 'Enter でチャット');
-  return b.build({ id: 'lobby', name: '大部屋', minPlayers: 1, description: '' });
+  return b.build({ id: 'lobby', name: '大部屋', minPlayers: 1, description: '', wordBlocks: true });
 }
 export const LOBBY_MAP = lobby();
 
