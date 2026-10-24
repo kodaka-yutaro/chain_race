@@ -1,5 +1,6 @@
 // 見た目の描画（背景・タイル・キャラ・フック）。ゲームの進行とは切り離してある。
 import { CHANNELS, isSolidChar, LIFT_THICK, liftTop, SAW_THICK, TEE_SIZE, TILE, type MapDef } from '../shared/physics';
+import { drawChinatown } from './chinatown';
 
 const R = TEE_SIZE / 2;
 
@@ -21,163 +22,10 @@ function hash(x: number, y: number, s = 0): number {
 
 // ---------- 背景 ----------
 
-interface Theme {
-  sky: [string, string, string];
-  far: string; mid: string; near: string;
-  clouds: boolean; stars: boolean; cave: boolean;
-  sun?: string;
-}
-
-const THEMES: Record<string, Theme> = {
-  hill: { sky: ['#5fb6e8', '#a8dcf2', '#e6f6ef'], far: '#8fb9c9', mid: '#6fa77a', near: '#4f8a5b', clouds: true, stars: false, cave: false, sun: '#fff6c9' },
-  cave: { sky: ['#140f26', '#231a3d', '#2d2248'], far: '#2b2145', mid: '#382a58', near: '#45346b', clouds: false, stars: false, cave: true },
-  tower: { sky: ['#40275e', '#c4577a', '#f7a267'], far: '#7a4f78', mid: '#5b3a63', near: '#3f2a4d', clouds: true, stars: false, cave: false, sun: '#ffd9a0' },
-  factory: { sky: ['#1b2433', '#3c4a5c', '#d98a4e'], far: '#4a5363', mid: '#384150', near: '#2a313d', clouds: false, stars: false, cave: false, sun: '#ffc27a' },
-  lobby: { sky: ['#0f1a3a', '#253a73', '#5a6fa8'], far: '#2f3f72', mid: '#263463', near: '#1d2950', clouds: false, stars: true, cave: false },
-};
-
-const ridge = (x: number, seed: number, amp: number) =>
-  Math.sin(x * 0.0021 + seed) * amp * 0.5 + Math.sin(x * 0.0053 + seed * 2.1) * amp * 0.3 + Math.sin(x * 0.0127 + seed * 3.7) * amp * 0.2;
-
 export function drawBackground(
-  g: CanvasRenderingContext2D, mapId: string, W: number, H: number, camX: number, camY: number, zoom: number, now: number,
+  g: CanvasRenderingContext2D, _mapId: string, W: number, H: number, camX: number, _camY: number, _zoom: number, now: number,
 ) {
-  const th = THEMES[mapId] ?? THEMES.hill;
-  const sky = g.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, th.sky[0]);
-  sky.addColorStop(0.6, th.sky[1]);
-  sky.addColorStop(1, th.sky[2]);
-  g.fillStyle = sky;
-  g.fillRect(0, 0, W, H);
-
-  if (th.stars) {
-    for (let i = 0; i < 90; i++) {
-      const sx = ((hash(i, 1) * W * 1.5 - camX * zoom * 0.05) % W + W) % W;
-      const sy = hash(i, 2) * H * 0.6;
-      const tw = 0.5 + 0.5 * Math.sin(now / 600 + i);
-      g.fillStyle = `rgba(255,255,255,${0.3 + tw * 0.6})`;
-      g.fillRect(sx, sy, 2, 2);
-    }
-  }
-  if (th.sun) {
-    const gr = g.createRadialGradient(W * 0.78, H * 0.22, 0, W * 0.78, H * 0.22, H * 0.35);
-    gr.addColorStop(0, th.sun);
-    gr.addColorStop(0.15, th.sun);
-    gr.addColorStop(0.16, 'rgba(255,255,255,0.35)');
-    gr.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = gr;
-    g.fillRect(0, 0, W, H);
-  }
-  if (th.clouds) {
-    g.fillStyle = 'rgba(255,255,255,0.55)';
-    for (let i = 0; i < 7; i++) {
-      const span = W + 400;
-      const cx = (((hash(i, 7) * span + now * 0.006 * (1 + i % 3) - camX * zoom * 0.1) % span) + span) % span - 200;
-      const cy = H * (0.1 + hash(i, 8) * 0.3);
-      const s = 40 + hash(i, 9) * 50;
-      g.beginPath();
-      g.ellipse(cx, cy, s * 1.6, s * 0.45, 0, 0, Math.PI * 2);
-      g.ellipse(cx - s * 0.6, cy + 4, s * 0.8, s * 0.35, 0, 0, Math.PI * 2);
-      g.ellipse(cx + s * 0.5, cy - s * 0.2, s * 0.9, s * 0.5, 0, 0, Math.PI * 2);
-      g.fill();
-    }
-  }
-
-  if (mapId === 'factory') drawFactorySkyline(g, W, H, camX, camY, zoom, now);
-
-  // 遠い山・中くらいの丘・手前の丘（スクロールの速さを変えて奥行きを出す）
-  const layers: [string, number, number, number, number][] = th.cave
-    ? [[th.far, 0.15, 0.15, 60, 1], [th.mid, 0.3, 0.25, 70, 2], [th.near, 0.5, 0.35, 80, 3]]
-    : [[th.far, 0.15, 0.55, 140, 1], [th.mid, 0.3, 0.68, 100, 2], [th.near, 0.5, 0.8, 70, 3]];
-  for (const [color, par, base, amp, seed] of layers) {
-    g.fillStyle = color;
-    g.beginPath();
-    const off = camX * zoom * par;
-    const yoff = -camY * zoom * par * 0.3;
-    if (th.cave) {
-      // 天井から垂れる岩
-      g.moveTo(0, 0);
-      for (let x = 0; x <= W + 16; x += 16) {
-        const wx = x + off;
-        const spike = Math.max(0, Math.sin(wx * 0.02 + seed) * 0.5 + hash(Math.floor(wx / 48), seed) * 0.8 - 0.3);
-        g.lineTo(x, H * base + ridge(wx, seed, amp) + spike * amp * 1.5 + yoff);
-      }
-      g.lineTo(W, 0);
-    } else {
-      g.moveTo(0, H);
-      for (let x = 0; x <= W + 16; x += 16) g.lineTo(x, H * base + ridge(x + off, seed, amp) + yoff);
-      g.lineTo(W, H);
-    }
-    g.closePath();
-    g.fill();
-  }
-  if (th.cave) {
-    // 光る結晶
-    for (let i = 0; i < 14; i++) {
-      const span = W + 200;
-      const cx = (((hash(i, 21) * span * 3 - camX * zoom * 0.4) % span) + span) % span - 100;
-      const cy = H * (0.75 + hash(i, 22) * 0.2);
-      const glow = 0.5 + 0.5 * Math.sin(now / 900 + i * 1.7);
-      g.fillStyle = `rgba(150,110,255,${0.15 + glow * 0.15})`;
-      g.beginPath();
-      g.arc(cx, cy, 26, 0, Math.PI * 2);
-      g.fill();
-      g.fillStyle = `rgba(190,160,255,${0.6 + glow * 0.3})`;
-      g.beginPath();
-      g.moveTo(cx, cy - 18);
-      g.lineTo(cx + 6, cy);
-      g.lineTo(cx, cy + 8);
-      g.lineTo(cx - 6, cy);
-      g.closePath();
-      g.fill();
-    }
-  }
-}
-
-/** 工場の遠景：煙突と建屋の影、立ちのぼる煙、窓の明かり */
-function drawFactorySkyline(g: CanvasRenderingContext2D, W: number, H: number, camX: number, camY: number, zoom: number, now: number) {
-  const span = 900, par = 0.08;
-  const yoff = -camY * zoom * par * 0.3;
-  const base = H * 0.62 + yoff;
-  for (let k = -1; k < W / span + 2; k++) {
-    const ox = k * span - ((camX * zoom * par) % span);
-    const seed = Math.floor((camX * zoom * par) / span) + k;
-    for (let j = 0; j < 4; j++) {
-      const bx = ox + j * 220 + hash(seed, j, 1) * 60;
-      const bw = 120 + hash(seed, j, 2) * 80, bh = 60 + hash(seed, j, 3) * 90;
-      g.fillStyle = '#2e3644';
-      g.fillRect(bx, base - bh, bw, bh + H);
-      // のこぎり屋根
-      g.beginPath();
-      for (let t = 0; t < bw; t += 30) {
-        g.moveTo(bx + t, base - bh);
-        g.lineTo(bx + t + 30, base - bh - 16);
-        g.lineTo(bx + t + 30, base - bh);
-      }
-      g.fill();
-      // 窓の明かり
-      for (let wy = 0; wy < 2; wy++) for (let wx = 0; wx < bw / 22 - 1; wx++) {
-        if (hash(seed * 7 + j, wx, wy) < 0.45) continue;
-        g.fillStyle = `rgba(255,190,110,${0.35 + 0.25 * Math.sin(now / 1500 + wx + wy * 3)})`;
-        g.fillRect(bx + 10 + wx * 22, base - bh + 18 + wy * 24, 10, 12);
-      }
-      // 煙突と煙
-      if (hash(seed, j, 4) > 0.4) {
-        const cx = bx + bw * 0.7, ch = 80 + hash(seed, j, 5) * 70;
-        g.fillStyle = '#272e3a';
-        g.fillRect(cx, base - bh - ch, 18, ch);
-        g.fillStyle = '#b5543c';
-        g.fillRect(cx - 2, base - bh - ch + 10, 22, 6);
-        for (let p = 0; p < 6; p++) {
-          const t = ((now / 4000 + p / 6 + hash(seed, j, 6)) % 1);
-          g.fillStyle = `rgba(200,205,215,${0.22 * (1 - t)})`;
-          g.beginPath();
-          g.arc(cx + 9 + t * 60, base - bh - ch - t * 120, 10 + t * 26, 0, Math.PI * 2);
-          g.fill();
-        }
-      }
-    }
-  }
+  drawChinatown(g, W, H, now, camX);
 }
 
 // ---------- タイル ----------

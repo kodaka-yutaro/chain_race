@@ -1,4 +1,3 @@
 User-agent: *
 Allow: /
-
-Sitemap: https://chainrace.kdking-tools.com/sitemap.xml
+# Pages carry noindex; allow crawling so search engines can read that directive.
