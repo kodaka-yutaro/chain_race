@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createWorld, newRunner, emptyInput, stepWorld, isSolid, WIRE_ATTACHED, WIRE_IDLE, type World, type Input } from '../shared/physics';
 import { mapById } from '../shared/maps';
 import { newCourseMap, validateCourseMap } from '../shared/courses';
-import { WORD_CHARGE, WORD_FORM, WORD_COOLDOWN, MINI_SIZE, wordBoxHit, type WordBlock } from '../shared/word-blocks';
+import { WORD_CELL, WORD_CHARGE, WORD_FORM, WORD_COOLDOWN, MINI_SIZE, MINI_LIMIT, wordBoxHit, type WordBlock } from '../shared/word-blocks';
 import { HostHub, type Link } from '../client/host/hub';
 import type { ServerMsg } from '../shared/protocol';
 
@@ -19,11 +19,11 @@ const block=(owner=1):WordBlock=>({id:1,owner,x:300,y:400,vx:1.15,vy:0,born:0,ex
 
 test('文字の線にだけ当たり判定があり、中の穴と文字間は空洞',()=>{
   const {w}=setup(),b=block();w.words=[b];
-  assert.ok(isSolid(w,304,440));
-  assert.equal(isSolid(w,324,452),false);
-  assert.equal(wordBoxHit(b,324,450,20,20),false);
-  assert.equal(wordBoxHit(b,430,410,20,100),false);
-  assert.ok(wordBoxHit(b,355,400,20,20));
+  assert.ok(isSolid(w,b.x+WORD_CELL*.5,b.y+WORD_CELL*5));
+  assert.equal(isSolid(w,b.x+WORD_CELL*3,b.y+WORD_CELL*6.5),false);
+  assert.equal(wordBoxHit(b,b.x+WORD_CELL*3,b.y+WORD_CELL*6.25,WORD_CELL*2,WORD_CELL*2),false);
+  assert.equal(wordBoxHit(b,b.x+WORD_CELL*16.25,b.y+10,WORD_CELL*2.5,100),false);
+  assert.ok(wordBoxHit(b,b.x+WORD_CELL*7,b.y,WORD_CELL*2,20));
 });
 
 test('大中華は溜めて実体化し、長押しで連射せず時間では消えない',()=>{
@@ -68,16 +68,17 @@ test('消去は自分の大中華と溜めだけに効き、ミニや仲間の�
   tick(w,WORD_CHARGE+WORD_FORM+2);assert.equal(w.words.filter(b=>b.owner===1&&b.kind!=='mini').length,0);
 });
 
-test('ミニ中華は何個でも出せて大中華の枠を使わず、地面へ落ちて止まる',()=>{
+test('ミニ中華は5個を保ち、大中華の枠を使わず、地面へ落ちて止まる',()=>{
   const {w,r}=setup();
   for(let n=0;n<6;n++){
     // Stay behind the earlier boxes instead of teleporting inside a settled box.
     r.x=650-n*100;r.y=818;r.vx=r.vy=0;
     tick(w,1,{miniSpit:true,aimX:1,aimY:0});tick(w,65);
   }
-  assert.equal(w.words.length,6);assert.ok(w.words.every(b=>b.kind==='mini'&&b.solid));
+  assert.equal(w.words.length,MINI_LIMIT);assert.ok(w.words.every(b=>b.kind==='mini'&&b.solid));
+  assert.deepEqual(w.words.map(b=>b.id),[2,3,4,5,6]);
   for(const b of w.words){assert.ok(Math.abs(b.y+MINI_SIZE-832)<1);assert.equal(b.vy,0);}
-  tick(w,1000);assert.equal(w.words.length,6);
+  tick(w,1000);assert.equal(w.words.length,MINI_LIMIT);
   w.map={...w.map,wordBlocks:false};tick(w,1,{miniSpit:true});assert.equal(w.words.length,0);
 });
 

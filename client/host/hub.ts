@@ -228,7 +228,8 @@ export class HostHub {
   }
 
   private enterFree(c: Client, stageId: string) {
-      let g = this.free.get(stageId);
+      const solo=stageById(stageId)?.solo;
+      let g = solo?undefined:this.free.get(stageId);
       if (!g) {
         g = new Game(stageId, 'free', (gg) => {
           this.games.delete(gg);
@@ -236,7 +237,7 @@ export class HostHub {
           this.pushState();
         });
         this.games.add(g);
-        this.free.set(stageId, g);
+        if(!solo)this.free.set(stageId, g);
       }
       this.moveTo(c, g);
       this.pushState();

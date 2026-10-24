@@ -301,7 +301,7 @@ function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
   const canvas = $<HTMLCanvasElement>(lobby ? '#lobby-canvas' : '#game-canvas');
   if (!lobby) {
     $('#hud-stage').textContent = (mapById(m.stageId)?.name ?? '') + (m.stageId.startsWith('dd-') ? '（移植プレリリース）' : '');
-    $('#hud-mode').textContent = m.mode === 'party' ? 'パーティ' : 'フリー';
+    $('#hud-mode').textContent = mapById(m.stageId)?.solo?'1人用':m.mode === 'party' ? 'パーティ' : 'フリー';
   }
   hideResult();
   if (m.stageId.startsWith('user-')) toast('同じ大部屋の友だちが「コース一覧」から参加すると動き出します');
@@ -397,9 +397,15 @@ async function openCourses() {
   catalogue.replaceChildren(el('h2', { textContent: 'みんなのコース' }));
   const close = el('button', { textContent: '閉じる' }); close.onclick = () => catalogue.close(); catalogue.append(close);
   if (!catalogue.open) catalogue.showModal();
+  const soloPresets=el('div',{className:'buttons'});
+  catalogue.append(el('h3',{textContent:'ひとりで走る'}),el('p',{className:'note',textContent:'自分だけのコースへすぐ出発。ほかの人の入室を待つ必要はありません。'}),soloPresets);
+  for(const map of MAPS.filter(m=>m.solo)){
+    const b=el('button',{textContent:map.name,disabled:!conn||gameMode!=='lobby'});
+    b.onclick=()=>{send({t:'stageJoin',stageId:map.id});catalogue.close();};soloPresets.append(b);
+  }
   const presets=el('div',{className:'buttons'});
   catalogue.append(el('h3',{textContent:'大会コースへすぐ入る'}),el('p',{className:'note',textContent:'同じ大部屋で同じコースを選ぶと合流します。自由参加で練習もできます。'}),presets);
-  for(const map of MAPS){
+  for(const map of MAPS.filter(m=>!m.solo)){
     const b=el('button',{textContent:map.name,disabled:!conn||gameMode!=='lobby'});
     b.onclick=()=>{send({t:'stageJoin',stageId:map.id});catalogue.close();};presets.append(b);
   }

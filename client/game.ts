@@ -5,10 +5,12 @@ import {
 import { mapById as stageOrLobby, stageById } from '../shared/maps';
 import { PARTY_CAPACITY, type RunnerView, type ServerMsg, type ZoneState } from '../shared/protocol';
 import { releaseAllTouch, touch } from './touch';
+import { bindPress } from './press';
 import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles, drawRunner } from './render';
 import { WEAPON_NAMES } from '../shared/ddrace';
 import { drawDD } from './dd-render';
 import { drawWords } from './word-render';
+import { MINI_LIMIT } from '../shared/word-blocks';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
 
@@ -51,6 +53,7 @@ export class ClientGame {
   private wordPanel:HTMLElement|null=null;
   private mouseAimed=false;
   private listeners: [EventTarget, string, (e: any) => void][] = [];
+  private pressCleanup:(()=>void)[]=[];
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -102,10 +105,9 @@ export class ClientGame {
     ] as const){
       const b=document.createElement('button');b.className=cls;
       b.append(document.createTextNode(label));const k=document.createElement('kbd');k.textContent=` [${key}]`;b.append(k);
-      b.onclick=()=>run();row.append(b);
+      this.pressCleanup.push(bindPress(b,run));row.append(b);
     }
-    const status=document.createElement('span');status.className='word-status';
-    panel.append(row,status);this.canvas.parentElement!.append(panel);this.wordPanel=panel;
+    panel.append(row);this.canvas.parentElement!.append(panel);this.wordPanel=panel;
   }
 
   private mountWeapons() {
@@ -114,20 +116,21 @@ export class ClientGame {
     for(let n=0;n<6;n++){
       const b=document.createElement('button');b.textContent=`${n+1} ${['鎚','銃','散','爆','光','忍'][n]}`;
       b.title=WEAPON_NAMES[n];b.setAttribute('aria-label',WEAPON_NAMES[n]);b.dataset.weapon=String(n);
-      b.onclick=()=>{this.weaponQueued=n;};row.append(b);
+      this.pressCleanup.push(bindPress(b,()=>{this.weaponQueued=n;}));row.append(b);
     }
     const status=document.createElement('div');status.className='dd-status';
     panel.append(row,status);
     if(touch.active){
       const toggle=document.createElement('button');toggle.className='dd-aim-toggle';toggle.textContent='右スティック: フック';
-      toggle.onclick=()=>{touch.aimOnly=!touch.aimOnly;touch.hook=false;toggle.textContent=`右スティック: ${touch.aimOnly?'照準だけ':'フック'}`;};panel.append(toggle);
+      this.pressCleanup.push(bindPress(toggle,()=>{releaseAllTouch();touch.hookTap=false;touch.aimOnly=!touch.aimOnly;toggle.textContent=`右スティック: ${touch.aimOnly?'照準だけ':'フック'}`;}));panel.append(toggle);
     }
     this.canvas.parentElement!.append(panel);this.weaponPanel=panel;
   }
 
   stop() {
     this.stopped = true;
-    releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false;
+    releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = touch.miniTap = false;
+    for(const clean of this.pressCleanup)clean();
     touch.aimOnly=false;this.weaponPanel?.remove();
     this.wordPanel?.remove();this.canvas.parentElement?.classList.remove('word-enabled');
     cancelAnimationFrame(this.raf);
@@ -192,7 +195,7 @@ export class ClientGame {
     const clicked = this.clicked;
     this.clicked = { left: false, right: false };
     const i = emptyInput();
-    if (document.querySelector('dialog[open]')) { this.spitQueued=this.miniQueued=this.clearWordQueued=false; releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false; return i; }
+    if (document.querySelector('dialog[open]')) { this.spitQueued=this.miniQueued=this.clearWordQueued=false; releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = touch.miniTap = false; return i; }
     i.left = k.has('KeyA') || k.has('ArrowLeft');
     i.right = k.has('KeyD') || k.has('ArrowRight');
     i.up = k.has('KeyW') || k.has('ArrowUp');
@@ -219,6 +222,7 @@ export class ClientGame {
       i.jump ||= touch.jump || touch.jumpTap;
       i.wire ||= touch.hook || touch.hookTap;
       i.fire ||= touch.fire || touch.fireTap;
+      i.miniSpit ||= touch.miniTap;
       if (touch.aimMode) this.touchAim = { x: touch.aimX, y: touch.aimY };
       else if (touch.hook || touch.hookTap) {
         // 触った場所を、マウスと同じようにマップの座標に直して自分からの向きにする
@@ -230,7 +234,7 @@ export class ClientGame {
       }
       i.aimX = this.touchAim.x;
       i.aimY = this.touchAim.y;
-      touch.jumpTap = touch.fireTap = touch.hookTap = false;
+      touch.jumpTap = touch.fireTap = touch.hookTap = touch.miniTap = false;
     }
     return i;
   }
@@ -255,11 +259,12 @@ export class ClientGame {
     this.render(now);
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
-      const blocked=s.blockedUntil>this.world.tick;
-      const message=blocked?'出せる隙間がありません。少し移動してみよう':s.charge?'大中華をふくらませて…':big?'大は1人1つ。「大を消す」で消去 · ミニは押す・引く・叩く':s.cooldown?`大中華まで ${(s.cooldown/50).toFixed(1)}秒 · ミニは使えます`:'ミニを頭上へ → 鎖でつかむ → ハンマーで一緒に上昇！';
-      this.wordPanel.querySelector('.word-status')!.textContent=message;
       this.wordPanel.querySelector<HTMLButtonElement>('.word-spit')!.disabled=!!s.charge||!!s.cooldown||big||this.waitingForParty;
       this.wordPanel.querySelector<HTMLButtonElement>('.word-mini')!.disabled=!!s.miniCooldown||this.waitingForParty;
+      const miniCount=owned.filter(b=>b.kind==='mini').length;
+      this.wordPanel.querySelector<HTMLButtonElement>('.word-mini')!.firstChild!.textContent=`ミニ中華 ${miniCount}/${MINI_LIMIT}`;
+      const miniButton=this.canvas.parentElement?.querySelector<HTMLButtonElement>('.tbtn.mini');
+      if(miniButton){miniButton.textContent=`ミニ ${miniCount}/${MINI_LIMIT}`;miniButton.disabled=!!s.miniCooldown||this.waitingForParty;}
       this.wordPanel.querySelector<HTMLButtonElement>('.word-clear')!.disabled=(!big&&!s.charge)||this.waitingForParty;
     }
     if(this.me.dd&&this.weaponPanel){

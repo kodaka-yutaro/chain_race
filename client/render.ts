@@ -187,9 +187,11 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
   for (const h of m.hints) {
     g.strokeStyle = 'rgba(10,14,30,0.7)';
     g.lineWidth = 5;
-    g.strokeText(h.text, h.x * TILE, h.y * TILE);
     g.fillStyle = '#fff';
-    g.fillText(h.text, h.x * TILE, h.y * TILE);
+    h.text.split('\n').forEach((line,i)=>{
+      g.strokeText(line, h.x * TILE, h.y * TILE+i*25);
+      g.fillText(line, h.x * TILE, h.y * TILE+i*25);
+    });
   }
   return c;
 }

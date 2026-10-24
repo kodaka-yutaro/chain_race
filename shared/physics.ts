@@ -74,6 +74,8 @@ export interface MapDef {
   saws?: Saw[];
   dd?: DDMapData;
   wordBlocks?: boolean;
+  /** A private run for one player; no other player can join the same world. */
+  solo?: boolean;
 }
 
 /** 支点 x の左右に half マスずつ伸びた板。片側に強く着地すると、反対側に乗っている人が飛ぶ */
@@ -573,12 +575,14 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
         if(d>PHYS.hookLength+32)releaseWire(t);
         else if(d>38){
-          // An outward hammer impulse tightens the chain and carries its holder.
+          // A taut chain cancels separating radial velocity in every direction.
+          // The box has four times the runner's effective mass; both receive the
+          // same opposite impulse. There is no launch state or hammer trigger here.
           const outward=((t.vx-block.vx)*dx+(t.vy-block.vy)*dy)/d;
-          if(outward>6){
-            const impulse=Math.min(24,outward*.85);
+          if(outward>0){
+            const impulse=Math.min(40,outward)/(1+.25);
             t.vx-=dx/d*impulse;t.vy-=dy/d*impulse;
-            block.vx+=dx/d*impulse*.12;block.vy+=dy/d*impulse*.12;
+            block.vx+=dx/d*impulse*.25;block.vy+=dy/d*impulse*.25;
           }
           // Pull gently without clipping the much faster velocity of a hammer hit.
           block.vx=saturatedAdd(-6,6,block.vx,dx/d*.95);

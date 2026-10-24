@@ -1,6 +1,6 @@
 import type { Input, Runner, World } from './physics';
 
-export const WORD_CELL = 8;
+export const WORD_CELL = 7;
 export const WORD_WIDTH = 35 * WORD_CELL;
 export const WORD_HEIGHT = 18 * WORD_CELL;
 export const WORD_CHARGE = 18;
@@ -9,6 +9,7 @@ export const WORD_COOLDOWN = 300;
 export const WORD_LIMIT = 1;
 export const MINI_SIZE = 32;
 export const MINI_COOLDOWN = 12;
+export const MINI_LIMIT = 5;
 
 // One shared pixel silhouette drives drawing AND collision. The counters in 中
 // and the spaces between the strokes stay empty; no browser font is used at runtime.
@@ -168,6 +169,12 @@ function emitMini(w:World,t:Runner,ax:number,ay:number,collision:WordCollision):
       if(hits.some(o=>o.kind!=='mini')||!moveMinis(w,hits,px,py,collision,t))break;
     }
     if(!fits(w,b,collision,true))continue;
+    // Only replace after a successful placement, so a blocked attempt keeps all five.
+    const owned=w.words.filter(o=>o.owner===t.id&&o.kind==='mini').sort((a,b)=>a.id-b.id);
+    if(owned.length>=MINI_LIMIT){
+      const remove=new Set(owned.slice(0,owned.length-MINI_LIMIT+1).map(o=>o.id));
+      w.words=w.words.filter(o=>!remove.has(o.id));
+    }
     w.wordSeq++;w.words.push(b);
     if(back){t.vx-=ax*3;t.vy-=ay*3;}
     return true;
