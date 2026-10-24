@@ -77,7 +77,11 @@ export class Game {
     if (!s || seq <= s.queuedSeq) return;
     s.queuedSeq = seq;
     s.queue.push({ seq, input });
-    while (s.queue.length > MAX_QUEUE) s.queue.shift();
+    while (s.queue.length > MAX_QUEUE) {
+      const dropped=s.queue.shift()!;
+      // Keep a short ability tap when a slow frame sends a burst of movement.
+      if(dropped.input.spit)s.queue[0].input={...s.queue[0].input,spit:true};
+    }
   }
 
   tick(sendSnapshot: boolean) {
@@ -121,6 +125,7 @@ export class Game {
         timers: this.world.timers, lifts: this.world.lifts, saws: this.world.saws, zones,
         waiting: this.stageId.startsWith('user-') && this.size < this.world.map.minPlayers,
         dd: this.world.dd,
+        ...(this.world.map.wordBlocks?{words:this.world.words,wordSeq:this.world.wordSeq}:{}),
       });
     }
   }

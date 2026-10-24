@@ -1,5 +1,6 @@
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
 import { ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
+import { newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
 export const TILE = 32;
 export const TICK_RATE = 50;
@@ -72,6 +73,7 @@ export interface MapDef {
   /** シーソー（タイル座標） */
   saws?: Saw[];
   dd?: DDMapData;
+  wordBlocks?: boolean;
 }
 
 /** 支点 x の左右に half マスずつ伸びた板。片側に強く着地すると、反対側に乗っている人が飛ぶ */
@@ -119,6 +121,7 @@ export interface Input {
   aimX: number;
   aimY: number;
   weapon?: number;
+  spit?: boolean;
 }
 
 export const emptyInput = (): Input => ({
@@ -151,6 +154,8 @@ export interface Runner {
   raceStart: number; // -1 = 未スタート
   finishedTime: number; // -1 = 未ゴール（秒）
   dd?: DDRunner;
+  spit: SpitState;
+  wireWord: number; wireLocalX: number; wireLocalY: number;
 }
 
 export interface World {
@@ -167,6 +172,8 @@ export interface World {
   /** 各シーソーの傾き（-1 = 左が下、1 = 右が下） */
   saws: number[];
   dd?: DDWorld;
+  words: WordBlock[];
+  wordSeq: number;
 }
 
 export interface StepEvents {
@@ -219,13 +226,28 @@ function inSaw(w: World, px: number, py: number): boolean {
   return false;
 }
 
-export function isSolid(w: World, px: number, py: number): boolean {
+function solidBase(w: World, px: number, py: number): boolean {
   return isSolidChar(charAtPx(w, px, py), w.doorsOpen) || inLift(w, px, py) || inSaw(w, px, py);
 }
+export function isSolid(w: World, px: number, py: number): boolean {
+  return solidBase(w,px,py)||!!wordPoint(w,px,py);
+}
 
-function testBox(w: World, x: number, y: number): boolean {
+function testBox(w: World, x: number, y: number, ignoreWord=-1): boolean {
   const h = R - 0.01;
-  return isSolid(w, x - h, y - h) || isSolid(w, x + h, y - h) || isSolid(w, x - h, y + h) || isSolid(w, x + h, y + h);
+  return solidBase(w, x - h, y - h) || solidBase(w, x + h, y - h) || solidBase(w, x - h, y + h) || solidBase(w, x + h, y + h)
+    || wordBoxSolid(w,x-h,y-h,h*2,h*2,ignoreWord);
+}
+
+function wordCollision(w:World):WordCollision {
+  return {runnerBox:(x,y,id)=>testBox(w,x,y,id),staticRect:(x,y,width,height)=>{
+    for(let ty=Math.floor(y/TILE);ty<=Math.floor((y+height-.001)/TILE);ty++)
+      for(let tx=Math.floor(x/TILE);tx<=Math.floor((x+width-.001)/TILE);tx++)
+        if(isSolidChar(tileAt(w.map,tx,ty),w.doorsOpen))return true;
+    const overlaps=(bx:number,by:number,bw:number,bh:number)=>x<bx+bw&&x+width>bx&&y<by+bh&&y+height>by;
+    if((w.map.lifts??[]).some((l,i)=>overlaps(l.x*TILE,liftTop(l,w.lifts[i]),l.w*TILE,LIFT_THICK)))return true;
+    return (w.map.saws??[]).some(s=>overlaps((s.x-s.half)*TILE,s.top*TILE,s.half*2*TILE,SAW_THICK));
+  }};
 }
 
 function moveBox(w: World, t: Runner) {
@@ -269,6 +291,7 @@ export function newRunner(id: number, map: MapDef): Runner {
     prevJump: false, prevWire: false, prevFire: false,
     wireState: WIRE_IDLE, wireX: 0, wireY: 0, wireDX: 0, wireDY: 0, wireRunner: -1, wireTick: 0,
     stun: 0, hammerCd: 0, hammerTick: -100, aimX: 1, aimY: 0, raceStart: -1, finishedTime: -1,
+    spit:newSpitState(),wireWord:-1,wireLocalX:0,wireLocalY:0,
     ...(map.dd ? {dd: newDDRunner()} : {}),
   };
 }
@@ -280,6 +303,7 @@ export function createWorld(map: MapDef): World {
     // リフトは下にいる状態から始まる
     lifts: (map.lifts ?? []).map((l) => (l.bottom - l.top) * TILE),
     saws: (map.saws ?? []).map(() => -1),
+    words:[],wordSeq:0,
     ...(map.dd ? {dd: newDDWorld()} : {}),
   };
 }
@@ -291,6 +315,7 @@ export function respawn(w: World, t: Runner) {
   t.stun = 0; t.jumped = 0;
   t.raceStart = -1;
   t.finishedTime = -1;
+  t.spit.charge=0;
   if (w.map.dd) t.dd = newDDRunner();
   for (const o of w.runners) if (o.wireRunner === t.id) releaseWire(o);
 }
@@ -304,6 +329,7 @@ function touchedTiles(w: World, t: Runner): string[] {
 
 function checkGrounded(w: World, t: Runner): boolean {
   if (ddRestrictions(w,t.x,t.y) & 2) return true;
+  if (wordBoxSolid(w,t.x-R+1,t.y+R-.01,TEE_SIZE-2,3.01)) return true;
   if (isSolid(w, t.x - R + 1, t.y + R + 3) || isSolid(w, t.x + R - 1, t.y + R + 3)) return true;
   for (const o of w.runners) {
     if (o === t || !ddInteracts(t,o)) continue;
@@ -320,12 +346,14 @@ function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number)
   for (let i = 0; i <= n; i++) {
     const a = i / n;
     const x = x0 + (x1 - x0) * a, y = y0 + (y1 - y0) * a;
+    const word=wordPoint(w,x,y);
+    if(word)return {x:px,y:py,hit:true,stick:true,teleport:undefined,word};
     const teleport = ddHookExit(w.map,x,y);
-    if (teleport) return { x: px, y: py, hit: false, stick: false, teleport };
-    if (charAtPx(w, x, y) !== 'O' && !ddHookThrough(w.map,x,y,x1-x0,y1-y0) && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#', teleport: undefined };
+    if (teleport) return { x: px, y: py, hit: false, stick: false, teleport, word:undefined };
+    if (charAtPx(w, x, y) !== 'O' && !ddHookThrough(w.map,x,y,x1-x0,y1-y0) && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#', teleport: undefined,word:undefined };
     px = x; py = y;
   }
-  return { x: x1, y: y1, hit: false, stick: false, teleport: undefined };
+  return { x: x1, y: y1, hit: false, stick: false, teleport: undefined,word:undefined };
 }
 
 function closestPointOnSegment(ax: number, ay: number, bx: number, by: number, px: number, py: number) {
@@ -339,6 +367,7 @@ function closestPointOnSegment(ax: number, ay: number, bx: number, by: number, p
 function releaseWire(t: Runner) {
   t.wireState = WIRE_IDLE;
   t.wireRunner = -1;
+  t.wireWord=-1;
 }
 
 const byId = (w: World, id: number) => w.runners.find((e) => e.id === id);
@@ -427,6 +456,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
 
   updateSwitches(w);
   moveLifts(w);
+  const collision=wordCollision(w);
+  stepWords(w,collision);
 
   const dirs = new Map<number, number>();
   for (const t of w.runners) {
@@ -438,6 +469,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
     const al = Math.hypot(inp.aimX, inp.aimY);
     if (al > 0.0001) { t.aimX = inp.aimX / al; t.aimY = inp.aimY / al; }
+    stepSpit(w,t,inp,collision);
     ddPrepare(w,t,inp);
 
     const stunned = t.stun > 0;
@@ -479,6 +511,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       t.wireY = t.y + t.aimY * R * 1.5;
       t.wireDX = t.aimX; t.wireDY = t.aimY;
       t.wireRunner = -1;
+      t.wireWord=-1;
       t.wireTick = 0;
       if(t.dd) {t.dd.hookBaseX=t.x;t.dd.hookBaseY=t.y;t.dd.hookTeleported=false;}
     }
@@ -510,6 +543,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         if (hit.stick) {
           t.wireState = WIRE_ATTACHED;
           t.wireX = hit.x; t.wireY = hit.y;
+          if(hit.word){t.wireWord=hit.word.id;t.wireLocalX=hit.x-hit.word.x;t.wireLocalY=hit.y-hit.word.y;}
         } else releaseWire(t);
       } else if (Math.hypot(nx - (t.dd?.hookTeleported ? t.dd.hookBaseX : t.x), ny - (t.dd?.hookTeleported ? t.dd.hookBaseY : t.y)) > PHYS.hookLength) {
         releaseWire(t);
@@ -518,6 +552,11 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       }
     }
 
+    if(t.wireState===WIRE_ATTACHED&&t.wireWord>=0){
+      const block=w.words.find(b=>b.id===t.wireWord&&b.solid);
+      if(!block)releaseWire(t);
+      else {t.wireX=block.x+t.wireLocalX;t.wireY=block.y+t.wireLocalY;}
+    }
     if (t.wireState === WIRE_ATTACHED) {
       t.wireTick++;
       if (t.wireRunner >= 0) {

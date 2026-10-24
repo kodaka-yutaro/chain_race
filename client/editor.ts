@@ -10,6 +10,8 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     <div class="bar"><h2>コースをつくる</h2><button data-close>戻る</button></div>
     <p class="note">ひとりで作って、テストなしでプレリリース。2人以上で全員ゴールすると正式公開になります。</p>
     <div class="editor-meta"><label>コース名<input data-name maxlength="40"></label><label>説明<input data-desc maxlength="280"></label></div>
+    <label class="editor-ability"><input type="checkbox" data-word-blocks>「中華」を吐き出す技を使えるようにする</label>
+    <p class="note">文字の形をした動く足場に乗ったり、フックを掛けたりできます。PCは R、スマホは「中華を吐く」。1人2枚まで、18秒で消えます。</p>
     <div class="buttons"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo>元に戻す</button><button data-redo>やり直す</button><label>表示倍率<select data-zoom><option value="12">小</option><option value="24" selected>中</option><option value="36">大</option></select></label></div>
     <div class="tile-tools" role="group" aria-label="置くタイル"></div>
     <div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div>
@@ -23,6 +25,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   let size = 24;
   const save = () => {
     map.name = name.value; map.description = desc.value;
+    map.wordBlocks=q<HTMLInputElement>('[data-word-blocks]').checked;
     try { localStorage.setItem(KEY, JSON.stringify(map)); status('下書きを保存しました'); } catch { status('端末に保存できません。ファイルに保存してください'); }
   };
   function draw() {
@@ -36,6 +39,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   }
   function load() {
     name.value = map.name; desc.value = map.description;
+    q<HTMLInputElement>('[data-word-blocks]').checked=!!map.wordBlocks;
     q('.channels').replaceChildren(...Array.from({ length: 5 }, (_, i) => {
       const row = document.createElement('div'); row.className = 'buttons';
       row.innerHTML = `<span>スイッチ${i + 1}</span><label>必要人数<select><option value="1">1人</option><option value="2">2人</option></select></label><label>離した後の秒数<input type="number" min="0" max="10" step="0.5"></label>`;
@@ -74,6 +78,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   q('[data-redo]').onclick = () => { const rows = future.pop(); if (rows) { history.push(map.tiles); map.tiles = rows; save(); draw(); } };
   q<HTMLSelectElement>('[data-zoom]').onchange = e => { size = +(e.target as HTMLSelectElement).value; draw(); };
   name.oninput = desc.oninput = save;
+  q<HTMLInputElement>('[data-word-blocks]').onchange=save;
   q('[data-new]').onclick = () => { if (!confirm('下書きを新しくします。必要なら先にファイルに保存してください。')) return; map = newCourseMap(); history = []; future = []; load(); save(); };
   q('[data-export]').onclick = () => { save(); const url = URL.createObjectURL(new Blob([JSON.stringify(map)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = 'tsunagu-course.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
   q<HTMLInputElement>('[data-import]').onchange = async e => {
