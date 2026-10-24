@@ -31,11 +31,11 @@ export function drawBackground(
 // ---------- タイル ----------
 
 const ROCK: Record<string, [string, string, string, string]> = {
-  hill: ['#8a6b4f', '#73573f', '#5c4532', '#6cc04a'],
-  cave: ['#5b5170', '#4a4160', '#3a324d', '#8f7dd0'],
-  tower: ['#9b6b55', '#7f5644', '#644235', '#e0a95c'],
-  factory: ['#7a6a5e', '#62554b', '#4b413a', '#c9a227'],
-  lobby: ['#6a6f8f', '#565b7a', '#444862', '#7fd1c2'],
+  hill: ['#98594e', '#754438', '#4e302e', '#4f9d8b'],
+  cave: ['#526e77', '#3b525e', '#273b49', '#7cbab0'],
+  tower: ['#a45c4d', '#773d37', '#512c30', '#e6ae58'],
+  factory: ['#897054', '#66513d', '#493b33', '#ce9b5b'],
+  lobby: ['#8c6254', '#6e4a41', '#4d3735', '#6fa58c'],
 };
 
 export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, height = m.height): HTMLCanvasElement {
@@ -59,31 +59,25 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
         gr.addColorStop(1, rockDark);
         g.fillStyle = gr;
         g.fillRect(px, py, TILE, TILE);
-        // 石の粒
-        for (let i = 0; i < 5; i++) {
-          const sx = px + 3 + hash(x, y, i) * (TILE - 8), sy = py + 3 + hash(x, y, i + 9) * (TILE - 8);
-          const s = 2 + hash(x, y, i + 20) * 4;
-          g.fillStyle = hash(x, y, i + 30) > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.12)';
-          g.beginPath();
-          g.ellipse(sx, sy, s, s * 0.7, hash(x, y, i + 40) * 3, 0, Math.PI * 2);
-          g.fill();
-        }
+        // Warm masonry and jade eaves make the route part of the street.
+        g.fillStyle=rockEdge;g.fillRect(px,py+15,TILE,2);g.fillRect(px,py+31,TILE,1);
+        g.fillRect(px+(y%2?7:23),py,2,15);g.fillRect(px+(y%2?23:7),py+17,2,14);
+        g.fillStyle='#f9c98426';g.fillRect(px+3,py+3,24,1);g.fillRect(px+3,py+19,24,1);
+        if(hash(x,y,3)>.87){g.fillStyle='#422f3026';g.fillRect(px+5,py+6,11,2);g.fillRect(px+18,py+23,6,2);}
         // 外に面した辺の影
         g.fillStyle = rockEdge;
         if (!solid(at(x, y + 1))) g.fillRect(px, py + TILE - 4, TILE, 4);
         if (!solid(at(x - 1, y))) g.fillRect(px, py, 3, TILE);
         if (!solid(at(x + 1, y))) g.fillRect(px + TILE - 3, py, 3, TILE);
-        // 上が空いていれば草（または苔）
+        // Jade roof tiles retain the exact collision edge; the gold lip marks it.
         if (!solid(at(x, y - 1))) {
           g.fillStyle = grass;
           g.fillRect(px, py, TILE, 6);
           g.fillStyle = shade(grass, -0.25);
           g.fillRect(px, py + 6, TILE, 2);
-          g.fillStyle = shade(grass, 0.25);
-          for (let i = 0; i < 6; i++) {
-            const bx = px + 2 + i * 5 + hash(x, y, i + 50) * 3;
-            g.fillRect(bx, py - 2 - hash(x, y, i + 60) * 3, 2, 4);
-          }
+          g.fillStyle = shade(grass, .3);g.fillRect(px,py,TILE,2);
+          g.fillStyle = shade(grass, -.35);for(let i=0;i<4;i++)g.fillRect(px+i*8,py+2,2,4);
+          g.fillStyle = '#e9b661';g.fillRect(px,py+8,TILE,2);
         }
       } else if (ch === 'X') {
         const gr = g.createLinearGradient(px, py, px + TILE, py + TILE);
