@@ -183,7 +183,7 @@ export function findSpawn(map: MapDef): { x: number; y: number } {
 }
 
 export function isSolidChar(c: string, doorsOpen: boolean[]): boolean {
-  if (c === '#' || c === 'X') return true;
+  if (c === '#' || c === 'X' || c === 'O') return true;
   if (c >= 'a' && c <= 'e') return !doorsOpen[c.charCodeAt(0) - 97];
   if (c >= 'A' && c <= 'E') return !!doorsOpen[c.charCodeAt(0) - 65];
   return false;
@@ -310,7 +310,7 @@ function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number)
   for (let i = 0; i <= n; i++) {
     const a = i / n;
     const x = x0 + (x1 - x0) * a, y = y0 + (y1 - y0) * a;
-    if (isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#' };
+    if (charAtPx(w, x, y) !== 'O' && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#' };
     px = x; py = y;
   }
   return { x: x1, y: y1, hit: false, stick: false };

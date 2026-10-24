@@ -46,7 +46,7 @@ export type ServerMsg =
   | { t: 'chat'; from: string; fromId?: number; text: string; system?: boolean }
   | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string>; map?: MapDef }
   | { t: 'names'; names: Record<number, string> }
-  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[] }
+  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean }
   | { t: 'finish'; runnerId: number; name: string; time: number }
   | { t: 'partyClear'; stageId: string; gameId: string; results: { id: number; name: string; time: number }[] }
   | { t: 'error'; message: string };

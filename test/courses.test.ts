@@ -77,3 +77,32 @@ test('DDNetのしびれ解除タイルで即座に動けるようになる', () 
   const world = createWorld(m), r = newRunner(1, m); r.stun = 100; r.x = 3.5 * TILE; r.y = 12.5 * TILE; world.runners.push(r);
   stepWorld(world, new Map([[1, emptyInput()]])); assert.equal(r.stun, 0);
 });
+
+test('実際の移動入力で2人がスタート線とゴール線を通過すると正式公開判定が出る', () => {
+  const hub = new HostHub('run-proof', '実走検証'), a = peer(hub, '赤'), b = peer(hub, '青'), m = map();
+  a.send({ t: 'courseJoin', map: m });
+  for (let i = 0; i < 4; i++) hub.tick();
+  const wait = a.messages.filter(msg => msg.t === 'snap').at(-1)!;
+  assert.equal(wait.waiting, true);
+  b.send({ t: 'courseJoin', map: m });
+  const gameId = latest(a.messages).gameId;
+  for (let seq = 1; seq <= 220; seq++) {
+    for (const p of [a, b]) p.send({ t: 'input', gameId, list: [{ seq, input: { ...emptyInput(), right: true } }] });
+    hub.tick();
+  }
+  const completed = a.messages.filter(msg => msg.t === 'partyClear');
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].results.length, 2);
+  assert.ok(completed[0].results.every(r => r.time > 0));
+});
+
+test('DDNetの透過壁はプレイヤーを止め、フックだけを奥の岩へ通す', () => {
+  const m = newCourseMap(24, 16), rows = m.tiles.map(row => [...row]);
+  for (let y = 2; y < 13; y++) { rows[y][8] = 'O'; rows[y][12] = '#'; }
+  m.tiles = rows.map(row => row.join(''));
+  const world = createWorld(m), r = newRunner(1, m); r.x = 5.5 * TILE; r.y = 6.5 * TILE; world.runners.push(r);
+  for (let i = 0; i < 24; i++) stepWorld(world, new Map([[1, { ...emptyInput(), wire: true, right: true, aimX: 1, aimY: 0 }]]));
+  assert.equal(r.wireState, 2);
+  assert.ok(r.wireX > 11 * TILE);
+  assert.ok(r.x < 8 * TILE - 13);
+});

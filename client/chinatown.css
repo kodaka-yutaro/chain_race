@@ -1,0 +1,73 @@
+:root { --bg:#101b2a; --panel:#203039; --panel-2:#2b3e43; --text:#fff2d9; --muted:#c3b9a9; --accent:#f1ba60; --accent-2:#8fc9bf; --danger:#ff8872; }
+body { background:#101b2a; }
+button, input, select { border-color:#5d6159; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline:3px solid #ffd17b; outline-offset:4px; }
+button { min-height:44px; }
+#screen-title { position:relative; isolation:isolate; width:100%; max-width:none; min-height:100svh; padding:0 5vw 22px; gap:0; overflow:hidden; }
+#title-city { position:absolute; inset:0; width:100%; height:100%; z-index:-3; image-rendering:pixelated; pointer-events:none; }
+.city-shade { position:absolute; inset:0; z-index:-2; background:linear-gradient(90deg,rgba(9,18,30,.18),rgba(9,18,30,.1) 50%,rgba(9,18,30,.6)),linear-gradient(0deg,rgba(10,18,27,.83),transparent 30%,transparent 80%,rgba(10,18,27,.4)); pointer-events:none; }
+.city-nav { width:100%; max-width:1320px; display:flex; justify-content:space-between; align-items:center; padding:27px 0; gap:14px; }
+.city-brand { display:flex; align-items:center; gap:12px; color:#f8e4c5; letter-spacing:.18em; font-size:12px; }
+.city-seal { width:37px; height:37px; border:1px solid #efbf72; display:grid; place-items:center; font-family:serif; font-weight:900; background:#a23936; font-size:15px; letter-spacing:-.05em; box-shadow:3px 3px 0 #17212d; transform:rotate(-4deg); }
+.city-nav button { background:#12232bd9; border-color:#908166; border-radius:3px; font-size:12px; letter-spacing:.08em; }
+.city-hero { width:100%; max-width:1160px; margin:auto; display:grid; grid-template-columns:1fr 340px; gap:70px; align-items:center; padding:45px 0 100px; }
+.city-heading { text-align:center; position:relative; padding:28px 0 50px; }
+.festival-kicker { color:#e5c79e; font-size:11px; letter-spacing:.34em; margin:0 0 23px; text-shadow:0 2px 8px #101b2a; }
+.city-title { display:flex; flex-direction:column; align-items:center; margin:0; font-family:"Yu Mincho","Hiragino Mincho ProN",serif; font-weight:900; }
+.race-title { font-family:system-ui,sans-serif; font-size:clamp(24px,3vw,43px); letter-spacing:.28em; color:#fff0cb; text-shadow:3px 4px 0 #351e2b; transform:rotate(-3deg); padding-left:.28em; }
+.flame-title { position:relative; font-size:clamp(80px,10.5vw,150px); line-height:1.32; letter-spacing:.07em; padding-left:.07em; color:#ffd66d; -webkit-text-stroke:1px #fff09d; text-shadow:0 4px 0 #d4482e,0 8px 0 #8e272a,4px 10px 0 #2a1923,0 -7px 19px #fa43264d; animation:flame-glow 1.8s steps(6,end) infinite; }
+.flame-title::before { content:attr(data-text); position:absolute; inset:0; padding-left:.07em; color:transparent; background:linear-gradient(0deg,#ff5633 14%,#ffe285 55%,#fff5bf 75%,#ee5b31); background-size:100% 190%; background-clip:text; -webkit-background-clip:text; -webkit-text-stroke:0; text-shadow:none; animation:flame-color 2.2s steps(8,end) infinite alternate; }
+.flame-title::after { content:''; position:absolute; left:7%; right:7%; top:5%; height:20%; z-index:-1; background:repeating-linear-gradient(90deg,transparent 0 11px,#ff6638 12px 15px,transparent 16px 29px,#ffc05e 30px 33px); clip-path:polygon(0 100%,3% 20%,8% 90%,13% 30%,17% 85%,22% 0,27% 90%,33% 40%,37% 100%,43% 10%,49% 85%,54% 40%,60% 90%,65% 0,70% 90%,76% 20%,81% 100%,88% 25%,94% 85%,100% 5%,100% 100%); opacity:.85; animation:flame-tips .7s steps(3,end) infinite alternate; }
+.tournament-title { display:inline-block; font-size:clamp(17px,2.3vw,29px); letter-spacing:.26em; padding:.25em .4em .35em .65em; color:#f4dca9; border-top:1px solid #d9a15a; border-bottom:1px solid #d9a15a; background:#18212bd9; box-shadow:0 4px 0 #14212a; }
+.city-copy { font-size:14px; line-height:2; letter-spacing:.1em; margin:26px 0 14px; color:#fff2d5; text-shadow:0 2px 5px #0b1420; }
+.festival-tags { display:flex; gap:16px; justify-content:center; font-size:10px; letter-spacing:.13em; color:#e0c59d; }
+.festival-tags span+span::before { content:'◆'; color:#cc754d; margin-right:16px; font-size:6px; vertical-align:middle; }
+.title-card { position:relative; width:100%; border:1px solid #ab8b5e; border-radius:2px; background:#132831ed; padding:26px; box-shadow:6px 6px 0 #0c1c2580,inset 0 0 0 5px #132831,inset 0 0 0 6px #67705e; }
+.title-card::before,.title-card::after { position:absolute; content:'◆'; color:#eabd79; font-size:12px; top:-9px; background:#152630; padding:0 5px; }
+.title-card::before { left:15px; }.title-card::after { right:15px; }
+.entrance-kicker { font-size:10px; letter-spacing:.27em; color:#d2aa70; margin:0 0 8px; }
+.entrance-title { font-family:serif; font-size:23px; letter-spacing:.12em; margin:0; }
+.entrance-copy { color:#b9b7a5; font-size:12px; line-height:1.8; margin:12px 0 17px; }
+.title-card .tabs { border-bottom:1px solid #52625b; margin:0 0 19px; flex-wrap:nowrap; gap:0; }
+.title-card .tab { flex:1; border:0; border-radius:0; font-size:12px; padding:9px 4px; min-height:40px; color:#b8b9ab; }
+.title-card .tab.active { background:transparent; color:#f5ca83; box-shadow:0 2px 0 #efb95f; }
+.title-card label { font-size:11px; letter-spacing:.09em; gap:8px; }
+.title-card input { min-height:47px; border-radius:2px; background:#10212a; border:1px solid #52605a; }
+.title-card button.primary { min-height:49px; border-radius:2px; color:#39291e; background:linear-gradient(#f9d48b,#e6af59); border:1px solid #ffe1a4; box-shadow:0 3px 0 #937448; letter-spacing:.12em; font-size:14px; }
+.title-card .note { font-size:10px; text-align:center; color:#a1a89f; line-height:1.8; margin-top:0; }
+.title-card .error:empty { display:none; }
+.city-route { display:flex; align-items:center; gap:8px; justify-content:center; border-top:1px solid #4b5b54; padding-top:17px; margin:20px 0 0; font-size:10px; color:#abb9ad; }
+.city-route b { color:#e9c388; font-weight:500; }.city-route span { opacity:.5; }
+.city-bottom { display:flex; gap:24px; align-items:end; justify-content:space-between; width:100%; max-width:1320px; margin-top:auto; }
+.city-bottom .footer { font-size:10px; line-height:1.8; max-width:430px; }.city-bottom a { color:#c8bfa8; }
+.music-console { display:flex; align-items:center; gap:10px; }
+#music-toggle { min-height:38px; background:#172a31e6; border:1px solid #7a8069; border-radius:2px; padding:8px 11px; color:#f0d09a; font-size:10px; letter-spacing:.11em; }
+.music-console label { width:66px; font-size:9px; gap:0; color:#a9b2a5; }
+#music-volume { accent-color:#edba69; padding:0; height:18px; width:66px; }
+#invite-fallback { position:absolute; top:80px; right:5vw; z-index:8; width:min(360px,90vw); }
+#screen-title .ad-slot { display:none; }
+.music-dock { position:fixed; z-index:6; right:12px; bottom:12px; }
+body:has(#screen-title:not(.hidden)) .music-dock { position:static; }
+body:has(#screen-game:not(.hidden)) .music-console label,body:has(#screen-hub:not(.hidden)) .music-console label { display:none; }
+body:has(#screen-game:not(.hidden)) .music-dock,body:has(#screen-hub:not(.hidden)) .music-dock { bottom:auto; top:90px; }
+#screen-hubs { padding-top:30px; }
+.panel,.result-card { border:1px solid #52645d; }
+@keyframes flame-glow { 0%,100% { filter:drop-shadow(0 -3px 4px #eb5d3155); } 50% { filter:drop-shadow(0 -7px 9px #ff742d99); } }
+@keyframes flame-color { from { background-position:0 0; } to { background-position:0 100%; } }
+@keyframes flame-tips { from { transform:translateY(3px) scaleY(.65); } to { transform:translateY(-5px) scaleY(1.15); } }
+@media(max-width:850px) { .city-hero { gap:27px; grid-template-columns:1fr 300px; }.flame-title { font-size:88px; }.festival-tags { font-size:9px; gap:8px; }.festival-tags span+span::before { margin-right:8px; }.title-card { padding:24px 21px; } }
+@media(max-width:650px) {
+  #screen-title { padding:0 22px 18px; min-height:100svh; overflow-y:auto; }.city-nav { padding:19px 0; }.city-brand { font-size:9px; gap:9px; }.city-seal { width:29px; height:29px; font-size:12px; }.city-nav button { font-size:10px; padding:6px 9px; min-height:36px; }
+  .city-hero { display:flex; flex-direction:column; gap:12px; padding:5px 0 30px; margin:0; }.city-heading { padding:8px 0 8px; width:100%; }.festival-kicker { font-size:8px; margin:0 0 12px; }.race-title { font-size:25px; }.flame-title { font-size:94px; line-height:1.22; }.tournament-title { font-size:18px; }.city-copy { font-size:11px; line-height:1.8; margin:16px 0 10px; }.festival-tags { font-size:8px; }
+  .title-card { max-width:360px; padding:24px; }.entrance-title { font-size:20px; }.entrance-copy { margin:8px 0 13px; }.city-route { margin-top:15px; padding-top:12px; }.city-bottom { flex-direction:column-reverse; align-items:center; gap:14px; }.city-bottom .footer { text-align:center; font-size:9px; }.city-shade { background:linear-gradient(0deg,#101c2af2,transparent 70%,#101c2a66); }
+  body.touch #screen-title { height:100dvh; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; -webkit-overflow-scrolling:touch; }
+}
+@media(max-height:600px) and (min-width:651px) { .city-nav { padding:15px 0; }.city-hero { padding:5px 0 25px; }.city-heading { padding:0; }.flame-title { font-size:100px; }.city-copy { margin:15px 0; }.title-card { padding:18px 24px; }.entrance-copy { margin:8px 0; }.city-route { display:none; } }
+@media(prefers-reduced-motion:reduce) { .flame-title,.flame-title::before,.flame-title::after { animation:none; } }
+.flame-title { white-space:nowrap; }
+@media(max-width:650px) { .flame-title { font-size:clamp(64px,22vw,94px); }.city-nav button { white-space:nowrap; }.city-brand { letter-spacing:.08em; }.city-copy { letter-spacing:.03em; } }
+body.touch .touch-row { flex-wrap:wrap; gap:5px; }
+body.touch .touch-row .stick-jump-toggle { font-size:10px; padding:0 9px; }
+body.touch .stick-jump-toggle[aria-pressed=true] { background:#334d45; color:#f6d997; }
+body.touch #screen-editor { padding-bottom:80px; }
+@media(max-width:600px) { #screen-hubs .bar .me-label { order:5; font-size:12px; width:100%; }.city-brand { max-width:155px; }.music-dock { bottom:max(12px,env(safe-area-inset-bottom)); }.editor-viewport { max-height:45dvh; } }

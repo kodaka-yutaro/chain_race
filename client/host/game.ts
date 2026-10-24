@@ -119,6 +119,7 @@ export class Game {
         t: 'snap', gameId: this.id, tick: this.world.tick, me, lastSeq: s.lastSeq,
         others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen,
         timers: this.world.timers, lifts: this.world.lifts, saws: this.world.saws, zones,
+        waiting: this.stageId.startsWith('user-') && this.size < this.world.map.minPlayers,
       });
     }
   }

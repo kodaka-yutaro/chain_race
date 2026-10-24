@@ -39,6 +39,7 @@ export class ClientGame {
   private snapInterval = 40;
   private lastSnapAt = 0;
   private stopped = false;
+  private waitingForParty = false;
   private listeners: [EventTarget, string, (e: any) => void][] = [];
 
   constructor(
@@ -51,6 +52,7 @@ export class ClientGame {
     private onInteract: () => void = () => {},
   ) {
     this.map = stageOrLobby(stageId)!;
+    this.waitingForParty = stageId.startsWith('user-');
     this.world = createWorld(this.map);
     this.me = newRunner(youId, this.map);
     this.world.runners.push(this.me);
@@ -84,6 +86,7 @@ export class ClientGame {
   private lastSnapTick = -1;
 
   onSnap(s: Snap) {
+    this.waitingForParty = !!s.waiting;
     // 届く順番が入れ替わることがあるので、古いものは捨てる
     if (s.tick <= this.lastSnapTick) return;
     this.lastSnapTick = s.tick;
@@ -119,6 +122,7 @@ export class ClientGame {
   }
 
   private predictStep(input: Input) {
+    if (this.waitingForParty) return;
     const inputs = new Map<number, Input>([[this.me.id, input]]);
     // 他プレイヤーの入力は分からないので、フックだけは握ったままとみなす
     for (const r of this.world.runners) {
