@@ -596,6 +596,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     } else if (t.stun > 0) {
       t.stun--;
     }
+    if (tiles.includes('U')) t.stun = 0;
     if (tiles.includes('J') && t.vy > -PHYS.springSpeed) {
       t.vy = -PHYS.springSpeed;
       t.jumped &= ~2;

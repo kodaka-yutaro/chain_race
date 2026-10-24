@@ -1,3 +1,5 @@
+import type { Course } from '../../shared/courses';
+import type { MapDef } from '../../shared/physics';
 /** アカウント・大部屋の一覧・接続の仲介・記録を受け持つ外部サービス */
 export interface Account { uid: string; name: string }
 
@@ -7,6 +9,9 @@ export interface Backend {
   /** Firebase の設定がなく、同じブラウザの中だけで試す動作のとき true */
   readonly local: boolean;
 
+  listCourses(): Promise<Course[]>;
+  publishCourse(map: MapDef, authorName: string): Promise<Course>;
+  releaseCourse(id: string, results: { id: number; name: string; time: number }[]): Promise<void>;
   account(): Promise<Account | null>;
   register(name: string, password: string): Promise<Account>;
   login(name: string, password: string): Promise<Account>;

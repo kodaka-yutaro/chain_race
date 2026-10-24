@@ -1,11 +1,14 @@
-// スマホ用の操作。左のスティックで移動（上に倒すとジャンプ）、右のボタンでジャンプとハンマー、
-// 画面のほかの場所に触るとその方向へフック（触っている間は伸ばしたまま）。
+// 左スティックで移動、右スティックで照準とフック。専用ボタンでジャンプとハンマー。
+// 画面の直接タップによるフックも利用できる。
 
 export const isTouch = () => matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
 export const touch = {
   active: false,
   moveX: 0,
+  aimMode: false,
+  aimX: 1,
+  aimY: 0,
   jump: false,
   // 短いタップを次の tick まで覚えておく
   jumpTap: false,
@@ -41,6 +44,7 @@ function stick(el: HTMLElement, onMove: (x: number, y: number, held: boolean) =>
   };
   el.addEventListener('pointerdown', (e) => {
     // 前の指の離し忘れが残っていても、新しく触った指で操作できるようにする
+    if (id !== null) return;
     id = e.pointerId;
     el.setPointerCapture(e.pointerId);
     el.classList.add('held');
@@ -62,11 +66,13 @@ function stick(el: HTMLElement, onMove: (x: number, y: number, held: boolean) =>
 }
 
 function button(el: HTMLElement, onDown: () => void, onUp: () => void = () => {}) {
-  el.addEventListener('pointerdown', (e) => { el.classList.add('held'); el.setPointerCapture(e.pointerId); onDown(); e.preventDefault(); });
-  const up = () => { el.classList.remove('held'); onUp(); };
-  el.addEventListener('pointerup', up);
-  el.addEventListener('pointercancel', up);
-  el.addEventListener('lostpointercapture', up);
+  let id: number | null = null;
+  el.addEventListener('pointerdown', (e) => { if (id !== null) return; id = e.pointerId; el.classList.add('held'); el.setPointerCapture(e.pointerId); onDown(); e.preventDefault(); });
+  const up = () => { id = null; el.classList.remove('held'); onUp(); };
+  const end = (e: PointerEvent) => { if (id === e.pointerId) up(); };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
   releases.push(up);
 }
 
@@ -75,6 +81,7 @@ function hookArea(el: HTMLElement) {
   let id: number | null = null;
   const aim = (e: PointerEvent) => { touch.aimClientX = e.clientX; touch.aimClientY = e.clientY; };
   el.addEventListener('pointerdown', (e) => {
+    if (id !== null) return;
     id = e.pointerId;
     el.setPointerCapture(e.pointerId);
     aim(e);
@@ -109,31 +116,35 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
     const allUp = (e: TouchEvent) => { if (e.touches.length === 0) releaseAllTouch(); };
     document.addEventListener('touchend', allUp);
     document.addEventListener('touchcancel', allUp);
-    window.addEventListener('blur', releaseAllTouch);
-    window.addEventListener('pagehide', releaseAllTouch);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAllTouch(); });
+    const cancel = () => { releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false; };
+    window.addEventListener('blur', cancel);
+    window.addEventListener('pagehide', cancel);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
   }
   touch.active = true;
   const pad = document.createElement('div');
   pad.className = 'touch-pad';
   pad.innerHTML = `
     <div class="touch-row">${actions.map((a, i) => `<button class="tbtn small ${a.cls}" data-i="${i}">${a.label}</button>`).join('')}</div>
-    <div class="stick move"><div class="knob"></div><span>移動 / 上でジャンプ</span></div>
+    <div class="stick move"><div class="knob"></div><span>移動</span></div>
+    <div class="stick aim"><div class="knob"></div><span>倒してフック / 離して解除</span></div>
     <div class="touch-btns">
       <button class="tbtn fire">ハンマー</button>
       <button class="tbtn jump">ジャンプ</button>
     </div>
-    <div class="touch-hint">画面をタップした方向にチェーン</div>`;
+    <div class="touch-hint">右スティックで照準とフック · 画面への直接タップも使えます</div>`;
   screen.append(pad);
   const canvas = screen.querySelector<HTMLElement>('canvas');
   if (canvas) hookArea(canvas);
 
-  let up = false;
+  stick(pad.querySelector('.aim')!, (x, y, held) => {
+    touch.aimMode = held;
+    if (Math.hypot(x, y) > .22) { touch.aimX = x; touch.aimY = y; touch.hook = true; }
+    else touch.hook = false;
+  });
   stick(pad.querySelector('.move')!, (x, y) => {
     touch.moveX = Math.abs(x) > DEAD ? Math.sign(x) : 0;
-    // 上に倒したらジャンプ。戻すまで押しっぱなし扱い
-    const nowUp = y < -0.55;
-    if (nowUp !== up) { up = nowUp; touch.jump = nowUp; if (nowUp) touch.jumpTap = true; }
+    // 斜め移動による誤ジャンプを防ぐため、ジャンプは専用ボタンに限定する。
   });
   button(pad.querySelector('.jump')!, () => { touch.jump = touch.jumpTap = true; }, () => { touch.jump = false; });
   button(pad.querySelector('.fire')!, () => { touch.fire = touch.fireTap = true; }, () => { touch.fire = false; });
