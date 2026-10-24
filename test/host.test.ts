@@ -57,3 +57,15 @@ test('満員や名前の不正な人は入れない', () => {
   assert.equal(x.got[0]?.t, 'error');
   assert.equal(hub.members.size, 0);
 });
+
+test('コース選択から同じKobraに合流し、武器と仕掛けの状態を二人に配信する', () => {
+  const hub=new HostHub('dd-test','中華街'),a=fakeLink(hub),b=fakeLink(hub);
+  a.say({t:'hello',name:'赤',guest:true});b.say({t:'hello',name:'青',guest:true});
+  a.say({t:'stageJoin',stageId:'invalid'});assert.equal(last(a.got,'gameStart')!.stageId,'lobby');
+  a.say({t:'stageJoin',stageId:'dd-kobra'});b.say({t:'stageJoin',stageId:'dd-kobra'});
+  const id=last(a.got,'gameStart')!.gameId;assert.equal(last(b.got,'gameStart')!.gameId,id);
+  a.say({t:'input',gameId:id,list:[{seq:1,input:{...emptyInput(),weapon:1}}]});
+  hub.tick();hub.tick();
+  const snap=last(a.got,'snap')!;assert.equal(snap.me!.dd!.weapon,1);assert.ok(snap.dd);assert.equal(snap.others.length,1);
+  const other=last(b.got,'snap')!.others[0];assert.equal(other.dd!.weapon,1);
+});

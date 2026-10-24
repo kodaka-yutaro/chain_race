@@ -120,6 +120,7 @@ export class Game {
         others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen,
         timers: this.world.timers, lifts: this.world.lifts, saws: this.world.saws, zones,
         waiting: this.stageId.startsWith('user-') && this.size < this.world.map.minPlayers,
+        dd: this.world.dd,
       });
     }
   }

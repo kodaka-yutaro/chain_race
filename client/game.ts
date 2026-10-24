@@ -6,6 +6,8 @@ import { mapById as stageOrLobby, stageById } from '../shared/maps';
 import { PARTY_CAPACITY, type RunnerView, type ServerMsg, type ZoneState } from '../shared/protocol';
 import { releaseAllTouch, touch } from './touch';
 import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles, drawRunner } from './render';
+import { WEAPON_NAMES } from '../shared/ddrace';
+import { drawDD } from './dd-render';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
 
@@ -40,6 +42,8 @@ export class ClientGame {
   private lastSnapAt = 0;
   private stopped = false;
   private waitingForParty = false;
+  private weaponPanel: HTMLElement | null = null;
+  private weaponQueued: number | undefined;
   private listeners: [EventTarget, string, (e: any) => void][] = [];
 
   constructor(
@@ -60,6 +64,7 @@ export class ClientGame {
     this.ctx = canvas.getContext('2d')!;
     this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
     this.bindInput();
+    if(this.map.dd) this.mountWeapons();
     this.resize();
     this.raf = requestAnimationFrame(this.frame);
   }
@@ -76,9 +81,27 @@ export class ClientGame {
 
   queueKill() { this.killQueued = true; }
 
+  private mountWeapons() {
+    const panel=document.createElement('div');panel.className='dd-tools';
+    const row=document.createElement('div');row.className='dd-weapons';
+    for(let n=0;n<6;n++){
+      const b=document.createElement('button');b.textContent=`${n+1} ${['鎚','銃','散','爆','光','忍'][n]}`;
+      b.title=WEAPON_NAMES[n];b.setAttribute('aria-label',WEAPON_NAMES[n]);b.dataset.weapon=String(n);
+      b.onclick=()=>{this.weaponQueued=n;};row.append(b);
+    }
+    const status=document.createElement('div');status.className='dd-status';
+    panel.append(row,status);
+    if(touch.active){
+      const toggle=document.createElement('button');toggle.className='dd-aim-toggle';toggle.textContent='右スティック: フック';
+      toggle.onclick=()=>{touch.aimOnly=!touch.aimOnly;touch.hook=false;toggle.textContent=`右スティック: ${touch.aimOnly?'照準だけ':'フック'}`;};panel.append(toggle);
+    }
+    this.canvas.parentElement!.append(panel);this.weaponPanel=panel;
+  }
+
   stop() {
     this.stopped = true;
     releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = false;
+    touch.aimOnly=false;this.weaponPanel?.remove();
     cancelAnimationFrame(this.raf);
     for (const [t, ev, fn] of this.listeners) t.removeEventListener(ev, fn);
   }
@@ -107,13 +130,14 @@ export class ClientGame {
     // サーバーの状態から未確認の入力をやり直す（クライアント予測の補正）
     const beforeX = this.me.x + this.smoothX, beforeY = this.me.y + this.smoothY;
     this.pending = this.pending.filter((p) => p.seq > s.lastSeq);
-    this.me = { ...s.me };
+    this.me = structuredClone(s.me);
     this.world = createWorld(this.map);
     this.world.tick = s.tick;
     this.world.doorsOpen = [...s.doors];
     this.world.timers = [...s.timers];
     this.world.lifts = [...s.lifts];
     this.world.saws = [...s.saws];
+    if(s.dd) this.world.dd=structuredClone(s.dd);
     this.world.runners = [this.me, ...s.others.map((v) => viewToRunner(v, this.map))];
     for (const p of this.pending) this.predictStep(p.input);
     this.smoothX = beforeX - this.me.x;
@@ -133,8 +157,9 @@ export class ClientGame {
 
   private sampleInput(): Input {
     // 1 tick より短いタップも取りこぼさないよう、押された直後のキーは一度だけ押下扱いにする
-    const k = { has: (c: string) => this.keys.has(c) || this.tapped.has(c) };
-    this.tapped.clear();
+    const tapped = this.tapped;
+    this.tapped = new Set();
+    const k = { has: (c: string) => this.keys.has(c) || tapped.has(c) };
     const clicked = this.clicked;
     this.clicked = { left: false, right: false };
     const i = emptyInput();
@@ -147,6 +172,8 @@ export class ClientGame {
     i.wire = this.mouse.right || clicked.right || k.has('KeyE') || k.has('ShiftLeft');
     i.fire = this.mouse.left || clicked.left || k.has('KeyQ');
     i.kill = this.killQueued;
+    for(let n=0;n<6;n++)if(k.has(`Digit${n+1}`))this.weaponQueued=n;
+    i.weapon=this.weaponQueued;this.weaponQueued=undefined;
     this.killQueued = false;
     const wx = this.mouse.x / this.cam.zoom + this.cam.x;
     const wy = this.mouse.y / this.cam.zoom + this.cam.y;
@@ -193,6 +220,13 @@ export class ClientGame {
     this.smoothX *= 0.85;
     this.smoothY *= 0.85;
     this.render(now);
+    if(this.me.dd&&this.weaponPanel){
+      const d=this.me.dd;
+      for(const b of this.weaponPanel.querySelectorAll<HTMLButtonElement>('[data-weapon]')){
+        const n=Number(b.dataset.weapon);b.disabled=!(d.weapons&1<<n);b.setAttribute('aria-pressed',String(d.weapon===n));
+      }
+      this.weaponPanel.querySelector('.dd-status')!.textContent=`${WEAPON_NAMES[d.weapon]}${d.solo?' · SOLO':''}${d.jetpack?' · JET':''} · ${d.endlessJump?'∞':d.jumps<0?'地上のみ':d.jumps}段ジャンプ`;
+    }
     const running = this.me.raceStart >= 0 && this.me.finishedTime < 0;
     const t = this.me.finishedTime >= 0 ? this.me.finishedTime
       : running ? (this.world.tick - this.me.raceStart) / TICK_RATE : 0;
@@ -311,6 +345,7 @@ export class ClientGame {
     }
     drawLiveTiles(g, this.map, { ...this.world, doors: this.doors }, Math.floor(this.cam.x / TILE) - 1, Math.floor(this.cam.y / TILE) - 1,
       Math.ceil((this.cam.x + vw) / TILE) + 1, Math.ceil((this.cam.y + vh) / TILE) + 1, now);
+    drawDD(g,this.world,Math.floor(this.cam.x/TILE)-1,Math.floor(this.cam.y/TILE)-1,Math.ceil((this.cam.x+vw)/TILE)+1,Math.ceil((this.cam.y+vh)/TILE)+1);
     this.drawZones(g);
 
     const views = this.othersInterpolated(now);
@@ -464,5 +499,6 @@ function viewToRunner(v: RunnerView, map: MapDef): Runner {
   r.stun = v.st; r.aimX = v.ax; r.aimY = v.ay; r.hammerTick = v.ct;
   r.finishedTime = v.ft; r.raceStart = v.rs; r.grounded = v.g;
   r.prevWire = v.ws !== 0;
+  if(v.dd)r.dd={...v.dd};
   return r;
 }

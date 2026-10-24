@@ -1,4 +1,5 @@
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
+import { ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
 
 export const TILE = 32;
 export const TICK_RATE = 50;
@@ -70,6 +71,7 @@ export interface MapDef {
   lifts?: Lift[];
   /** シーソー（タイル座標） */
   saws?: Saw[];
+  dd?: DDMapData;
 }
 
 /** 支点 x の左右に half マスずつ伸びた板。片側に強く着地すると、反対側に乗っている人が飛ぶ */
@@ -116,6 +118,7 @@ export interface Input {
   kill: boolean;
   aimX: number;
   aimY: number;
+  weapon?: number;
 }
 
 export const emptyInput = (): Input => ({
@@ -147,6 +150,7 @@ export interface Runner {
   aimX: number; aimY: number;
   raceStart: number; // -1 = 未スタート
   finishedTime: number; // -1 = 未ゴール（秒）
+  dd?: DDRunner;
 }
 
 export interface World {
@@ -162,6 +166,7 @@ export interface World {
   lifts: number[];
   /** 各シーソーの傾き（-1 = 左が下、1 = 右が下） */
   saws: number[];
+  dd?: DDWorld;
 }
 
 export interface StepEvents {
@@ -228,6 +233,7 @@ function moveBox(w: World, t: Runner) {
   const steps = Math.max(1, Math.ceil(dist));
   const f = 1 / steps;
   for (let i = 0; i < steps; i++) {
+    ddClamp(w, t);
     let nx = t.x + t.vx * f;
     let ny = t.y + t.vy * f;
     if (testBox(w, nx, ny)) {
@@ -263,6 +269,7 @@ export function newRunner(id: number, map: MapDef): Runner {
     prevJump: false, prevWire: false, prevFire: false,
     wireState: WIRE_IDLE, wireX: 0, wireY: 0, wireDX: 0, wireDY: 0, wireRunner: -1, wireTick: 0,
     stun: 0, hammerCd: 0, hammerTick: -100, aimX: 1, aimY: 0, raceStart: -1, finishedTime: -1,
+    ...(map.dd ? {dd: newDDRunner()} : {}),
   };
 }
 
@@ -273,6 +280,7 @@ export function createWorld(map: MapDef): World {
     // リフトは下にいる状態から始まる
     lifts: (map.lifts ?? []).map((l) => (l.bottom - l.top) * TILE),
     saws: (map.saws ?? []).map(() => -1),
+    ...(map.dd ? {dd: newDDWorld()} : {}),
   };
 }
 
@@ -283,6 +291,7 @@ export function respawn(w: World, t: Runner) {
   t.stun = 0; t.jumped = 0;
   t.raceStart = -1;
   t.finishedTime = -1;
+  if (w.map.dd) t.dd = newDDRunner();
   for (const o of w.runners) if (o.wireRunner === t.id) releaseWire(o);
 }
 
@@ -294,9 +303,10 @@ function touchedTiles(w: World, t: Runner): string[] {
 }
 
 function checkGrounded(w: World, t: Runner): boolean {
+  if (ddRestrictions(w,t.x,t.y) & 2) return true;
   if (isSolid(w, t.x - R + 1, t.y + R + 3) || isSolid(w, t.x + R - 1, t.y + R + 3)) return true;
   for (const o of w.runners) {
-    if (o === t) continue;
+    if (o === t || !ddInteracts(t,o)) continue;
     const dy = o.y - t.y;
     if (Math.abs(o.x - t.x) < TEE_SIZE * 0.8 && dy > 0 && dy <= TEE_SIZE + 3) return true;
   }
@@ -310,10 +320,12 @@ function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number)
   for (let i = 0; i <= n; i++) {
     const a = i / n;
     const x = x0 + (x1 - x0) * a, y = y0 + (y1 - y0) * a;
-    if (charAtPx(w, x, y) !== 'O' && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#' };
+    const teleport = ddHookExit(w.map,x,y);
+    if (teleport) return { x: px, y: py, hit: false, stick: false, teleport };
+    if (charAtPx(w, x, y) !== 'O' && !ddHookThrough(w.map,x,y,x1-x0,y1-y0) && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#', teleport: undefined };
     px = x; py = y;
   }
-  return { x: x1, y: y1, hit: false, stick: false };
+  return { x: x1, y: y1, hit: false, stick: false, teleport: undefined };
 }
 
 function closestPointOnSegment(ax: number, ay: number, bx: number, by: number, px: number, py: number) {
@@ -411,6 +423,7 @@ function moveLifts(w: World) {
 export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   const ev: StepEvents = { finished: [], killed: [] };
   w.tick++;
+  ddTick(w);
 
   updateSwitches(w);
   moveLifts(w);
@@ -425,6 +438,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
     const al = Math.hypot(inp.aimX, inp.aimY);
     if (al > 0.0001) { t.aimX = inp.aimX / al; t.aimY = inp.aimY / al; }
+    ddPrepare(w,t,inp);
 
     const stunned = t.stun > 0;
     const dir = stunned ? 0 : (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
@@ -438,7 +452,15 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vy += PHYS.gravity;
 
     // ジャンプ（押しっぱなしでは連続しない）と二段ジャンプ
-    if (!stunned && inp.jump) {
+    if (t.dd) {
+      const d=t.dd;
+      if(t.grounded) d.usedJumps=0;
+      if(!stunned && inp.jump && !(t.jumped&1)) {
+        if(t.grounded && d.jumps!==0) {t.vy=-PHYS.jump;t.jumped|=1;}
+        else if(!t.grounded && (d.endlessJump || d.usedJumps<Math.max(0,d.jumps-1))) {t.vy=-PHYS.airJump;d.usedJumps++;t.jumped|=1;}
+      }
+      if(!inp.jump) t.jumped&=~1;
+    } else if (!stunned && inp.jump) {
       if (!(t.jumped & 1)) {
         if (t.grounded) { t.vy = -PHYS.jump; t.jumped |= 1; }
         else if (!(t.jumped & 2)) { t.vy = -PHYS.airJump; t.jumped |= 3; }
@@ -458,6 +480,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       t.wireDX = t.aimX; t.wireDY = t.aimY;
       t.wireRunner = -1;
       t.wireTick = 0;
+      if(t.dd) {t.dd.hookBaseX=t.x;t.dd.hookBaseY=t.y;t.dd.hookTeleported=false;}
     }
 
     if (dir !== 0) t.vx = saturatedAdd(-maxSpeed, maxSpeed, t.vx, accel * dir);
@@ -469,14 +492,18 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       const hit = intersectLine(w, t.wireX, t.wireY, nx, ny);
       let best = -1, bestD = Infinity;
       for (const o of w.runners) {
-        if (o === t) continue;
+        if (o === t || !ddInteracts(t,o)) continue;
         const c = closestPointOnSegment(t.wireX, t.wireY, hit.x, hit.y, o.x, o.y);
         if (Math.hypot(c.x - o.x, c.y - o.y) < R + 2) {
           const d = Math.hypot(c.x - t.wireX, c.y - t.wireY);
           if (d < bestD) { bestD = d; best = o.id; }
         }
       }
-      if (best >= 0) {
+      if (hit.teleport && t.dd) {
+        t.wireX=hit.teleport.x;t.wireY=hit.teleport.y;
+        t.dd.hookBaseX=t.wireX;t.dd.hookBaseY=t.wireY;
+        t.dd.hookTeleported=true;
+      } else if (best >= 0) {
         t.wireState = WIRE_ATTACHED;
         t.wireRunner = best;
       } else if (hit.hit) {
@@ -484,7 +511,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
           t.wireState = WIRE_ATTACHED;
           t.wireX = hit.x; t.wireY = hit.y;
         } else releaseWire(t);
-      } else if (Math.hypot(nx - t.x, ny - t.y) > PHYS.hookLength) {
+      } else if (Math.hypot(nx - (t.dd?.hookTeleported ? t.dd.hookBaseX : t.x), ny - (t.dd?.hookTeleported ? t.dd.hookBaseY : t.y)) > PHYS.hookLength) {
         releaseWire(t);
       } else {
         t.wireX = hit.x; t.wireY = hit.y;
@@ -496,7 +523,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       if (t.wireRunner >= 0) {
         const o = byId(w, t.wireRunner);
         // 仲間をつかめるのは少しの間だけ
-        if (!o || t.wireTick > PHYS.hookPlayerTicks) releaseWire(t);
+        if (!o || !ddInteracts(t,o) || (!t.dd?.endlessHook && t.wireTick > PHYS.hookPlayerTicks)) releaseWire(t);
         else { t.wireX = o.x; t.wireY = o.y; }
       } else if (Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
         // 掛かった所へ引き寄せられる
@@ -513,13 +540,14 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
 
     // ハンマー：すぐ前の仲間を叩いて飛ばし、しびれを解く
+    const weaponFired = ddFire(w,t,inp);
     if (t.hammerCd > 0) t.hammerCd--;
-    if (!stunned && inp.fire && !t.prevFire && t.hammerCd === 0) {
+    if (!weaponFired && !stunned && inp.fire && !t.prevFire && t.hammerCd === 0) {
       t.hammerCd = PHYS.hammerCooldown;
       t.hammerTick = w.tick;
       const hx = t.x + t.aimX * R * 1.5, hy = t.y + t.aimY * R * 1.5;
       for (const o of w.runners) {
-        if (o === t || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE / 2) continue;
+        if (o === t || !ddInteracts(t,o) || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE / 2) continue;
         let dx = o.x - t.x, dy = o.y - t.y;
         const d = Math.hypot(dx, dy);
         if (d > 0) { dx /= d; dy /= d; } else { dx = 0; dy = -1; }
@@ -540,7 +568,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   for (const t of w.runners) {
     if (t.wireState !== WIRE_ATTACHED || t.wireRunner < 0) continue;
     const o = byId(w, t.wireRunner);
-    if (!o) continue;
+    if (!o || !ddInteracts(t,o)) continue;
     const d = Math.hypot(t.x - o.x, t.y - o.y);
     if (d <= TEE_SIZE * 1.5) continue;
     const dx = (t.x - o.x) / d, dy = (t.y - o.y) / d;
@@ -552,11 +580,15 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vy = saturatedAdd(-sp, sp, t.vy, -a * dy * 0.25);
   }
 
+  ddProjectiles(w);
   const fall = new Map<Runner, number>();
+  const before = new Map<Runner, [number,number]>();
   for (const t of w.runners) {
+    before.set(t,[t.x,t.y]);
     const m = PHYS.maxSpeed;
     t.vx = Math.max(-m, Math.min(m, t.vx));
     t.vy = Math.max(-m, Math.min(m, t.vy));
+    ddMove(w,t);
     fall.set(t, t.vy);
     moveBox(w, t);
   }
@@ -566,6 +598,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   for (let i = 0; i < w.runners.length; i++) {
     for (let j = i + 1; j < w.runners.length; j++) {
       const a = w.runners[i], b = w.runners[j];
+      if(!ddInteracts(a,b)) continue;
       const dx = b.x - a.x, dy = b.y - a.y;
       const d = Math.hypot(dx, dy);
       if (d >= TEE_SIZE || d === 0) continue;
@@ -601,6 +634,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       t.vy = -PHYS.springSpeed;
       t.jumped &= ~2;
     }
+    const [fromX,fromY]=before.get(t)!;
+    ddTiles(w,t,fromX,fromY);
     if (tiles.includes('>') && t.finishedTime < 0) t.raceStart = w.tick;
     if (tiles.includes('F') && t.raceStart >= 0 && t.finishedTime < 0) {
       t.finishedTime = Math.round(((w.tick - t.raceStart) / TICK_RATE) * 1000) / 1000;

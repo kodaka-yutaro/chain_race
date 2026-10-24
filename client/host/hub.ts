@@ -86,6 +86,10 @@ export class HostHub {
     if (!c.name) return;
 
     switch (msg.t) {
+      case 'stageJoin': {
+        if(c.game!==this.lobby || !MAPS.some(m=>m.id===msg.stageId))return;
+        this.enterFree(c,msg.stageId);return;
+      }
       case 'chat': {
         const text = String(msg.text ?? '').trim().slice(0, 200);
         if (!text) return;
@@ -117,6 +121,7 @@ export class HostHub {
           g.pushInput(c, e.seq, {
             left: !!i.left, right: !!i.right, up: !!i.up, down: !!i.down, jump: !!i.jump, wire: !!i.wire,
             fire: !!i.fire, kill: !!i.kill, aimX: Number(i.aimX) || 0, aimY: Number(i.aimY) || 0,
+            weapon: Number.isInteger(i.weapon) && i.weapon! >= 0 && i.weapon! < 6 ? i.weapon : undefined,
           });
         }
         return;
@@ -215,20 +220,24 @@ export class HostHub {
     const z = ZONES.find((x) => inZone(x, r.x, r.y));
     if (!z) return;
     if (z.kind === 'free') {
-      let g = this.free.get(z.stageId);
+      this.enterFree(c,z.stageId);
+    } else if (!this.countdowns.has(z.id)) {
+      this.countdowns.set(z.id, PARTY_COUNTDOWN_TICKS);
+    }
+  }
+
+  private enterFree(c: Client, stageId: string) {
+      let g = this.free.get(stageId);
       if (!g) {
-        g = new Game(z.stageId, 'free', (gg) => {
+        g = new Game(stageId, 'free', (gg) => {
           this.games.delete(gg);
           if (this.free.get(gg.stageId) === gg) this.free.delete(gg.stageId);
           this.pushState();
         });
         this.games.add(g);
-        this.free.set(z.stageId, g);
+        this.free.set(stageId, g);
       }
       this.moveTo(c, g);
       this.pushState();
-    } else if (!this.countdowns.has(z.id)) {
-      this.countdowns.set(z.id, PARTY_COUNTDOWN_TICKS);
-    }
   }
 }

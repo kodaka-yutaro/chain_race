@@ -1,4 +1,5 @@
 import type { MapDef, Input, Runner } from './physics';
+import type { DDRunner, DDWorld } from './ddrace';
 
 /** 大部屋の定員。作った人のブラウザが全員分の通信を受け持つので控えめにする */
 export const HUB_CAPACITY = 16;
@@ -27,6 +28,7 @@ export interface RunnerView {
   ws: number; wx: number; wy: number; wr: number;
   st: number; ax: number; ay: number; ct: number;
   ft: number; rs: number; g: boolean;
+  dd?: DDRunner;
 }
 
 /** 参加者 → 大部屋の主（ホスト） */
@@ -35,6 +37,7 @@ export type ClientMsg =
   | { t: 'chat'; text: string }
   | { t: 'interact' }
   | { t: 'courseJoin'; map: MapDef }
+  | { t: 'stageJoin'; stageId: string }
   | { t: 'leaveGame' }
   /** 取りこぼしに備えて直近の入力をまとめて送る */
   | { t: 'input'; gameId: string; list: { seq: number; input: Input }[] };
@@ -46,7 +49,7 @@ export type ServerMsg =
   | { t: 'chat'; from: string; fromId?: number; text: string; system?: boolean }
   | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string>; map?: MapDef }
   | { t: 'names'; names: Record<number, string> }
-  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean }
+  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean; dd?: DDWorld }
   | { t: 'finish'; runnerId: number; name: string; time: number }
   | { t: 'partyClear'; stageId: string; gameId: string; results: { id: number; name: string; time: number }[] }
   | { t: 'error'; message: string };
@@ -68,5 +71,6 @@ export function toView(r: Runner): RunnerView {
     ws: r.wireState, wx: q(r.wireX), wy: q(r.wireY), wr: r.wireRunner,
     st: r.stun, ax: q(r.aimX), ay: q(r.aimY), ct: r.hammerTick,
     ft: r.finishedTime, rs: r.raceStart, g: r.grounded,
+    ...(r.dd ? {dd: {...r.dd}} : {}),
   };
 }

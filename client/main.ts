@@ -300,7 +300,7 @@ function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
   show(lobby ? 'hub' : 'game');
   const canvas = $<HTMLCanvasElement>(lobby ? '#lobby-canvas' : '#game-canvas');
   if (!lobby) {
-    $('#hud-stage').textContent = (mapById(m.stageId)?.name ?? '') + (m.stageId === 'dd-sunny' ? '（移植プレリリース）' : '');
+    $('#hud-stage').textContent = (mapById(m.stageId)?.name ?? '') + (m.stageId.startsWith('dd-') ? '（移植プレリリース）' : '');
     $('#hud-mode').textContent = m.mode === 'party' ? 'パーティ' : 'フリー';
   }
   hideResult();
@@ -388,6 +388,13 @@ async function openCourses() {
   catalogue.replaceChildren(el('h2', { textContent: 'みんなのコース' }));
   const close = el('button', { textContent: '閉じる' }); close.onclick = () => catalogue.close(); catalogue.append(close);
   if (!catalogue.open) catalogue.showModal();
+  const presets=el('div',{className:'buttons'});
+  catalogue.append(el('h3',{textContent:'大会コースへすぐ入る'}),el('p',{className:'note',textContent:'同じ大部屋で同じコースを選ぶと合流します。自由参加で練習もできます。'}),presets);
+  for(const map of MAPS){
+    const b=el('button',{textContent:map.name,disabled:!conn||gameMode!=='lobby'});
+    b.onclick=()=>{send({t:'stageJoin',stageId:map.id});catalogue.close();};presets.append(b);
+  }
+  catalogue.append(el('h3',{textContent:'みんなが作ったコース'}));
   const note = el('p', { className: 'note', textContent: '読み込み中…' }); catalogue.append(note);
   try { courses = await backend.listCourses(); note.textContent = courses.length ? '同じ大部屋で同じコースに参加してください。2人揃うと動き出します。' : 'まだ投稿がありません。「コースをつくる」から最初のコースを投稿しよう。'; }
   catch { note.textContent = 'コースを読み込めません。通信状態または公開設定を確認してください。'; return; }
