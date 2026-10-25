@@ -1,6 +1,7 @@
 // 左スティックで移動、右スティックで照準とフック。専用ボタンでジャンプとハンマー。
 // 画面の直接タップによるフックも利用できる。
 import { bindPress, releasePresses } from './press';
+import { toggleFullscreen } from './pwa';
 
 export const isTouch = () => matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
@@ -136,7 +137,7 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
   const pad = document.createElement('div');
   pad.className = 'touch-pad';
   pad.innerHTML = `
-    <div class="touch-row">${actions.map((a, i) => `<button class="tbtn small ${a.cls}" data-i="${i}">${a.label}</button>`).join('')}<button class="tbtn small stick-jump-toggle" aria-pressed="${touch.jumpFromStick}">左↑ジャンプ ${touch.jumpFromStick ? 'ON' : 'OFF'}</button></div>
+    <div class="touch-row">${actions.map((a, i) => `<button class="tbtn small ${a.cls}" data-i="${i}">${a.label}</button>`).join('')}<button class="tbtn small stick-jump-toggle" aria-pressed="${touch.jumpFromStick}">左↑ジャンプ ${touch.jumpFromStick ? 'ON' : 'OFF'}</button><button class="tbtn small fs-toggle" type="button">全画面</button></div>
     <div class="stick move"><div class="knob"></div><span>移動</span></div>
     <div class="stick aim"><div class="knob"></div><span>倒してフック / 離して解除</span></div>
     <div class="touch-btns">
@@ -164,6 +165,8 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
   bindPress(pad.querySelector('.jump')!, () => { touch.jump = touch.jumpTap = true; }, () => { touch.jump = false; });
   bindPress(pad.querySelector('.fire')!, () => { touch.fire = touch.fireTap = true; }, () => { touch.fire = false; });
   bindPress(pad.querySelector('.mini')!, () => { touch.miniTap = true; });
+  const fsToggle = pad.querySelector<HTMLButtonElement>('.fs-toggle')!;
+  fsToggle.onclick = () => void toggleFullscreen();
   const jumpToggle = pad.querySelector<HTMLButtonElement>('.stick-jump-toggle')!;
   jumpToggle.onclick = () => {
     touch.jumpFromStick = !touch.jumpFromStick;

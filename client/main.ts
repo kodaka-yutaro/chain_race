@@ -11,6 +11,7 @@ import { firebaseConfig } from './net/firebase-config';
 import { firebaseBackend } from './net/firebase';
 import { localBackend } from './net/local';
 import { mountTouchControls } from './touch';
+import { initPwa } from './pwa';
 import { enterHub, type Connection } from './net/session';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -389,6 +390,8 @@ mountTouchControls($('#screen-hub'), [
   { label: '入る / 出発', cls: 'accent', run: () => send({ t: 'interact' }) },
   { label: 'チャット', cls: '', run: () => $('#screen-hub').classList.toggle('chat-open') },
 ]);
+
+initPwa();
 
 
 let courses: Course[] = [];

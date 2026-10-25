@@ -267,3 +267,18 @@ body.touch .hud { padding: env(safe-area-inset-top) 8px 0; }
   body.touch .word-enabled .tbtn.mini { left:60px; right:auto; top:16px; }
   body.touch .tbtn.jump { width:64px; height:64px; bottom:6px; }
 }
+
+/* ホーム画面への追加（全画面で遊ぶ方法）の案内バー */
+.install-hint {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 60;
+  display: flex; align-items: center; gap: 10px;
+  max-width: min(680px, calc(100vw - 24px));
+  background: rgba(16, 22, 40, 0.96); border: 1px solid #f4ca7b; border-radius: 12px;
+  padding: 10px 12px; font-size: 13px; line-height: 1.5;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+.install-hint #install-hint-action { white-space: nowrap; }
+.install-hint #install-hint-close {
+  background: none; border: none; font-size: 18px; line-height: 1; padding: 6px 8px; min-height: 36px;
+}

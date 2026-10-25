@@ -316,6 +316,18 @@ export class ClientGame {
       this.send({ seq, input });
     });
     this.on(window, 'resize', () => this.resize());
+    // Safari のバーは出入りしても window の resize が来ないことがあるので、実際に見えている範囲の変化でも合わせ直す
+    if (window.visualViewport) this.on(window.visualViewport, 'resize', () => this.resize());
+    // 回転直後は clientWidth/Height がまだ古いことがあるので、少し遅れてもう一度合わせる
+    this.on(window, 'orientationchange', () => {
+      this.resize();
+      setTimeout(() => this.resize(), 250);
+    });
+    // 全画面の開始・終了でも大きさが変わる
+    this.on(document, 'fullscreenchange', () => {
+      this.resize();
+      requestAnimationFrame(() => this.resize());
+    });
     this.on(this.canvas, 'contextmenu', (e) => e.preventDefault());
     this.on(this.canvas, 'mousemove', (e: MouseEvent) => {
       this.mouseAimed=true;
