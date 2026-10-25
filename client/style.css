@@ -282,3 +282,97 @@ body.touch .hud { padding: env(safe-area-inset-top) 8px 0; }
 .install-hint #install-hint-close {
   background: none; border: none; font-size: 18px; line-height: 1; padding: 6px 8px; min-height: 36px;
 }
+
+/* ===== タッチ操作の再配置（ブロスタ式：操作は画面の下部と両端に寄せる） ===== */
+:root { --touch-scale: 1; }
+body.touch .touch-pad {
+  grid-template-columns: auto 1fr auto auto;
+  grid-template-rows: auto auto auto;
+  grid-template-areas: "row row row row" "move . btns aim" "hint hint hint hint";
+  align-items: end;
+}
+body.touch .touch-row { grid-area: row; align-self: start; }
+body.touch .stick.move { grid-area: move; justify-self: start; align-self: end; }
+body.touch .stick.aim { grid-area: aim; justify-self: end; align-self: end; }
+body.touch .touch-btns { grid-area: btns; justify-self: end; align-self: end; }
+body.touch .touch-hint { grid-area: hint; text-align: center; }
+body.touch .stick { width: calc(min(30vw, 132px) * var(--touch-scale)); }
+@media (orientation: landscape) {
+  body.touch .stick { width: calc(min(26vh, 120px) * var(--touch-scale)); }
+}
+/* 攻撃・ジャンプは右スティックの手前（左下）に斜めに固める */
+body.touch .touch-btns {
+  position: relative; pointer-events: none;
+  width: calc(158px * var(--touch-scale)); height: calc(108px * var(--touch-scale));
+}
+body.touch .touch-btns > * { pointer-events: auto; }
+body.touch .tbtn.jump {
+  right: 0; bottom: 0; left: auto; top: auto;
+  width: calc(76px * var(--touch-scale)); height: calc(76px * var(--touch-scale));
+  font-size: calc(14px * var(--touch-scale));
+}
+body.touch .tbtn.fire {
+  left: 0; bottom: calc(2px * var(--touch-scale)); top: auto;
+  width: calc(60px * var(--touch-scale)); height: calc(60px * var(--touch-scale));
+  font-size: calc(12px * var(--touch-scale));
+}
+body.touch .word-enabled .tbtn.mini {
+  left: calc(10px * var(--touch-scale)); top: 0; right: auto;
+  width: calc(46px * var(--touch-scale)); height: calc(46px * var(--touch-scale));
+  font-size: calc(10px * var(--touch-scale));
+}
+/* 左右入れ替え（左利き用）：移動が右、フックが左。ボタン群はフック側に付く */
+body.touch-swap .touch-pad {
+  grid-template-columns: auto auto 1fr auto;
+  grid-template-areas: "row row row row" "aim btns . move" "hint hint hint hint";
+}
+/* 中華ボタンは左端の下寄りに縦に固める（コース中央に被せない） */
+body.touch .word-controls {
+  top: auto; left: calc(10px + env(safe-area-inset-left)); transform: none;
+  bottom: calc(178px * var(--touch-scale) + env(safe-area-inset-bottom));
+  width: calc(118px * var(--touch-scale));
+}
+body.touch .word-buttons { display: flex; flex-direction: column; gap: 6px; }
+body.touch .word-buttons button { min-height: 44px; width: 100%; padding: 6px 4px; font-size: 13px; }
+/* DDNet の武器ツールも画面下部の空き（中央下）に寄せる */
+body.touch .dd-tools {
+  top: auto; transform: translateX(-50%);
+  bottom: calc(168px * var(--touch-scale) + env(safe-area-inset-bottom));
+}
+
+/* ボタン設定パネル */
+.touch-settings {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 70;
+  width: min(420px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 10px;
+  background: rgba(16, 22, 40, 0.97); border: 1px solid #f4ca7b; border-radius: 14px;
+  padding: 14px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+}
+.touch-settings h3 { margin: 0; font-size: 15px; }
+.touch-settings .seg { display: flex; gap: 8px; }
+.touch-settings .seg button { flex: 1; min-height: 44px; }
+.touch-settings > button { min-height: 44px; }
+
+/* ===== スクロールを減らす（スマホ・iPad） ===== */
+/* 大部屋一覧：ページ全体はスクロールさせず、左右パネルの中だけがスクロールする */
+body.touch #screen-hubs { display: flex; flex-direction: column; overflow: hidden; }
+body.touch #screen-hubs .bar { flex: none; }
+body.touch #screen-hubs .hubs-layout { flex: 1; min-height: 0; }
+body.touch #screen-hubs .panel { overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+@media (orientation: portrait) {
+  body.touch #screen-hubs .hubs-layout { grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); }
+}
+/* コース一覧ダイアログも中でスクロールして収める */
+.course-dialog { overflow-y: auto; }
+/* 背の低い横画面（スマホ横持ち）ではタイトルを圧縮して1画面に収める */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.touch #screen-title .city-nav { padding: 6px 0; }
+  body.touch #screen-title .city-hero { min-height: 0; height: auto; padding-bottom: 2px; }
+  body.touch #screen-title .race-title { font-size: 20px; -webkit-text-stroke-width: 4px; }
+  body.touch #screen-title .flame-title { font-size: 52px; -webkit-text-stroke-width: 6px; }
+  body.touch #screen-title .tournament-title { font-size: 14px; border-width: 3px; }
+  body.touch #screen-title .city-copy { margin: 6px 0 4px; }
+  body.touch #screen-title .festival-tags, body.touch #screen-title .play-note { display: none; }
+  body.touch #screen-title .festival-play { min-height: 46px; font-size: 17px; }
+}

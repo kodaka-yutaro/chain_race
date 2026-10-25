@@ -29,6 +29,61 @@ export const touch = {
 const DEAD = 0.3;
 try { touch.jumpFromStick = localStorage.getItem('kd.stickJump') !== 'off'; } catch { /* optional preference */ }
 
+/** ボタンの大きさと左右配置の設定（ボタン設定パネルから変更でき、端末に保存される） */
+export const touchSettings = { scale: 1, swap: false };
+try {
+  const s = Number(localStorage.getItem('kd.touchScale'));
+  if (s === 0.85 || s === 1 || s === 1.2) touchSettings.scale = s;
+  touchSettings.swap = localStorage.getItem('kd.touchSwap') === 'on';
+} catch { /* 保存が無ければ標準 */ }
+
+export function applyTouchSettings() {
+  document.documentElement.style.setProperty('--touch-scale', String(touchSettings.scale));
+  document.body.classList.toggle('touch-swap', touchSettings.swap);
+  document.querySelectorAll<HTMLButtonElement>('.touch-settings [data-scale]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(Number(b.dataset.scale) === touchSettings.scale));
+  });
+  const swapBtn = document.querySelector<HTMLButtonElement>('.touch-settings [data-swap]');
+  if (swapBtn) {
+    swapBtn.setAttribute('aria-pressed', String(touchSettings.swap));
+    swapBtn.textContent = `左右を入れ替える：${touchSettings.swap ? 'ON' : 'OFF'}`;
+  }
+}
+
+function saveTouchSettings() {
+  try {
+    localStorage.setItem('kd.touchScale', String(touchSettings.scale));
+    localStorage.setItem('kd.touchSwap', touchSettings.swap ? 'on' : 'off');
+  } catch { /* 保存できなくても今の設定は効く */ }
+}
+
+let settingsPanel: HTMLElement | null = null;
+function ensureSettingsPanel(): HTMLElement {
+  if (settingsPanel) return settingsPanel;
+  const panel = document.createElement('div');
+  panel.className = 'touch-settings hidden';
+  panel.innerHTML = `
+    <h3>ボタン設定</h3>
+    <div class="seg" role="group" aria-label="ボタンの大きさ">
+      <button type="button" data-scale="0.85">小さい</button>
+      <button type="button" data-scale="1">ふつう</button>
+      <button type="button" data-scale="1.2">大きい</button>
+    </div>
+    <button type="button" data-swap aria-pressed="false">左右を入れ替える：OFF</button>
+    <p class="note">入れ替えると、移動スティックが右・フックスティックが左になります。</p>
+    <button type="button" class="primary" data-close>閉じる</button>`;
+  panel.querySelectorAll<HTMLButtonElement>('[data-scale]').forEach((b) => {
+    b.onclick = () => { touchSettings.scale = Number(b.dataset.scale); saveTouchSettings(); applyTouchSettings(); };
+  });
+  panel.querySelector<HTMLButtonElement>('[data-swap]')!.onclick = () => {
+    touchSettings.swap = !touchSettings.swap; saveTouchSettings(); applyTouchSettings();
+  };
+  panel.querySelector<HTMLButtonElement>('[data-close]')!.onclick = () => panel.classList.add('hidden');
+  document.body.append(panel);
+  settingsPanel = panel;
+  return panel;
+}
+
 // 指を離した知らせ（pointerup）が届かないことがある（画面の端からのスワイプ、通知、アプリ切り替えなど）。
 // そのとき押しっぱなしのまま固まらないよう、全部の操作を離した状態に戻せるようにしておく
 const releases: (() => void)[] = [];
@@ -137,7 +192,7 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
   const pad = document.createElement('div');
   pad.className = 'touch-pad';
   pad.innerHTML = `
-    <div class="touch-row">${actions.map((a, i) => `<button class="tbtn small ${a.cls}" data-i="${i}">${a.label}</button>`).join('')}<button class="tbtn small stick-jump-toggle" aria-pressed="${touch.jumpFromStick}">左↑ジャンプ ${touch.jumpFromStick ? 'ON' : 'OFF'}</button><button class="tbtn small fs-toggle" type="button">全画面</button></div>
+    <div class="touch-row">${actions.map((a, i) => `<button class="tbtn small ${a.cls}" data-i="${i}">${a.label}</button>`).join('')}<button class="tbtn small stick-jump-toggle" aria-pressed="${touch.jumpFromStick}">左↑ジャンプ ${touch.jumpFromStick ? 'ON' : 'OFF'}</button><button class="tbtn small fs-toggle" type="button">全画面</button><button class="tbtn small settings-open" type="button">ボタン設定</button></div>
     <div class="stick move"><div class="knob"></div><span>移動</span></div>
     <div class="stick aim"><div class="knob"></div><span>倒してフック / 離して解除</span></div>
     <div class="touch-btns">
@@ -167,6 +222,12 @@ export function mountTouchControls(screen: HTMLElement, actions: { label: string
   bindPress(pad.querySelector('.mini')!, () => { touch.miniTap = true; });
   const fsToggle = pad.querySelector<HTMLButtonElement>('.fs-toggle')!;
   fsToggle.onclick = () => void toggleFullscreen();
+  applyTouchSettings();
+  pad.querySelector<HTMLButtonElement>('.settings-open')!.onclick = () => {
+    const panel = ensureSettingsPanel();
+    applyTouchSettings();
+    panel.classList.remove('hidden');
+  };
   const jumpToggle = pad.querySelector<HTMLButtonElement>('.stick-jump-toggle')!;
   jumpToggle.onclick = () => {
     touch.jumpFromStick = !touch.jumpFromStick;
