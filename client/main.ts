@@ -194,6 +194,10 @@ function onMessage(m: ServerMsg) {
       addChat(m.from, m.text, !!m.system);
       if (m.fromId !== undefined && gameMode === 'lobby') game?.bubble(m.fromId, m.text);
       return;
+    case 'control':
+      if(m.gameId===gameId){recentInputs=[];game?.switchControl(m.runner);hideResult();}return;
+    case 'dummyState':
+      if(m.gameId===gameId){dummyState=m;renderDummy();}return;
     case 'gameStart':
       startGame(m);
       return;
@@ -208,7 +212,7 @@ function onMessage(m: ServerMsg) {
       return;
     case 'partyClear':
       if (m.gameId !== gameId || m.stageId !== gameStage) return;
-      if (!previewing && courses.some(c=>c.id===gameStage)) promoteCourse(m);
+      if (!m.assisted && !previewing && courses.some(c=>c.id===gameStage)) promoteCourse(m);
       showResult('パーティ全員ゴール！', [
         el('ul', { className: 'list' }, ...m.results.map((r) => el('li', {}, `${r.name}　${r.time.toFixed(2)} 秒`))),
       ]);
@@ -303,6 +307,23 @@ function loadRanking(where: string) {
 
 // ---------- ゲーム ----------
 
+let dummyState:Extract<ServerMsg,{t:'dummyState'}>|null=null;
+function renderDummy(){
+ const exists=dummyState?.dummyId!=null;
+ $('#btn-dummy').textContent=exists?'ダミーを戻す':'ダミーを呼ぶ';
+ $<HTMLButtonElement>('#btn-dummy-switch').disabled=!exists;
+ $('#btn-dummy-switch').textContent=dummyState?.activeId===dummyState?.dummyId&&exists?'本体へ切替 [Tab]':'ダミーへ切替 [Tab]';
+ $('#hud-dummy').textContent=exists?(dummyState!.activeId===dummyState!.dummyId?'操作中：ダミー':'操作中：本体'):'';
+}
+$('#btn-dummy').onclick=()=>send({t:'dummy',action:dummyState?.dummyId!=null?'remove':'add',face:savedFace(true)});
+$('#btn-dummy-switch').onclick=()=>send({t:'dummy',action:'switch'});
+$('#btn-dummy-settings').onclick=()=>{
+ const d=document.createElement('dialog');d.innerHTML='<h2>ダミー設定</h2><p>1人につき1体。Tabで操作を切り替えます。操作していない側は通常、入力を止めます。</p><label><input type="checkbox" data-copy>同時操作（操作していない側も同じ動き）</label><label><input type="checkbox" data-hammer>操作していない側が自動ハンマー</label><p>自動ハンマーは基本装備など、ハンマーが使える能力で動きます。</p><button data-face>ダミーの顔を描く</button><button data-close>閉じる</button>';document.body.append(d);
+ for(const key of ['copy','hammer'] as const){const input=d.querySelector<HTMLInputElement>(`[data-${key}]`)!;input.checked=dummyState?.[key]??false;input.disabled=dummyState?.dummyId==null;input.onchange=()=>send({t:'dummy',action:'configure',[key]:input.checked});}
+ d.querySelector<HTMLButtonElement>('[data-face]')!.onclick=()=>openFaceEditor(true,face=>send({t:'dummy',action:'configure',face}));
+ d.querySelector<HTMLButtonElement>('[data-close]')!.onclick=()=>d.close();d.onclose=()=>d.remove();d.showModal();
+};
+
 function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
   stopGame();
   if (m.map && m.map.id === m.stageId) registerCourse(m.map);
@@ -324,14 +345,14 @@ function startGame(m: Extract<ServerMsg, { t: 'gameStart' }>) {
     // 取りこぼしに備えて直近3つをまとめて送る
     recentInputs.push(i);
     if (recentInputs.length > 3) recentInputs.shift();
-    send({ t: 'input', gameId, list: recentInputs });
+    send({ t: 'input', gameId,controlledId:game?.youId, list: recentInputs });
   }, (t, running) => {
     if (lobby) return;
     const el = $('#hud-timer');
     el.textContent = t.toFixed(2);
     el.classList.toggle('running', running);
   }, () => send({ t: 'interact' }));
-  game.setFaces(m.faces??{});
+  game.setFaces(m.faces??{});dummyState=null;renderDummy();
 }
 
 function stopGame() {
@@ -345,8 +366,9 @@ function onFinish(m: Extract<ServerMsg, { t: 'finish' }>) {
   if (m.runnerId !== game.youId) { toast(`${m.name} さんがゴール！ ${m.time.toFixed(2)} 秒`); return; }
   const body: (Node | string)[] = [el('p', { className: 'big', textContent: `${m.time.toFixed(2)} 秒` })];
   const best = el('p', { className: 'note', textContent: profile?.guest ? 'アカウントを作ると記録がランキングに残ります。' : '記録を保存しています…' });
+  if(m.assisted)best.textContent='ダミー使用の練習記録です';
   body.push(best);
-  if (!previewing && !profile?.guest) {
+  if (!m.assisted && !previewing && !profile?.guest) {
     backend.saveBest(gameStage, m.time).then((b) => {
       if (b === null) return;
       best.className = '';
@@ -377,6 +399,7 @@ window.addEventListener('keydown', (e) => {
   if (!game || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
   // Esc belongs to an open dialog or text field until it has been dismissed.
   if (document.querySelector('dialog[open]') || (e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')) return;
+  if(e.code==='Tab'){e.preventDefault();send({t:'dummy',action:dummyState?.dummyId?'switch':'add',face:savedFace(true)});return;}
   if (e.code === 'KeyK' || (e.code === 'Escape' && gameMode !== 'lobby')) {
     e.preventDefault();
     restartFromStart();
@@ -428,8 +451,9 @@ async function promoteCourse(m: Extract<ServerMsg, { t: 'partyClear' }>) {
 }
 for (const b of $$('[data-courses]')) b.onclick = openCourses;
 let previewing=false;
-$('#btn-face').onclick=openFaceEditor;
-$('#room-start').onclick=()=>send({t:'roomStart'});
+$('#btn-face').onclick=()=>openFaceEditor();
+$('#btn-dummy-face').onclick=()=>openFaceEditor(true);
+$('#room-start').onclick=()=>send({t:'roomStart',withDummy:$<HTMLInputElement>('#room-with-dummy').checked,dummyFace:savedFace(true)});
 $('#room-resume').onclick=()=>send({t:'roomResume'});
 $('#room-stop').onclick=()=>send({t:'roomStop'});
 $('#room-invite').onclick=async()=>{if(!conn)return;const url=new URL(location.pathname,location.origin);url.searchParams.set('room',conn.hubId);const input=$<HTMLInputElement>('#room-invite-url');input.value=url.href;input.hidden=false;try{await navigator.clipboard.writeText(url.href);toast('招待リンクをコピーしました');}catch{input.select();}};

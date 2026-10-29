@@ -91,7 +91,7 @@
     <!-- 部屋一覧 -->
     <section id="screen-hubs" class="screen hidden">
       <header class="bar">
-        <h2>仲間と遊ぶ部屋</h2><button id="quick-join">みんなと遊ぶ</button><button id="btn-face">顔を描く</button><button id="btn-editor">コースをつくる</button><button data-courses>コース一覧</button>
+        <h2>仲間と遊ぶ部屋</h2><button id="quick-join">みんなと遊ぶ</button><button id="btn-face">顔を描く</button><button id="btn-dummy-face">ダミーの顔を描く</button><button id="btn-editor">コースをつくる</button><button data-courses>コース一覧</button>
         <span class="me-label"></span>
         <button id="btn-back-title" class="link">タイトルへ</button>
       </header>
@@ -115,7 +115,7 @@
 
     <!-- 部屋の中（歩き回れる広場） -->
     <section id="screen-hub" class="screen hidden">
-      <div class="room-card"><p class="eyebrow">HOST ROOM</p><h2>みんなの準備を待とう</h2><p id="room-owner"></p><h3 id="room-stage"></h3><div class="buttons"><button data-courses>コースを選ぶ</button><button id="room-start" class="primary">全員で開始</button><button id="room-resume">プレイに戻る</button><button id="room-stop">全員を待機画面へ戻す</button><button id="room-invite">友達を招待</button></div><input id="room-invite-url" readonly hidden aria-label="この部屋の招待リンク"><p>ホストが部屋を閉じると全員が退室します。招待リンクは部屋が開いている間だけ有効です。</p></div>
+      <div class="room-card"><p class="eyebrow">HOST ROOM</p><h2>みんなの準備を待とう</h2><p id="room-owner"></p><h3 id="room-stage"></h3><div class="buttons"><button data-courses>コースを選ぶ</button><label><input id="room-with-dummy" type="checkbox">自分のダミーと開始</label><button id="room-start" class="primary">全員で開始</button><button id="room-resume">プレイに戻る</button><button id="room-stop">全員を待機画面へ戻す</button><button id="room-invite">友達を招待</button></div><input id="room-invite-url" readonly hidden aria-label="この部屋の招待リンク"><p>ホストが部屋を閉じると全員が退室します。招待リンクは部屋が開いている間だけ有効です。</p></div>
       <header class="lobby-bar">
         <h2 id="hub-name"></h2>
         <span class="me-label"></span>
@@ -145,7 +145,7 @@
       <div class="hud">
         <div id="hud-stage"></div>
         <div id="hud-timer">0.00</div>
-        <div id="hud-mode"></div><div id="hud-ability"></div>
+        <div id="hud-mode"></div><div id="hud-dummy"></div><div id="hud-ability"></div>
       </div>
       <div class="help">
         A/D 移動 · Space ジャンプ（空中でもう一度） · 右クリック/E サブ動作 ·
@@ -154,7 +154,7 @@
       <nav class="game-actions" aria-label="コースの操作">
         <button data-fullscreen type="button">⛶ 全画面</button>
         <button id="btn-respawn">↺ スタートへ <kbd>Esc</kbd></button>
-        <button id="btn-game-lobby">部屋へ戻る</button>
+        <button id="btn-dummy">ダミーを呼ぶ</button><button id="btn-dummy-switch" disabled>ダミーへ切替 [Tab]</button><button id="btn-dummy-settings">ダミー設定</button><button id="btn-game-lobby">部屋へ戻る</button>
       </nav>
       <div id="toast" class="toast hidden"></div>
       <div id="result" class="overlay hidden">

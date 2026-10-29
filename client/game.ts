@@ -61,7 +61,7 @@ export class ClientGame {
   constructor(
     private canvas: HTMLCanvasElement,
     stageId: string,
-    readonly youId: number,
+    public youId: number,
     names: Record<number, string>,
     private send: (input: { seq: number; input: Input }) => void,
     private onHud: (timer: number, running: boolean) => void,
@@ -93,6 +93,9 @@ export class ClientGame {
     this.bubbles.set(id, { text: text.length > 40 ? `${text.slice(0, 40)}…` : text, until: performance.now() + 5000 });
   }
 
+  switchControl(r:Runner){
+    this.youId=r.id;this.me=structuredClone(r);this.world.runners=[this.me];this.pending=[];this.others.clear();this.keys.clear();this.tapped.clear();this.mouse.left=this.mouse.right=false;this.clicked={left:false,right:false};this.killQueued=false;this.spitQueued=this.miniQueued=this.clearWordQueued=false;this.smoothX=this.smoothY=0;
+  }
   queueKill() { this.killQueued = true; }
   queueSpit() { if(this.map.wordBlocks)this.spitQueued=true; }
   queueMini() { if(this.map.wordBlocks)this.miniQueued=true; }
@@ -143,6 +146,7 @@ export class ClientGame {
   private lastSnapTick = -1;
 
   onSnap(s: Snap) {
+    if(s.me&&s.me.id!==this.youId)return;
     this.waitingForParty = !!s.waiting;
     // 届く順番が入れ替わることがあるので、古いものは捨てる
     if (s.tick <= this.lastSnapTick) return;

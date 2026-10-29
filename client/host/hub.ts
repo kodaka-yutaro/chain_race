@@ -51,8 +51,10 @@ export class HostHub {
       if(!text||now-c.lastChat<500)return;c.lastChat=now;
       for(const peer of this.members)peer.send({t:'chat',from:c.name,fromId:c.id,text});return;
     }
+    if(msg.t==='dummy'){if(['add','remove','switch','configure'].includes(msg.action))c.game?.dummy(c,msg.action,msg.face,msg.copy,msg.hammer);return;}
     if(msg.t==='input'){
       if(!c.game || msg.gameId!==c.game.id || !Array.isArray(msg.list))return;
+      if(msg.controlledId!==undefined&&msg.controlledId!==c.game.controlledId(c))return;
       for(const e of msg.list.slice(-4)){
         const i=e?.input;if(!i||!Number.isSafeInteger(e.seq))continue;
         c.game.pushInput(c,e.seq,{left:!!i.left,right:!!i.right,up:!!i.up,down:!!i.down,jump:!!i.jump,wire:!!i.wire,fire:!!i.fire,kill:!!i.kill,
@@ -77,10 +79,10 @@ export class HostHub {
       this.selected={...m,id:msg.map.id};this.pushState();return;
     }
     if(msg.t==='roomStart'){
-      if(this.members.size<this.selected.minPlayers){c.send({t:'error',message:`${this.selected.minPlayers}人以上で開始できます`});return;}
+      if(this.members.size+(msg.withDummy===true?1:0)<this.selected.minPlayers){c.send({t:'error',message:`${this.selected.minPlayers}人以上で開始できます`});return;}
 
       const g=new Game(this.selected.id,'party',g=>this.games.delete(g),{},this.selected);this.games.add(g);
-      for(const peer of this.members)g.add(peer);this.pushState();
+      for(const peer of this.members)g.add(peer);if(msg.withDummy===true)g.dummy(c,'add',msg.dummyFace);this.pushState();
     }
   }
   private pushState(){

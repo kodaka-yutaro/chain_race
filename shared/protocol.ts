@@ -40,7 +40,8 @@ export interface RunnerView {
 /** 参加者 → 大部屋の主（ホスト） */
 export type ClientMsg =
   | { t: 'hello'; name: string; guest: boolean; face?: string }
-  | { t: 'roomStart' }
+  | { t: 'dummy'; action:'add'|'remove'|'switch'|'configure'; face?:string; copy?:boolean; hammer?:boolean }
+  | { t: 'roomStart'; withDummy?:boolean; dummyFace?:string }
   | { t: 'roomStop' }
   | { t: 'roomResume' }
   | { t: 'chat'; text: string }
@@ -49,18 +50,20 @@ export type ClientMsg =
   | { t: 'stageJoin'; stageId: string }
   | { t: 'leaveGame' }
   /** 取りこぼしに備えて直近の入力をまとめて送る */
-  | { t: 'input'; gameId: string; list: { seq: number; input: Input }[] };
+  | { t: 'input'; gameId: string; controlledId?:number; list: { seq: number; input: Input }[] };
 
 /** 大部屋の主（ホスト） → 参加者 */
 export type ServerMsg =
+  | { t:'dummyState'; gameId:string; dummyId:number|null; activeId:number; copy:boolean; hammer:boolean }
+  | { t:'control'; gameId:string; runner:Runner }
   | { t: 'welcome'; you: UserInfo }
   | { t: 'hubState'; hub: HubState }
   | { t: 'chat'; from: string; fromId?: number; text: string; system?: boolean }
   | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string>; faces?: Record<number, string>; map?: MapDef }
   | { t: 'names'; names: Record<number, string>; faces?: Record<number, string> }
   | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean; dd?: DDWorld; words?:WordBlock[]; wordSeq?:number; blasts?:Blast[];balls?:Ball[];pickups?:Record<number,number> }
-  | { t: 'finish'; runnerId: number; name: string; time: number }
-  | { t: 'partyClear'; stageId: string; gameId: string; results: { id: number; name: string; time: number }[] }
+  | { t: 'finish'; assisted?:boolean; runnerId: number; name: string; time: number }
+  | { t: 'partyClear'; assisted?:boolean; stageId: string; gameId: string; results: { id: number; name: string; time: number }[] }
   | { t: 'error'; message: string };
 
 /** 届かなくてもよい（次のぶんで上書きされる）メッセージ */

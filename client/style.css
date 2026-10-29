@@ -390,3 +390,5 @@ body.touch #screen-hubs .panel { overflow-y: auto; min-height: 0; -webkit-overfl
 #screen-editor{overflow:auto;padding:28px}.editor-meta{display:flex;gap:16px}.editor-viewport{max-height:55vh}
 .course-dialog{max-width:720px}.course-dialog>button{margin:8px}.word-controls[hidden]{display:none!important}
 #hud-ability{color:#ffdc92;font-size:14px}.game-actions{max-width:calc(100% - 280px)}
+
+.game-actions{flex-wrap:wrap;justify-content:flex-end}#hud-dummy{color:#a5e7ed}.hud{flex-wrap:wrap;row-gap:4px}
