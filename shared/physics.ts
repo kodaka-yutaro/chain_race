@@ -379,6 +379,19 @@ function hookCornerGap(w:World,x:number,y:number){
   return a&&d&&!b&&!c||b&&c&&!a&&!d;
 }
 
+// When the body is touching a diagonal opening, launch at that opening.
+// This keeps a full 80-degree aiming fan without carving a hole in wall faces.
+function cornerHookOrigin(w:World,t:Runner){
+  const x=Math.round(t.x/TILE)*TILE,y=Math.round(t.y/TILE)*TILE;
+  const dx=x-t.x,dy=y-t.y;
+  if(!dx||!dy||Math.abs(dx)>R+1||Math.abs(dy)>R+1||!hookCornerGap(w,x,y))return;
+  const sx=Math.sign(dx),sy=Math.sign(dy);
+  if(isSolidChar(charAtPx(w,x-sx,y-sy),w.doorsOpen)||isSolidChar(charAtPx(w,x+sx,y+sy),w.doorsOpen))return;
+  if((t.aimX*sx+t.aimY*sy)/Math.SQRT2<Math.cos(40*Math.PI/180)-1e-10)return;
+  if(intersectLine(w,t.x,t.y,x,y,t.id).hit)return;
+  return {x:x+t.aimX*.01,y:y+t.aimY*.01};
+}
+
 export function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number,ignoreRunner=-1) {
   const d = Math.hypot(x1 - x0, y1 - y0);
   const n = Math.max(1, Math.ceil(d / 4));
@@ -574,8 +587,9 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       releaseWire(t);
     } else if (!t.prevWire && t.wireState === WIRE_IDLE) {
       t.wireState = WIRE_FLYING;
-      t.wireX = t.x + t.aimX * R * 1.5;
-      t.wireY = t.y + t.aimY * R * 1.5;
+      const corner=cornerHookOrigin(w,t);
+      t.wireX = corner?.x ?? t.x + t.aimX * R * 1.5;
+      t.wireY = corner?.y ?? t.y + t.aimY * R * 1.5;
       t.wireDX = t.aimX; t.wireDY = t.aimY;
       t.wireRunner = -1;
       t.wireWord=-1;
