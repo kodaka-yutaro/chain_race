@@ -1,4 +1,4 @@
-import { validateCourseMap } from '../shared/courses';
+import { validateCourseMap, COURSE_FILE_MAX_BYTES } from '../shared/courses';
 import type { MapDef } from '../shared/physics';
 import { mountEditor } from './editor';
 import type { Course } from '../shared/courses';
@@ -411,7 +411,7 @@ async function openCourses() {
   for(const m of MAPS.filter(m=>!m.dd))add(m,false);
   try{courses=await backend.listCourses();for(const c of courses)add(c.map,true);}catch{note.textContent+=' 投稿コースは読み込めませんでした。';}
   const file=el('input',{type:'file',accept:'.json,application/json',disabled:!conn?.isHost||hub?.playing});
-  file.onchange=async()=>{try{const f=file.files?.[0];if(!f)return;if(f.size>100000)throw Error('ファイルが大きすぎます');const map=validateCourseMap(JSON.parse(await f.text()));send({t:'courseJoin',map:{...map,id:'user-'+randomId()}});catalogue.close();}catch(e){note.textContent=(e as Error).message;}};
+  file.onchange=async()=>{try{const f=file.files?.[0];if(!f)return;if(f.size>COURSE_FILE_MAX_BYTES)throw Error('ファイルが大きすぎます');const map=validateCourseMap(JSON.parse(await f.text()));send({t:'courseJoin',map:{...map,id:'user-'+randomId()}});catalogue.close();}catch(e){note.textContent=(e as Error).message;}};
   catalogue.append(el('p',{},'エディタで保存したコースファイルを使う（投稿不要）'),file);
 }
 async function promoteCourse(m: Extract<ServerMsg, { t: 'partyClear' }>) {

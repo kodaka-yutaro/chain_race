@@ -2,9 +2,10 @@ import {drawPart} from './part-art';
 import './part-art.css';
 import './editor-layout.css';
 import {DD_PARTS,blankDD} from '../shared/dd-parts';
-import { newCourseMap, TILE_TOOLS, validateCourseMap, validateCoursePreview } from '../shared/courses';
+import { COURSE_MAX_WIDTH, COURSE_MAX_HEIGHT, COURSE_FILE_MAX_BYTES, newCourseMap, TILE_TOOLS, validateCourseMap, validateCoursePreview } from '../shared/courses';
 import type { MapDef } from '../shared/physics';
 
+let editorResize:ResizeObserver|undefined;
 const KEY = 'tsunagu.course-draft.v1';
 const RECENT_KEY = 'tsunagu.editor-recent.v1', PAGE_SIZE = 18;
 const PARTS = [...TILE_TOOLS,...DD_PARTS.map(p=>[p.id,p.name])];
@@ -18,11 +19,11 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     <p data-test-error role="alert" hidden></p>
     <div class="ed-workspace">
       <aside class="ed-palette" aria-label="パーツを選ぶ"><input data-search type="search" placeholder="パーツを検索" aria-label="パーツを検索"><div data-categories class="ed-categories"></div><section class="ed-recent"><h3>最近使ったパーツ</h3><div data-recent role="group" aria-label="最近使ったパーツ"></div></section><div class="tile-tools" role="group" aria-label="置くタイル"></div><div class="ed-pages"><button data-page-prev aria-label="前のパーツ">←</button><span data-page-info></span><button data-page-next aria-label="次のパーツ">→</button></div></aside>
-      <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div><div class="ed-canvas-hint">ドラッグで描く · Eで消去 · Space＋ドラッグで移動 · Ctrl＋ホイールで拡大縮小<span data-cursor></span></div></main>
+      <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><div class="ed-map-space"><canvas aria-label="タイルを選んで描く"></canvas></div></div><div class="ed-canvas-hint">ドラッグで描く · Eで消去 · Space＋ドラッグで移動 · Ctrl＋ホイールで拡大縮小<span data-cursor></span></div></main>
       <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">選んだパーツの設定は、これから置くパーツに使われます。</p></aside>
     </div>
     <footer class="ed-footer"><span data-status role="status">下書きはこの端末に自動保存</span><button data-export>ファイルに保存</button><label class="file-button">開く<input data-import type="file" accept="application/json,.json"></label><button data-publish>プレリリース</button></footer>
-    <dialog class="ed-dialog" data-settings-dialog><div class="ed-dialog-head"><h2>コース設定</h2><button data-dismiss>閉じる</button></div><label>説明<input data-desc maxlength="280"></label><div class="ed-size"><label>幅（マス）<input data-width type="number" min="20" max="240"></label><label>高さ（マス）<input data-height type="number" min="16" max="100"></label><button data-resize>サイズ変更</button></div><label>開始に必要な人数<select data-players>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}人</option>`).join('')}</select></label><p class="note">テストプレイは設定人数にかかわらず1人で試せます。</p><button data-new>新しいコース</button><label hidden><input type="checkbox" data-word-blocks>中華</label></dialog>
+    <dialog class="ed-dialog" data-settings-dialog><div class="ed-dialog-head"><h2>コース設定</h2><button data-dismiss>閉じる</button></div><label>説明<input data-desc maxlength="280"></label><div class="ed-size"><label>幅（マス）<input data-width type="number" min="20" max="${COURSE_MAX_WIDTH}"></label><label>高さ（マス）<input data-height type="number" min="16" max="${COURSE_MAX_HEIGHT}"></label><button data-resize>サイズ変更</button></div><label>開始に必要な人数<select data-players>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}人</option>`).join('')}</select></label><p class="note">テストプレイは設定人数にかかわらず1人で試せます。</p><button data-new>新しいコース</button><label hidden><input type="checkbox" data-word-blocks>中華</label></dialog>
     <dialog class="ed-dialog" data-help-dialog><div class="ed-dialog-head"><h2>パーツの説明一覧</h2><button data-dismiss>閉じる</button></div><p>出現地点を1つ置くとテストできます。公開にはスタートとゴールも必要です。数字はスイッチ・転送先の接続番号です。</p><div data-parts-list></div></dialog>`;
   const q = <T extends HTMLElement = HTMLElement>(s: string) => root.querySelector<T>(s)!;
   const name = q<HTMLInputElement>('[data-name]'), desc = q<HTMLInputElement>('[data-desc]'), canvas = q<HTMLCanvasElement>('.editor-viewport canvas'), viewport = q('.editor-viewport');
@@ -42,15 +43,18 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   };
   function draw() {
     q('[data-dimensions]').textContent=`${map.width} × ${map.height} マス`;
-    canvas.width = map.width * size; canvas.height = map.height * size;
-    const g = canvas.getContext('2d')!;
-    for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
+    q('.ed-map-space').style.width=`${map.width*size}px`;q('.ed-map-space').style.height=`${map.height*size}px`;
+    canvas.width=Math.min(map.width*size,viewport.clientWidth);canvas.height=Math.min(map.height*size,viewport.clientHeight);
+    const left=viewport.scrollLeft,top=viewport.scrollTop;
+    const x0=Math.max(0,Math.floor(left/size)),y0=Math.max(0,Math.floor(top/size)),x1=Math.min(map.width,Math.ceil((left+canvas.width)/size)),y1=Math.min(map.height,Math.ceil((top+canvas.height)/size));
+    const g = canvas.getContext('2d')!;g.translate(-left,-top);
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
       const c = map.tiles[y][x];
       if(c==='.') {g.fillStyle='#17283d';g.fillRect(x*size,y*size,size-1,size-1);} else drawPart(g,c,x*size,y*size,size);
     }
-    for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++)if(map.tiles[y][x]==='o'){g.fillStyle='#ef334a99';g.strokeStyle='#ffb2ab';g.lineWidth=2;g.beginPath();g.arc((x+.5)*size,y*size,size,0,Math.PI*2);g.fill();g.stroke();}
+    for(let y=Math.max(0,y0-1);y<Math.min(map.height,y1+1);y++)for(let x=Math.max(0,x0-1);x<Math.min(map.width,x1+1);x++)if(map.tiles[y][x]==='o'){g.fillStyle='#ef334a99';g.strokeStyle='#ffb2ab';g.lineWidth=2;g.beginPath();g.arc((x+.5)*size,y*size,size,0,Math.PI*2);g.fill();g.stroke();}
     for(const key of ['game','front','tele','speed','switches','entities'] as const)for(const row of map.dd?.[key]??[]){
-      const x=row[0]%map.width,y=Math.floor(row[0]/map.width);
+      const x=row[0]%map.width,y=Math.floor(row[0]/map.width);if(x<x0||x>=x1||y<y0||y>=y1)continue;
       const p=DD_PARTS.find(p=>p.layer===key&&(p.type===row[1]||key==='speed')&&(!['game','front'].includes(key)||(p.flags??0)===(row[2]??0)));
       const badge=['tele','switches','entities'].includes(key)?String(row[2]):undefined;
       drawPart(g,p?.id??String(row[1]),x*size,y*size,size,badge,key==='speed'?row[3]:0);
@@ -69,7 +73,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       select.value = String(map.channels?.[i]?.need ?? 1); input.value = String((map.channels?.[i]?.hold ?? 0) / 50);
       row.onchange = () => { map.channels ??= Array.from({ length: 5 }, () => ({})); map.channels[i] = { need: +select.value, hold: Math.max(0, Math.min(500, Math.round(+input.value * 50))) }; save(); };
       return row;
-    })); draw();requestAnimationFrame(centreSpawn);
+    })); draw();requestAnimationFrame(()=>{centreSpawn();draw();});
   }
   let recent:string[]=[];
   try {const saved=JSON.parse(localStorage.getItem(RECENT_KEY)??'[]');if(Array.isArray(saved))recent=[...new Set(saved)].filter((c):c is string=>typeof c==='string'&&c!=='.'&&PARTS.some(p=>p[0]===c)).slice(0,6);}catch{/* 履歴がない場合 */}
@@ -148,7 +152,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   let pointer: number | null = null, lastCell: { x: number; y: number } | null = null;
   const paint = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - r.left) / size), y = Math.floor((e.clientY - r.top) / size);
+    const x = Math.floor((e.clientX - r.left + viewport.scrollLeft) / size), y = Math.floor((e.clientY - r.top + viewport.scrollTop) / size);
     if (x < 0 || y < 0 || x >= map.width || y >= map.height) return;
     const start = lastCell ?? { x, y }, n = Math.max(Math.abs(x - start.x), Math.abs(y - start.y), 1);
     const rows = map.tiles.map(r => [...r]);
@@ -159,7 +163,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   };
   canvas.onpointerdown = e => { if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(structuredClone(map)); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; viewport.focus({preventScroll:true}); lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
   canvas.onpointermove = e => { if (e.pointerId === pointer) paint(e);
-    const r=canvas.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/size),y=Math.floor((e.clientY-r.top)/size),idx=y*map.width+x;
+    const r=canvas.getBoundingClientRect(),x=Math.floor((e.clientX-r.left+viewport.scrollLeft)/size),y=Math.floor((e.clientY-r.top+viewport.scrollTop)/size),idx=y*map.width+x;
     const names:string[]=[];const tile=map.tiles[y]?.[x];if(tile&&tile!=='.')names.push(TILE_TOOLS.find(t=>t[0]===tile)?.[1]??tile);
     for(const key of ['game','front','tele','speed','switches','entities'] as const)for(const row of map.dd?.[key]??[])if(row[0]===idx){const p=DD_PARTS.find(p=>p.layer===key&&(p.type===row[1]||key==='speed')&&(!['game','front'].includes(key)||(p.flags??0)===(row[2]??0)));names.push(p?.name??'特殊パーツ');}
     for(const row of map.dd?.doors??[])if(Math.floor(row[0]/32)===x&&Math.floor(row[1]/32)===y)names.push(`スイッチドア ${row[5]}`);
@@ -181,7 +185,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   q('[data-export]').onclick = () => { save(); const url = URL.createObjectURL(new Blob([JSON.stringify(map)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = 'tsunagu-course.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
   q<HTMLInputElement>('[data-import]').onchange = async e => {
     const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return;
-    try { if (f.size > 100000) throw new Error('ファイルが大きすぎます'); const m = validateCourseMap(JSON.parse(await f.text())); map = m; history = []; future = []; load(); save(); } catch (e) { status((e as Error).message); }
+    try { if (f.size > COURSE_FILE_MAX_BYTES) throw new Error('ファイルが大きすぎます'); const m = validateCourseMap(JSON.parse(await f.text())); map = m; history = []; future = []; load(); save(); } catch (e) { status((e as Error).message); }
     (e.target as HTMLInputElement).value = '';
   };
   q('[data-publish]').onclick = async () => {
@@ -192,9 +196,10 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   q('[data-test]').onclick=()=>{const error=q('[data-test-error]');error.hidden=true;try{save();if(!test)throw Error('テスト機能を読み込めませんでした。ページを再読み込みしてください。');test(validateCoursePreview(map));}catch(e){error.textContent=(e as Error).message;error.hidden=false;error.scrollIntoView({block:'nearest'});}};
   q('[data-players]').onchange=save;
   q('[data-resize]').onclick=()=>{const w=+q<HTMLInputElement>('[data-width]').value,h=+q<HTMLInputElement>('[data-height]').value;
-    if(!Number.isInteger(w)||!Number.isInteger(h)||w<20||w>240||h<16||h>100){status('幅20〜240、高さ16〜100の整数にしてください');return;}
+    if(!Number.isInteger(w)||!Number.isInteger(h)||w<20||w>COURSE_MAX_WIDTH||h<16||h>COURSE_MAX_HEIGHT){status(`幅20〜${COURSE_MAX_WIDTH}、高さ16〜${COURSE_MAX_HEIGHT}の整数にしてください`);return;}
     if((w<map.width||h<map.height)&&!confirm('外側のタイルが切り取られます。サイズを変更しますか？'))return;
     map.tiles=Array.from({length:h},(_,y)=>Array.from({length:w},(_,x)=>map.tiles[y]?.[x]??'.').join(''));if(map.dd){for(const key of ['game','front','tele','speed','switches','entities'] as const)map.dd[key]=(map.dd[key]??[]).filter(r=>r[0]%map.width<w&&Math.floor(r[0]/map.width)<h).map(r=>[Math.floor(r[0]/map.width)*w+r[0]%map.width,...r.slice(1)]);map.dd.doors=map.dd.doors.filter(r=>r[0]<w*32&&r[1]<h*32);}map.width=w;map.height=h;history=[];future=[];load();save();};
+  viewport.onscroll=draw;editorResize?.disconnect();editorResize=new ResizeObserver(()=>draw());editorResize.observe(viewport);
   load();root.tabIndex=-1;root.focus({preventScroll:true});
 }
 

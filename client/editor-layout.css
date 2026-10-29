@@ -44,3 +44,6 @@ body:has(#screen-editor:not(.hidden)) .music-dock{display:none}
 [data-recent] .part-button span{display:none!important}
 [data-recent]:not(:has(button)){display:flex;align-items:center}
 #screen-editor .ed-pages button{min-height:28px;padding:3px 9px}
+
+.ed-map-space{position:relative}
+#screen-editor .ed-map-space canvas{position:sticky;left:0;top:0;display:block;max-width:none;max-height:none}

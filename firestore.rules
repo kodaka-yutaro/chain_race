@@ -47,8 +47,8 @@ service cloud.firestore {
         && request.resource.data.map.name is string && request.resource.data.map.name.size() > 0 && request.resource.data.map.name.size() <= 40
         && request.resource.data.map.description is string && request.resource.data.map.description.size() <= 280
         && request.resource.data.map.minPlayers in [1, 2, 3, 4, 5, 6, 7, 8]
-        && request.resource.data.map.width is int && request.resource.data.map.width >= 20 && request.resource.data.map.width <= 240
-        && request.resource.data.map.height is int && request.resource.data.map.height >= 16 && request.resource.data.map.height <= 100
+        && request.resource.data.map.width is int && request.resource.data.map.width >= 20 && request.resource.data.map.width <= 900
+        && request.resource.data.map.height is int && request.resource.data.map.height >= 16 && request.resource.data.map.height <= 897
         && request.resource.data.map.tiles is list && request.resource.data.map.tiles.size() == request.resource.data.map.height;
       // 既存の記録と同じブラウザ信頼モデル。ホストのpartyClear後にだけアプリが呼ぶ。
       allow update: if signedIn()

@@ -110,3 +110,12 @@ test('DDNetの透過壁はプレイヤーを止め、フックだけを奥の岩
   assert.ok(r.wireX > 11 * TILE);
   assert.ok(r.x < 8 * TILE - 13);
 });
+
+test('Kobraと同じ900×897マスを保存・読込・テストでき、上限超過は拒否する',()=>{
+ const m=newCourseMap(900,897);m.dd!.tele=[[900*896+898,26,1]];
+ const loaded=validateCourseMap(JSON.parse(JSON.stringify(m)));
+ assert.equal(loaded.width,900);assert.equal(loaded.height,897);assert.deepEqual(loaded.dd,m.dd);
+ assert.equal(validateCoursePreview(loaded).tiles.length,897);
+ assert.throws(()=>validateCourseMap(newCourseMap(901,897)));
+ assert.throws(()=>validateCourseMap(newCourseMap(900,898)));
+});
