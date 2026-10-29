@@ -102,6 +102,12 @@ export function ddHookExit(m: MapDef, x: number, y: number) {
   if (exit !== undefined) return position(m,exit);
 }
 
+export function ddPressSwitch(w:World,idx:number){
+  if(!w.dd)return;
+  const sw=ddCache(w.map).switches.get(idx);if(!sw)return;
+  const [,type,number,,delay]=sw;
+  if([22,23,24,25].includes(type)&&number>0){const on=type===22||type===24;w.dd.switches[number]={on,until:type<24?w.tick+1+delay*50:0,after:!on};}
+}
 export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTeleport = true) {
   if (!t.dd || !w.dd) return;
   const d = t.dd, c = ddCache(w.map), n = Math.max(1,Math.ceil(Math.hypot(t.x-fromX,t.y-fromY)/8));

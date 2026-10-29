@@ -146,7 +146,7 @@ test('コース保存に技の設定が残り、二人に同一の文字と溜�
   game.world.runners[1].x=650;
   for(let i=0;i<30;i++)hub.tick();
   a.link.onMessage({t:'input',gameId:game.id,list:[{seq:1,input:{...emptyInput(),spit:true}}]});
-  for(let seq=2;seq<=14;seq++)a.link.onMessage({t:'input',gameId:game.id,list:[{seq,input:emptyInput()}]});
+  for(let seq=2;seq<=14;seq++)a.link.onMessage({t:'input',gameId:game.id,list:[{seq,input:{...emptyInput(),spit:true}}]});
   for(let i=0;i<3;i++)hub.tick();
   const charging=b.messages.filter(m=>m.t==='snap').filter(m=>m.gameId===game.id).at(-1)!;
   assert.ok(charging.others[0].spit!.charge>0);

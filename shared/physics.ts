@@ -1,5 +1,5 @@
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
-import { ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
+import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
 import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
 import { abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
@@ -139,7 +139,7 @@ export const emptyInput = (): Input => ({
 export const WIRE_IDLE = 0, WIRE_FLYING = 1, WIRE_ATTACHED = 2;
 
 export interface Runner {
-  ghostBody:{x:number;y:number}|null;holdTicks:number;aimDistance:number; hookLengthLock:number; subDown:boolean; hammerBrace:boolean; wheelieTick:number; gesture:number; gestureTick:number;
+  bodyOwner?:number;ghostBody:{x:number;y:number;vx:number;vy:number;stun:number}|null;holdTicks:number;aimDistance:number; hookLengthLock:number; subDown:boolean; hammerBrace:boolean; wheelieTick:number; gesture:number; gestureTick:number;
   ability: Ability; actionDown: boolean; wireBall: number; shotTick:number;
   held: {kind:'ball'|'word'|'runner';id:number}|null;
   id: number;
@@ -406,10 +406,24 @@ const byId = (w: World, id: number) => w.runners.find((e) => e.id === id);
 function updateSwitches(w: World) {
   const plates = Array<number>(CHANNELS).fill(0);
   for (const t of w.runners) {
+    if(t.ghostBody)continue;
     const on = new Set<number>();
     for (const c of touchedTiles(w, t)) if (c >= '1' && c <= '5') on.add(c.charCodeAt(0) - 49);
     for (const i of on) plates[i]++;
   }
+  const pressRect=(x:number,y:number,width:number,height:number,circle=false)=>{
+    const on=new Set<number>();
+    for(let ty=Math.floor(y/32);ty<=Math.floor((y+height-.001)/32);ty++)for(let tx=Math.floor(x/32);tx<=Math.floor((x+width-.001)/32);tx++){
+      if(tx<0||ty<0||tx>=w.map.width||ty>=w.map.height)continue;
+      const c=tileAt(w.map,tx,ty);
+      if(circle){const cx=x+width/2,cy=y+height/2;if(Math.hypot(cx-Math.max(tx*32,Math.min((tx+1)*32,cx)),cy-Math.max(ty*32,Math.min((ty+1)*32,cy)))>width/2)continue;}
+      ddPressSwitch(w,ty*w.map.width+tx);
+      if(c>='1'&&c<='5')on.add(c.charCodeAt(0)-49);
+    }
+    for(const i of on)plates[i]++;
+  };
+  for(const b of w.words)if(b.kind==='mini'&&b.solid)pressRect(b.x,b.y,32,32);
+  for(const b of w.balls)if(b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick))pressRect(b.x-32,b.y-32,64,64,true);
   w.plates = plates;
   w.doorsOpen = plates.map((n, i) => {
     const ch = w.map.channels?.[i];
@@ -481,6 +495,14 @@ function moveLifts(w: World) {
 /** 1 tick 進める。inputs は runner.id -> Input */
 export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   const ev: StepEvents = { finished: [], killed: [] };
+  // Transient passive runners let bodies use the same hooks, terrain, platforms,
+  // hazards and player collisions. Only their compact physical state is synced.
+  const players=[...w.runners];
+  for(const owner of players)if(owner.ghostBody){
+    const body=newRunner(1000000000+owner.id,w.map);
+    Object.assign(body,owner.ghostBody,{bodyOwner:owner.id,ability:'basic'});
+    w.runners.push(body);
+  }
   w.tick++;
   ddTick(w);
 
@@ -664,6 +686,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.prevFire = inp.fire;
   }
 
+  // Returning or respawning removes the passive body before applying forces.
+  w.runners=w.runners.filter(t=>t.bodyOwner===undefined||players.find(p=>p.id===t.bodyOwner)?.ghostBody);
   // 仲間を掛けたフック：相手を強く、自分を少し引き寄せる
   for (const t of w.runners) {
     if (t.wireState !== WIRE_ATTACHED || t.wireRunner < 0 || t.hookLengthLock>=0) continue;
@@ -702,7 +726,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   for (let i = 0; i < w.runners.length; i++) {
     for (let j = i + 1; j < w.runners.length; j++) {
       const a = w.runners[i], b = w.runners[j];
-      if(!ddInteracts(a,b)||a.dd?.noCollision||b.dd?.noCollision) continue;
+      if(a.ghostBody||b.ghostBody||!ddInteracts(a,b)||a.dd?.noCollision||b.dd?.noCollision) continue;
       const dx = b.x - a.x, dy = b.y - a.y;
       const d = Math.hypot(dx, dy);
       if (d >= TEE_SIZE || d === 0) continue;
@@ -740,7 +764,6 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   // タイル効果
   for (const t of w.runners) {
     const tiles = touchedTiles(w, t);
-    if(t.ghostBody&&touchedTiles(w,{...t,x:t.ghostBody.x,y:t.ghostBody.y}).includes('^')){respawn(w,t);ev.killed.push(t.id);continue;}
     if(t.ghostBody)continue;
     if (tiles.includes('^')) {
       respawn(w, t);
@@ -760,11 +783,19 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
     const [fromX,fromY]=before.get(t)!;
     ddTiles(w,t,fromX,fromY);
+    if(t.bodyOwner!==undefined)continue;
     if (tiles.includes('>') && t.finishedTime < 0) t.raceStart = w.tick;
     if (tiles.includes('F') && t.raceStart >= 0 && t.finishedTime < 0) {
       t.finishedTime = Math.round(((w.tick - t.raceStart) / TICK_RATE) * 1000) / 1000;
       ev.finished.push({ runnerId: t.id, time: t.finishedTime });
     }
   }
+  for(const body of w.runners)if(body.bodyOwner!==undefined){
+    const owner=players.find(p=>p.id===body.bodyOwner);if(!owner?.ghostBody)continue;
+    if(ev.killed.includes(body.id)){respawn(w,owner);ev.killed.push(owner.id);}
+    else owner.ghostBody={x:body.x,y:body.y,vx:body.vx,vy:body.vy,stun:body.stun};
+  }
+  w.runners=players;
+  ev.killed=ev.killed.filter(id=>players.some(p=>p.id===id));
   return ev;
 }

@@ -47,7 +47,7 @@ export interface WordBlock {
 }
 export interface SpitState {
   charge:number; cooldown:number; prev:boolean; started:number; ax:number; ay:number; blockedUntil:number;
-  miniCooldown:number; prevMini:boolean;
+  miniCooldown:number; prevMini:boolean; spent?:boolean;
 }
 export const newSpitState = ():SpitState => ({charge:0,cooldown:0,prev:false,started:-100,ax:1,ay:0,blockedUntil:0,miniCooldown:0,prevMini:false});
 const MINI_RECTS:WordRect[]=[{x:0,y:0,w:MINI_SIZE,h:MINI_SIZE,character:0}];
@@ -230,6 +230,7 @@ export function stepWords(w:World,collision:WordCollision) {
 }
 export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
   const s=t.spit,repeat=!!w.map.abilityMode,interval=Math.round(.6*TICK_RATE);
+  if(repeat&&!input.spit){s.spent=false;s.charge=0;}
   if(s.cooldown>0)s.cooldown--;
   if(s.miniCooldown>0)s.miniCooldown--;
   if(input.clearWord){
@@ -245,6 +246,7 @@ export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
   }
   if(s.charge>0){
     if(--s.charge===0){
+      if(repeat)s.spent=true;
       const vertical=Math.abs(s.ay)>.85;
       const b:WordBlock={id:w.wordSeq+1,owner:t.id,
         x:vertical?t.x-WORD_WIDTH/2:s.ax>=0?t.x+30:t.x-30-WORD_WIDTH,
@@ -257,7 +259,7 @@ export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
       else {w.words=previous;s.blockedUntil=w.tick+60;if(!repeat)s.cooldown=40;}
 
     }
-  } else if(input.spit&&!input.clearWord&&(repeat||!s.prev)&&s.cooldown===0&&(repeat||w.words.filter(b=>b.owner===t.id&&b.kind!=='mini').length<WORD_LIMIT)){
+  } else if(input.spit&&!input.clearWord&&(repeat?!s.spent:!s.prev)&&s.cooldown===0&&(repeat||w.words.filter(b=>b.owner===t.id&&b.kind!=='mini').length<WORD_LIMIT)){
     s.charge=WORD_CHARGE;s.cooldown=repeat?interval:WORD_COOLDOWN;s.started=w.tick;
     const len=Math.hypot(t.aimX,t.aimY)||1;s.ax=t.aimX/len;s.ay=t.aimY/len;
   }

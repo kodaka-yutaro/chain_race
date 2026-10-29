@@ -472,7 +472,7 @@ export class ClientGame {
 
     for (const r of all) {
       const state=r.id===this.youId?this.me:views.find(v=>v.id===r.id);
-      if(state?.ghostBody){g.save();g.globalAlpha=.6;drawRunner(g,{...r,x:state.ghostBody.x,y:state.ghostBody.y,vx:0,grounded:true,ability:'ghost',name:'本体',me:false,face:this.faces[r.id]},now);g.strokeStyle='#add7ff55';g.setLineDash([4,8]);g.beginPath();g.moveTo(r.x,r.y);g.lineTo(state.ghostBody.x,state.ghostBody.y);g.stroke();g.restore();}
+      if(state?.ghostBody){g.save();g.globalAlpha=1;drawRunner(g,{...r,x:state.ghostBody.x,y:state.ghostBody.y,vx:0,grounded:true,ability:'ghost',name:'本体',me:false,face:this.faces[r.id]},now);g.strokeStyle='#add7ff55';g.setLineDash([4,8]);g.beginPath();g.moveTo(r.x,r.y);g.lineTo(state.ghostBody.x,state.ghostBody.y);g.stroke();g.restore();}
       g.save();if(state?.ghostBody)g.globalAlpha=.55;
       drawRunner(g, { ...r, hammerBrace:state?.hammerBrace,wheelieAge:this.world.tick-(state?.wheelieTick??-100),gesture:state?.gesture,gestureAge:this.world.tick-(state?.gestureTick??-100), ability:r.id===this.youId?this.me.ability:views.find(v=>v.id===r.id)?.ability, face:this.faces[r.id], shotAge:this.world.tick-(r.id===this.youId?this.me.shotTick:views.find(v=>v.id===r.id)?.shotTick??-100), name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
       g.restore();drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);

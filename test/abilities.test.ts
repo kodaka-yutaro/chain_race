@@ -13,7 +13,7 @@ test('基本装備は左ハンマー・右フックで、追加能力と復活�
 });
 test('中華まんだけが小中華と大中華を生成できる',()=>{
  const {w,r}=setup();r.ability='bun';tick(w,1,{miniSpit:true});assert.equal(w.words.filter(b=>b.kind==='mini').length,1);
- tick(w);r.x=400;tick(w,1,{spit:true});tick(w,30);assert.equal(w.words.filter(b=>b.kind!=='mini').length,1);
+ tick(w);r.x=400;tick(w,31,{spit:true});assert.equal(w.words.filter(b=>b.kind!=='mini').length,1);
  r.ability='hammer';tick(w,20,{miniSpit:true});assert.equal(w.words.filter(b=>b.kind==='mini').length,1);
 });
 test('自転車は一段ジャンプで、歩行者が通れる幅の通路に入れない',()=>{
@@ -54,7 +54,7 @@ test('自転車の右クリックは自分が発射したボールだけを爆�
  const {w,r}=setup();r.ability='bicycle';r.x=500;r.y=300;
  for(const [id,owner] of [[0,1],[1,2]])w.balls.push({id,owner,x:600,y:300,vx:0,vy:0,homeX:600,homeY:300});
  const other=newRunner(2,w.map);other.x=650;other.y=300;w.runners.push(other);
- tick(w,1,{wire:true});assert.equal(w.blasts.length,1);assert.ok(other.vx>0);assert.ok(r.vx<0);assert.ok(w.balls[0].respawnAt!>w.tick);assert.equal(w.balls[1].respawnAt,undefined);
+ tick(w,1,{wire:true});assert.equal(w.blasts.length,1);assert.ok(other.vx>0);assert.ok(r.vx<0);assert.equal(w.balls[0].carriedBy,r.id);assert.equal(ballCount(w,r.id),1);assert.equal(w.balls[1].respawnAt,undefined);
  tick(w,2,{wire:true});assert.equal(w.blasts.length,1);
 });
 test('中華まんは左で大中華、右で従来の小中華を出す',()=>{
@@ -73,13 +73,14 @@ test('ハンマーの長押しは30tickごとで、連打でも間隔を短縮�
  assert.deepEqual(hits,[1,31,61,91]);tick(w,1,{fire:false});tick(w,1,{fire:true});assert.equal(r.hammerTick,91);
  tick(w,40);assert.equal(r.hammerTick,91);
 });
-test('大小中華を長押しすると30tickごとに繰り返し、大中華は1個を置き換える',()=>{
+test('大中華は長押し1回につき1発、小中華は30tick間隔',()=>{
  const {w,r}=setup();r.ability='bun';const starts:number[]=[],born:number[]=[];let last=0;
  for(let i=0;i<95;i++){
   tick(w,1,{fire:true});if(r.spit.started===w.tick)starts.push(w.tick);
   const b=w.words.find(b=>b.kind!=='mini');if(b&&b.id!==last){last=b.id;born.push(b.born);}assert.ok(w.words.filter(b=>b.kind!=='mini').length<=1);
  }
- assert.deepEqual(starts,[18,48,78]);assert.deepEqual(born,[36,66]);
+ assert.deepEqual(starts,[18]);assert.deepEqual(born,[36]);
+ tick(w);r.x=240;r.spit.cooldown=0;tick(w,35,{fire:true});assert.equal(w.wordSeq,1);tick(w,1,{fire:true});assert.equal(w.wordSeq,2);
  const mini=setup();mini.r.ability='bun';const times:number[]=[];let seq=0;
  for(let i=0;i<95;i++){tick(mini.w,1,{wire:true});if(mini.w.wordSeq>seq){times.push(mini.w.tick);seq=mini.w.wordSeq;}}
  assert.deepEqual(times,[1,31,61,91]);
@@ -126,7 +127,7 @@ test('ハンマーに乗ると足が地面から浮き、車体とハンマー�
 
 test('幽霊は長押しで本体を残して飛行し、離して再長押しすると帰還する',()=>{
  const {w,r}=setup();r.ability='ghost';tick(w,30,{fire:true});assert.ok(r.ghostBody);const body={...r.ghostBody!};
- tick(w,20,{fire:true,up:true,right:true});assert.deepEqual(r.ghostBody,body);assert.ok(r.x>body.x&&r.y<body.y);assert.equal(r.hammerTick,-100);
+ tick(w,20,{fire:true,up:true,right:true});assert.ok(Math.abs(r.ghostBody!.x-body.x)<1);assert.ok(r.x>body.x&&r.y<body.y);assert.equal(r.hammerTick,-100);
  tick(w);tick(w,30,{fire:true});assert.equal(r.ghostBody,null);assert.ok(Math.abs(r.x-body.x)<1);assert.ok(Math.abs(r.y-body.y)<2);
  tick(w);tick(w,1,{fire:true});tick(w);assert.equal(r.hammerTick,w.tick);
 });

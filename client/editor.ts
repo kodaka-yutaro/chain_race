@@ -60,7 +60,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     b.onclick = () => { tool = c; q('[data-part-help]').textContent=DD_PARTS.find(p=>p.id===c)?.description??`${label}をマウスで配置します`; q('.tile-tools').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); };
     q('.tile-tools').append(b);
   }
-  const descriptions:Record<string,string>={'.':'選択位置の地形とDDパーツを消去','#':'フックが掛かる岩壁',X:'フックが掛からない金属',S:'プレイヤーの出現位置（1つ）','>':'計測開始',F:'ゴール',V:'赤ボールを保持し、左で発射・右で自分の弾を爆破',N:'長押しで大中華、単押しで操舵、右で小中華',P:'左長押しで幽体離脱・帰還。単押しハンマー、右フック',G:'ハンマーとフックの基本装備',o:'直径2マスの赤ボール','~':'凍結する床','^':'触れると出現位置に戻る',U:'凍結解除',O:'プレイヤーは通れずフックが通る',J:'上向きに跳ねる'};
+  const descriptions:Record<string,string>={'.':'選択位置の地形とDDパーツを消去','#':'フックが掛かる岩壁',X:'フックが掛からない金属',S:'プレイヤーの出現位置（1つ）','>':'計測開始',F:'ゴール',V:'赤ボールを保持し、左で発射・右で自分の弾を爆破して回収',N:'毎回溜めて大中華を1発、単押しで操舵、右で小中華',P:'左長押しで幽体離脱・帰還。本体はフックで引ける。単押しハンマー、右フック',G:'ハンマーとフックの基本装備',o:'直径2マスの赤ボール','~':'凍結する床','^':'触れると出現位置に戻る',U:'凍結解除',O:'プレイヤーは通れずフックが通る',J:'上向きに跳ねる'};
   for(const [name,desc] of [...TILE_TOOLS.map(([c,n])=>[n,descriptions[c]??'同じ番号のスイッチ・扉・橋を接続']),...DD_PARTS.map(p=>[p.name,p.description])]){const row=document.createElement('p');row.textContent=`${name}：${desc}`;q('[data-parts-list]').append(row);}
   function placeDD(x:number,y:number){
     map.dd??=blankDD();const idx=y*map.width+x;

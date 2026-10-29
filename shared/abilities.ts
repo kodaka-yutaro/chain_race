@@ -48,7 +48,9 @@ export function explodeOwned(w:World,owner:number){
     const push=(o:{x:number;y:number;vx:number;vy:number},offset=0)=>{const dx=o.x+offset-b.x,dy=o.y+offset-b.y,d=Math.hypot(dx,dy);if(d>=160)return;const force=22*(1-d/160);o.vx+=(d?dx/d:0)*force;o.vy+=(d?dy/d:-1)*force;};
     w.runners.forEach(r=>push(r));w.words.filter(o=>o.kind==='mini').forEach(o=>push(o,16));w.balls.filter(o=>o!==b&&o.carriedBy===undefined).forEach(o=>push(o));
     for(const r of w.runners){if(r.wireBall===b.id){r.wireState=0;r.wireBall=-1;}if(r.held?.kind==='ball'&&r.held.id===b.id)r.held=null;}
-    b.x=b.homeX;b.y=b.homeY;b.vx=b.vy=0;delete b.owner;b.respawnAt=w.tick+150;
+    const rider=w.runners.find(r=>r.id===owner);
+    b.vx=b.vy=0;delete b.owner;delete b.respawnAt;
+    if(rider){collectBall(w,rider,b);b.x=rider.x;b.y=rider.y;}
   }
 }
 export const bodyBounds=(t:Runner)=>t.ability==='bicycle'?{left:30,top:14,bottom:40}:{left:14,top:14,bottom:14};
@@ -75,6 +77,7 @@ function blockedLine(w:World,ax:number,ay:number,bx:number,by:number){
   return false;
 }
 export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision):Input{
+  if(t.bodyOwner!==undefined)return {...raw,fire:false,wire:false,spit:false,miniSpit:false};
   if(!w.map.abilityMode)return raw;
   const aimLength=Math.hypot(raw.aimX,raw.aimY);t.aimDistance=Number.isFinite(aimLength)?Math.min(960,aimLength):160;if(aimLength>.0001){t.aimX=raw.aimX/aimLength;t.aimY=raw.aimY/aimLength;}
   for(let y=Math.floor((t.y-13)/32);y<=Math.floor((t.y+13)/32);y++)for(let x=Math.floor((t.x-13)/32);x<=Math.floor((t.x+13)/32);x++){
@@ -124,8 +127,8 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
     }
   }
   if(t.ability==='ghost'&&t.holdTicks===30&&!t.stun){
-    if(t.ghostBody){if(collision.runnerBox(t.ghostBody.x,t.ghostBody.y,-1))return {...raw,fire:false,wire:raw.wire};t.x=t.ghostBody.x;t.y=t.ghostBody.y;t.ghostBody=null;}
-    else t.ghostBody={x:t.x,y:t.y};
+    if(t.ghostBody){if(collision.runnerBox(t.ghostBody.x,t.ghostBody.y,-1))return {...raw,fire:false,wire:raw.wire};t.x=t.ghostBody.x;t.y=t.ghostBody.y;t.stun=t.ghostBody.stun;t.ghostBody=null;}
+    else t.ghostBody={x:t.x,y:t.y,vx:0,vy:0,stun:0};
     t.vx=t.vy=0;t.wireState=0;t.wireRunner=t.wireBall=t.wireWord=-1;
   }
   if(t.ability==='bun'&&released&&previousHold<18){
