@@ -22,7 +22,7 @@ export class HostHub {
   private tickCount = 0;
   constructor(readonly id: string, readonly name: string, private onCount: (n:number)=>void = ()=>{}) {
     const rows = this.selected.tiles.map(r => [...r]);
-    for(const [x,c] of [[12,'H'],[19,'M'],[26,'V'],[29,'o'],[31,'o'],[36,'N'],[44,'G']] as const)rows[this.selected.height-4][x]=c;
+    for(const [x,c] of [[12,'G'],[19,'P'],[26,'V'],[29,'o'],[31,'o'],[36,'N'],[44,'G']] as const)rows[this.selected.height-4][x]=c;
     this.selected.tiles = rows.map(r=>r.join(''));
   }
   connect(link: Link, host = false) {

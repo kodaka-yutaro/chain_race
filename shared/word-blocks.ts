@@ -77,18 +77,20 @@ export interface WordCollision {
 }
 function fits(w:World,b:WordBlock,collision:WordCollision,checkRunners:boolean) {
   if(rects(b).some(r=>collision.staticRect(b.x+r.x,b.y+r.y,r.w,r.h)||wordBoxSolid(w,b.x+r.x,b.y+r.y,r.w,r.h,b.id)))return false;
-  return !checkRunners||!w.runners.some(t=>wordBoxHit(b,t.x-14,t.y-14,28,28));
+  return !checkRunners||!w.runners.some(t=>runnerHit(b,t));
 }
+function bounds(t:Runner){return {half:t.ability==='bicycle'?30:14,bottom:t.ability==='bicycle'?40:t.hammerBrace?31:14};}
+function runnerHit(b:WordBlock,t:Runner,x=t.x,y=t.y){const r=bounds(t);return wordBoxHit(b,x-r.half,y-14,r.half*2,r.bottom+14);}
 function standing(b:WordBlock,t:Runner) {
-  return rects(b).some(r=>Math.abs(t.y+14-(b.y+r.y))<=3 && t.x+13>b.x+r.x && t.x-13<b.x+r.x+r.w);
+  return rects(b).some(r=>Math.abs(t.y+bounds(t).bottom-(b.y+r.y))<=3 && t.x+bounds(t).half-1>b.x+r.x && t.x-bounds(t).half+1<b.x+r.x+r.w);
 }
 function move(w:World,b:WordBlock,dx:number,dy:number,collision:WordCollision) {
   const next={...b,x:b.x+dx,y:b.y+dy};
   if(!fits(w,next,collision,false))return false;
   const carried=new Map<Runner,{x:number;y:number}>();
-  for(const t of w.runners)if(standing(b,t)||wordBoxHit(next,t.x-14,t.y-14,28,28))carried.set(t,{x:t.x+dx,y:t.y+dy});
+  for(const t of w.runners)if(standing(b,t)||runnerHit(next,t))carried.set(t,{x:t.x+dx,y:t.y+dy});
   for(const [t,p] of carried){
-    if(collision.runnerBox(p.x,p.y,b.id)||wordBoxHit(next,p.x-14,p.y-14,28,28))return false;
+    const box=bounds(t);if(collision.staticRect(p.x-box.half,p.y-14,box.half*2,box.bottom+14)||wordBoxSolid(w,p.x-box.half,p.y-14,box.half*2,box.bottom+14,b.id)||collision.runnerBox(p.x,p.y,b.id)||runnerHit(next,t,p.x,p.y))return false;
     // A moving word must not squeeze a rider into a wall or another player.
     for(const o of w.runners){
       if(o===t)continue;
@@ -96,6 +98,9 @@ function move(w:World,b:WordBlock,dx:number,dy:number,collision:WordCollision) {
       if(Math.hypot(p.x-q.x,p.y-q.y)<27.5 && Math.hypot(t.x-o.x,t.y-o.y)>=27.5)return false;
     }
   }
+  const carriedBalls=w.balls.filter(o=>o.carriedBy===undefined&&!(o.respawnAt&&o.respawnAt>w.tick)&&wordBoxHit(next,o.x-32,o.y-32,64,64));
+  if(carriedBalls.some(o=>collision.staticRect(o.x+dx-32,o.y+dy-32,64,64)||wordBoxSolid(w,o.x+dx-32,o.y+dy-32,64,64,b.id)||wordBoxHit(next,o.x+dx-32,o.y+dy-32,64,64)))return false;
+  for(const o of carriedBalls){o.x+=dx;o.y+=dy;}
   b.x=next.x;b.y=next.y;
   for(const [t,p] of carried){t.x=p.x;t.y=p.y;}
   return true;
@@ -116,11 +121,11 @@ function moveMinis(w:World,roots:WordBlock[],dx:number,dy:number,collision:WordC
   const carried=new Map<Runner,{x:number;y:number}>();
   for(const t of w.runners){
     if(t===exclude)continue;
-    if([...group].some(b=>standing(b,t)||wordBoxHit({...b,x:b.x+dx,y:b.y+dy},t.x-14,t.y-14,28,28)))
+    if([...group].some(b=>standing(b,t)||runnerHit({...b,x:b.x+dx,y:b.y+dy},t)))
       carried.set(t,{x:t.x+dx,y:t.y+dy});
   }
   for(const [t,p] of carried){
-    if(collision.runnerBox(p.x,p.y,ids)||[...group].some(b=>wordBoxHit({...b,x:b.x+dx,y:b.y+dy},p.x-14,p.y-14,28,28)))return false;
+    const box=bounds(t);if(collision.staticRect(p.x-box.half,p.y-14,box.half*2,box.bottom+14)||wordBoxSolid(w,p.x-box.half,p.y-14,box.half*2,box.bottom+14,ids)||collision.runnerBox(p.x,p.y,ids)||[...group].some(b=>runnerHit({...b,x:b.x+dx,y:b.y+dy},t,p.x,p.y)))return false;
     for(const o of w.runners){
       if(o===t)continue;
       const q=carried.get(o)??o;
@@ -218,8 +223,8 @@ export function stepWords(w:World,collision:WordCollision) {
         if(b.vy&&!moveMinis(w,[b],0,b.vy/steps,collision))b.vy=0;
       }
     }else{
-      if(!move(w,b,b.vx,0,collision))b.vx=-b.vx;
-      if(b.vy&&!move(w,b,0,b.vy,collision))b.vy=-b.vy;
+      if(!move(w,b,b.vx,0,collision)&&!w.map.abilityMode)b.vx=-b.vx;
+      if(b.vy&&!move(w,b,0,b.vy,collision)&&!w.map.abilityMode)b.vy=-b.vy;
     }
   }
 }

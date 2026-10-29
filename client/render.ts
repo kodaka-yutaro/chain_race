@@ -2,7 +2,7 @@
 import { CHANNELS, isSolidChar, LIFT_THICK, liftTop, SAW_THICK, TEE_SIZE, TILE, type MapDef } from '../shared/physics';
 import { drawFace } from './face-editor';
 import type { Ability } from '../shared/abilities';
-import { drawChinatown } from './chinatown';
+import {drawDusk} from './dusk';
 
 const R = TEE_SIZE / 2;
 
@@ -27,7 +27,7 @@ function hash(x: number, y: number, s = 0): number {
 export function drawBackground(
   g: CanvasRenderingContext2D, _mapId: string, W: number, H: number, camX: number, _camY: number, _zoom: number, now: number,
 ) {
-  drawChinatown(g, W, H, now, camX);
+  drawDusk(g,W,H,camX);
 }
 
 // ---------- タイル ----------
@@ -46,7 +46,7 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
   c.height = height * TILE;
   const g = c.getContext('2d')!;
   g.translate(-x0 * TILE, -y0 * TILE);
-  const [rock, rockDark, rockEdge, grass] = ROCK[m.id] ?? ROCK.hill;
+  const [rock, rockDark, rockEdge, grass]=['#344e6e','#273c59','#1c2d46','#98bda2'];
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= m.width || y >= m.height ? 'X' : m.tiles[y][x]);
   const solid = (ch: string) => isSolidChar(ch, Array(CHANNELS).fill(false));
 
@@ -61,11 +61,7 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
         gr.addColorStop(1, rockDark);
         g.fillStyle = gr;
         g.fillRect(px, py, TILE, TILE);
-        // Warm masonry and jade eaves make the route part of the street.
-        g.fillStyle=rockEdge;g.fillRect(px,py+15,TILE,2);g.fillRect(px,py+31,TILE,1);
-        g.fillRect(px+(y%2?7:23),py,2,15);g.fillRect(px+(y%2?23:7),py+17,2,14);
-        g.fillStyle='#f9c98426';g.fillRect(px+3,py+3,24,1);g.fillRect(px+3,py+19,24,1);
-        if(hash(x,y,3)>.87){g.fillStyle='#422f3026';g.fillRect(px+5,py+6,11,2);g.fillRect(px+18,py+23,6,2);}
+        g.strokeStyle='#506887';g.lineWidth=1;g.strokeRect(px+2,py+2,28,28);
         // 外に面した辺の影
         g.fillStyle = rockEdge;
         if (!solid(at(x, y + 1))) g.fillRect(px, py + TILE - 4, TILE, 4);
@@ -657,7 +653,7 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   }
 
   // ハンマー（ねらう方向に持つ。振った直後は大きく振り下ろす）
-  if(r.ability==='hammer'){
+  if(['hammer','basic','ghost'].includes(r.ability??'')){
   const swing = r.hammerAge >= 0 && r.hammerAge < 8 ? Math.sin((r.hammerAge / 8) * Math.PI) * 1.4 : 0;
   const ha = r.hammerBrace?Math.PI/2:Math.atan2(r.aimY, r.aimX) - face * (0.9 - swing);
   g.save();

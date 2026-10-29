@@ -5,9 +5,7 @@ export function defaultFace():string {
   let out='';
   for(let y=0;y<FACE_SIZE;y++)for(let x=0;x<FACE_SIZE;x++){
     const dx=x-11.5,dy=y-12;let color='0';
-    if(dx*dx+dy*dy<86)color=y<9?'2':'1';
-    if((x-3)**2+(y-4)**2<12||(x-20)**2+(y-4)**2<12)color='2';
-    if(y===5&&(x===2||x===3||x===20||x===21))color='3';
+    if(dx*dx+dy*dy<100)color='d';
     out+=color;
   }return out;
 }

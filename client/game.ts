@@ -76,7 +76,7 @@ export class ClientGame {
     this.ctx = canvas.getContext('2d')!;
     this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
     this.bindInput();
-    if(this.map.dd&&!this.map.abilityMode) this.mountWeapons();
+    if(this.map.dd) this.mountWeapons();
     this.canvas.parentElement?.classList.toggle('word-enabled',!!this.map.wordBlocks);
     if(this.map.wordBlocks)this.mountWordControls();
     this.resize();
@@ -173,7 +173,7 @@ export class ClientGame {
     this.world.saws = [...s.saws];
     if(s.dd) this.world.dd=structuredClone(s.dd);
     this.world.words=structuredClone(s.words??[]);this.world.wordSeq=s.wordSeq??0;
-    this.world.balls=structuredClone(s.balls??[]);this.world.pickups={...s.pickups};
+    this.world.blasts=structuredClone(s.blasts??[]);this.world.balls=structuredClone(s.balls??[]);this.world.pickups={...s.pickups};
     this.world.runners = [this.me, ...s.others.map((v) => viewToRunner(v, this.map))];
     for (const p of this.pending) this.predictStep(p.input);
     this.smoothX = beforeX - this.me.x;
@@ -186,7 +186,7 @@ export class ClientGame {
     const inputs = new Map<number, Input>([[this.me.id, input]]);
     // 他プレイヤーの入力は分からないので、フックだけは握ったままとみなす
     for (const r of this.world.runners) {
-      if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire:this.map.abilityMode?(r.hammerBrace||(r.ability==='hook'&&r.subDown)):r.wireState!==0,fire:!!this.map.abilityMode&&r.ability==='hook'&&r.wireState!==0, aimX: r.aimX, aimY: r.aimY });
+      if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire:this.map.abilityMode?(r.hammerBrace||(['hook','basic','ghost'].includes(r.ability)&&r.subDown)):r.wireState!==0,fire:!!this.map.abilityMode&&r.ability==='hook'&&r.wireState!==0, aimX: r.aimX, aimY: r.aimY });
     }
     stepWorld(this.world, inputs);
   }
@@ -261,7 +261,7 @@ export class ClientGame {
     this.smoothX *= 0.85;
     this.smoothY *= 0.85;
     this.render(now);
-    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='hook'&&this.me.hookLengthLock>=0?' ／ フック長さ固定':'')+(this.me.ability==='bicycle'?` ／ ボール ${ballCount(this.world,this.me.id)}個 ／ マウスで軌道調整`:'');
+    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='ghost'?(this.me.ghostBody?' ／ 霊体：WASDで飛行・長押しで帰還':' ／ 長押しで幽体離脱'):'')+(this.me.ability==='hook'&&this.me.hookLengthLock>=0?' ／ フック長さ固定':'')+(this.me.ability==='bicycle'?` ／ ボール ${ballCount(this.world,this.me.id)}個 ／ マウスで軌道調整`:'');
     if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
@@ -273,6 +273,7 @@ export class ClientGame {
       if(miniButton){miniButton.textContent=`ミニ ${miniCount}/${MINI_LIMIT}`;miniButton.disabled=!!s.miniCooldown||this.waitingForParty;}
       this.wordPanel.querySelector<HTMLButtonElement>('.word-clear')!.disabled=(!big&&!s.charge)||this.waitingForParty;
     }
+    if(this.weaponPanel)this.weaponPanel.hidden=this.me.ability!=="basic";
     if(this.me.dd&&this.weaponPanel){
       const d=this.me.dd;
       for(const b of this.weaponPanel.querySelectorAll<HTMLButtonElement>('[data-weapon]')){
@@ -416,11 +417,11 @@ export class ClientGame {
     drawDD(g,this.world,Math.floor(this.cam.x/TILE)-1,Math.floor(this.cam.y/TILE)-1,Math.ceil((this.cam.x+vw)/TILE)+1,Math.ceil((this.cam.y+vh)/TILE)+1);
     drawWords(g,this.world);
     if(this.map.abilityMode){
-      const labels:Record<string,string>={G:'手',H:'鉤',M:'槌',V:'輪',N:'包'};
+      const labels:Record<string,string>={G:'H',H:'H',M:'H',P:'G',V:'B',N:'包'};
       for(let y=Math.max(0,Math.floor(this.cam.y/32));y<Math.min(this.map.height,Math.ceil((this.cam.y+vh)/32));y++)for(let x=Math.max(0,Math.floor(this.cam.x/32));x<Math.min(this.map.width,Math.ceil((this.cam.x+vw)/32));x++){
         const c=this.map.tiles[y][x];if(!ITEM_ABILITIES[c])continue;
         g.save();g.globalAlpha=(this.world.pickups[y*this.map.width+x]??0)>this.world.tick?.18:1;
-        g.fillStyle='#ffd26c';g.beginPath();g.roundRect(x*32+3,y*32+3,26,26,7);g.fill();g.fillStyle='#7b1830';g.font='bold 18px sans-serif';g.textAlign='center';g.fillText(labels[c],x*32+16,y*32+23);g.restore();
+        g.fillStyle='#59829a';g.beginPath();g.roundRect(x*32+3,y*32+3,26,26,7);g.fill();g.fillStyle='#eef5ff';g.font='bold 18px sans-serif';g.textAlign='center';g.fillText(labels[c],x*32+16,y*32+23);g.restore();
       }
     }
     const paintBall=(x:number,y:number,count?:number)=>{
@@ -428,15 +429,12 @@ export class ClientGame {
       g.fillStyle='#ffb2ab';g.beginPath();g.arc(x-10,y-10,8,0,Math.PI*2);g.fill();
       if(count!==undefined){g.font='bold 26px sans-serif';g.textAlign='center';g.textBaseline='middle';g.lineWidth=4;g.strokeStyle='#79152b';g.strokeText(String(count),x,y);g.fillStyle='white';g.fillText(String(count),x,y);g.textBaseline='alphabetic';}
     };
-    for(const b of this.world.balls)if(b.carriedBy===undefined)paintBall(b.x,b.y);
+    for(const b of this.world.balls)if(b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>this.world.tick))paintBall(b.x,b.y);
     for(const r of this.world.runners){
       const count=ballCount(this.world,r.id);
       if(r.ability==='bicycle'&&count)paintBall(r.x+(r.aimX>=0?50:-50),r.y-20+Math.abs(Math.sin(this.world.tick*.32))*16,count);
-      const age=this.world.tick-r.wheelieTick;
-      if(r.ability==='bicycle'&&age>=0&&age<40){
-        g.save();g.globalAlpha=1-age/40;g.strokeStyle='#ffe09a';g.fillStyle='#ffe09a15';g.lineWidth=3;g.setLineDash([12,10]);g.beginPath();g.arc(r.x,r.y,COLLECTION_RADIUS,0,Math.PI*2);g.fill();g.stroke();g.setLineDash([]);g.font='16px sans-serif';g.textAlign='center';g.fillStyle='#ffe09a';g.fillText('回収範囲：半径10マス',r.x,r.y-COLLECTION_RADIUS+24);g.restore();
-      }
     }
+    for(const b of this.world.blasts){const p=(this.world.tick-b.tick)/30;g.save();g.globalAlpha=1-p;g.fillStyle='#ffbd4b55';g.strokeStyle='#ffe2a0';g.lineWidth=5*(1-p)+1;g.beginPath();g.arc(b.x,b.y,b.radius*Math.min(1,p*3),0,Math.PI*2);g.fill();g.stroke();for(let i=0;i<16;i++){const a=i*Math.PI/8;g.beginPath();g.moveTo(b.x+Math.cos(a)*p*100,b.y+Math.sin(a)*p*100);g.lineTo(b.x+Math.cos(a)*p*180,b.y+Math.sin(a)*p*180);g.stroke();}g.restore();}
     if(this.me.ability==='bicycle'){
       const points=shotPreview(this.world,this.me,wordCollision(this.world));
       g.save();g.strokeStyle=ballCount(this.world,this.me.id)?'#fff2b4':'#ffffff66';g.lineWidth=3;g.setLineDash([3,9]);g.lineCap='round';g.beginPath();points.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y));g.stroke();g.setLineDash([]);
@@ -474,8 +472,10 @@ export class ClientGame {
 
     for (const r of all) {
       const state=r.id===this.youId?this.me:views.find(v=>v.id===r.id);
+      if(state?.ghostBody){g.save();g.globalAlpha=.6;drawRunner(g,{...r,x:state.ghostBody.x,y:state.ghostBody.y,vx:0,grounded:true,ability:'ghost',name:'本体',me:false,face:this.faces[r.id]},now);g.strokeStyle='#add7ff55';g.setLineDash([4,8]);g.beginPath();g.moveTo(r.x,r.y);g.lineTo(state.ghostBody.x,state.ghostBody.y);g.stroke();g.restore();}
+      g.save();if(state?.ghostBody)g.globalAlpha=.55;
       drawRunner(g, { ...r, hammerBrace:state?.hammerBrace,wheelieAge:this.world.tick-(state?.wheelieTick??-100),gesture:state?.gesture,gestureAge:this.world.tick-(state?.gestureTick??-100), ability:r.id===this.youId?this.me.ability:views.find(v=>v.id===r.id)?.ability, face:this.faces[r.id], shotAge:this.world.tick-(r.id===this.youId?this.me.shotTick:views.find(v=>v.id===r.id)?.shotTick??-100), name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
-      drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);
+      g.restore();drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);
     }
     if (touch.active) {
       const len = Math.hypot(this.touchAim.x, this.touchAim.y) || 1;
@@ -594,8 +594,8 @@ export class ClientGame {
 
 function viewToRunner(v: RunnerView, map: MapDef): Runner {
   const r = newRunner(v.id, map);
-  r.aimDistance=v.aimDistance??160;r.hookLengthLock=v.hookLengthLock??-1;r.subDown=v.subDown??false;r.hammerBrace=v.hammerBrace??false;r.wheelieTick=v.wheelieTick??-100;r.gesture=v.gesture??0;r.gestureTick=v.gestureTick??-100;
-  r.ability=v.ability??'hand';r.held=v.held??null;r.wireBall=v.wireBall??-1;r.shotTick=v.shotTick??-100;
+  r.ghostBody=v.ghostBody??null;r.holdTicks=v.holdTicks??0;r.aimDistance=v.aimDistance??160;r.hookLengthLock=v.hookLengthLock??-1;r.subDown=v.subDown??false;r.hammerBrace=v.hammerBrace??false;r.wheelieTick=v.wheelieTick??-100;r.gesture=v.gesture??0;r.gestureTick=v.gestureTick??-100;
+  r.ability=v.ability??'basic';r.held=v.held??null;r.wireBall=v.wireBall??-1;r.shotTick=v.shotTick??-100;
   r.x = v.x; r.y = v.y; r.vx = v.vx; r.vy = v.vy;
   r.wireState = v.ws; r.wireX = v.wx; r.wireY = v.wy; r.wireRunner = v.wr;
   r.stun = v.st; r.aimX = v.ax; r.aimY = v.ay; r.hammerTick = v.ct;

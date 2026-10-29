@@ -1,4 +1,4 @@
-import type { Ability, Ball } from './abilities';
+import type { Ability, Ball, Blast } from './abilities';
 import type { MapDef, Input, Runner } from './physics';
 import type { DDRunner, DDWorld } from './ddrace';
 import type { SpitState, WordBlock } from './word-blocks';
@@ -26,7 +26,7 @@ export interface HubState {
 
 /** 他プレイヤーの描画用の軽量な状態 */
 export interface RunnerView {
-  aimDistance?:number;hookLengthLock?:number;subDown?:boolean;hammerBrace?:boolean;wheelieTick?:number;gesture?:number;gestureTick?:number;
+  ghostBody?:Runner['ghostBody'];holdTicks?:number;aimDistance?:number;hookLengthLock?:number;subDown?:boolean;hammerBrace?:boolean;wheelieTick?:number;gesture?:number;gestureTick?:number;
   ability?:Ability;held?:Runner['held'];wireBall?:number;shotTick?:number;
   id: number;
   x: number; y: number; vx: number; vy: number;
@@ -58,7 +58,7 @@ export type ServerMsg =
   | { t: 'chat'; from: string; fromId?: number; text: string; system?: boolean }
   | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string>; faces?: Record<number, string>; map?: MapDef }
   | { t: 'names'; names: Record<number, string>; faces?: Record<number, string> }
-  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean; dd?: DDWorld; words?:WordBlock[]; wordSeq?:number; balls?:Ball[];pickups?:Record<number,number> }
+  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean; dd?: DDWorld; words?:WordBlock[]; wordSeq?:number; blasts?:Blast[];balls?:Ball[];pickups?:Record<number,number> }
   | { t: 'finish'; runnerId: number; name: string; time: number }
   | { t: 'partyClear'; stageId: string; gameId: string; results: { id: number; name: string; time: number }[] }
   | { t: 'error'; message: string };
@@ -76,7 +76,7 @@ export function validName(name: string): string | null {
 export function toView(r: Runner): RunnerView {
   const q = (n: number) => Math.round(n * 100) / 100;
   return {
-    aimDistance:r.aimDistance,hookLengthLock:r.hookLengthLock,subDown:r.subDown,hammerBrace:r.hammerBrace,wheelieTick:r.wheelieTick,gesture:r.gesture,gestureTick:r.gestureTick,
+    ghostBody:r.ghostBody,holdTicks:r.holdTicks,aimDistance:r.aimDistance,hookLengthLock:r.hookLengthLock,subDown:r.subDown,hammerBrace:r.hammerBrace,wheelieTick:r.wheelieTick,gesture:r.gesture,gestureTick:r.gestureTick,
     ability:r.ability,held:r.held,wireBall:r.wireBall,shotTick:r.shotTick,
     id: r.id, x: q(r.x), y: q(r.y), vx: q(r.vx), vy: q(r.vy),
     ws: r.wireState, wx: q(r.wireX), wy: q(r.wireY), wr: r.wireRunner,

@@ -133,7 +133,7 @@ export class Game {
         timers: this.world.timers, lifts: this.world.lifts, saws: this.world.saws, zones,
         waiting: this.size < this.world.map.minPlayers,
         dd: this.world.dd,
-        words:this.world.words,wordSeq:this.world.wordSeq, balls:this.world.balls, pickups:this.world.pickups,
+        words:this.world.words,wordSeq:this.world.wordSeq, blasts:this.world.blasts,balls:this.world.balls, pickups:this.world.pickups,
       });
     }
   }

@@ -1,4 +1,16 @@
 import { test } from 'node:test';
+import { DD_PARTS } from '../shared/dd-parts';
+
+test('DDパーツの全分類を保存して再読込でき、不正な行は拒否する',()=>{
+  const m=newCourseMap(40,30);
+  for(const [i,p] of DD_PARTS.entries()){
+    const idx=200+i, row=p.layer==='doors'?[320,320,1,0,32,1]:p.layer==='switches'?[idx,p.type,1,0,3]:p.layer==='speed'?[idx,2,50,0]:p.layer==='entities'?[idx,p.type,1,0,2]:[idx,p.type,p.flags??1];
+    (m.dd![p.layer]??=[]).push(row);
+  }
+  assert.deepEqual(validateCourseMap(JSON.parse(JSON.stringify(m))).dd,m.dd);
+  m.dd!.tele=[[]];assert.throws(()=>validateCourseMap(m));
+  m.dd!.tele=[];m.dd!.doors=[[1,1,0,0,32,1]];assert.throws(()=>validateCourseMap(m));
+});
 import assert from 'node:assert/strict';
 import { canRelease, newCourseMap, validateCourseMap } from '../shared/courses';
 import { HostHub, type Link } from '../client/host/hub';

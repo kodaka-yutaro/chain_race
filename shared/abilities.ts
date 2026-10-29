@@ -2,11 +2,12 @@ import type { Input, Runner, World } from './physics';
 import { isSolidChar, tileAt, TILE } from './physics';
 import { wordBoxSolid, type WordCollision } from './word-blocks';
 
-export type Ability='hand'|'hook'|'hammer'|'bicycle'|'bun';
-export const ABILITY_NAMES:Record<Ability,string>={hand:'マジックハンド',hook:'フック',hammer:'ハンマー',bicycle:'自転車',bun:'中華まん'};
-export const ITEM_ABILITIES:Record<string,Ability>={G:'hand',H:'hook',M:'hammer',V:'bicycle',N:'bun'};
+export type Ability='basic'|'ghost'|'hand'|'hook'|'hammer'|'bicycle'|'bun';
+export const ABILITY_NAMES:Record<Ability,string>={basic:'ハンマー＋フック',ghost:'幽霊',hand:'マジックハンド',hook:'フック',hammer:'ハンマー',bicycle:'自転車',bun:'中華まん'};
+export const ITEM_ABILITIES:Record<string,Ability>={G:'basic',H:'basic',M:'basic',P:'ghost',V:'bicycle',N:'bun'};
 export const BALL_RADIUS=32, COLLECTION_RADIUS=320, BALL_GRAVITY=.4;
-export interface Ball {carriedBy?:number;id:number;x:number;y:number;vx:number;vy:number;homeX:number;homeY:number}
+export interface Blast {x:number;y:number;tick:number;radius:number}
+export interface Ball {respawnAt?:number;owner?:number;carriedBy?:number;id:number;x:number;y:number;vx:number;vy:number;homeX:number;homeY:number}
 export function metalPart(t:Runner){
   if(t.ability==='bicycle')return {x:t.x-30,y:t.y+14,w:60,h:26};
   if(t.hammerBrace)return {x:t.x-8,y:t.y+22,w:16,h:9};
@@ -40,6 +41,16 @@ function collectBall(w:World,t:Runner,b:Ball){
   b.carriedBy=t.id;b.vx=b.vy=0;
   for(const r of w.runners){if(r.held?.kind==='ball'&&r.held.id===b.id)r.held=null;if(r.wireBall===b.id){r.wireBall=-1;r.wireState=0;r.hookLengthLock=-1;}}
 }
+export function explodeOwned(w:World,owner:number){
+  const bombs=w.balls.filter(b=>b.owner===owner&&b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick));
+  for(const b of bombs){
+    w.blasts.push({x:b.x,y:b.y,tick:w.tick,radius:160});
+    const push=(o:{x:number;y:number;vx:number;vy:number},offset=0)=>{const dx=o.x+offset-b.x,dy=o.y+offset-b.y,d=Math.hypot(dx,dy);if(d>=160)return;const force=22*(1-d/160);o.vx+=(d?dx/d:0)*force;o.vy+=(d?dy/d:-1)*force;};
+    w.runners.forEach(r=>push(r));w.words.filter(o=>o.kind==='mini').forEach(o=>push(o,16));w.balls.filter(o=>o!==b&&o.carriedBy===undefined).forEach(o=>push(o));
+    for(const r of w.runners){if(r.wireBall===b.id){r.wireState=0;r.wireBall=-1;}if(r.held?.kind==='ball'&&r.held.id===b.id)r.held=null;}
+    b.x=b.homeX;b.y=b.homeY;b.vx=b.vy=0;delete b.owner;b.respawnAt=w.tick+150;
+  }
+}
 export const bodyBounds=(t:Runner)=>t.ability==='bicycle'?{left:30,top:14,bottom:40}:{left:14,top:14,bottom:14};
 
 /** Bicycle geometry blocks narrow gaps, but hazards only touch the rider's 28px body. */
@@ -68,12 +79,15 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
   const aimLength=Math.hypot(raw.aimX,raw.aimY);t.aimDistance=Number.isFinite(aimLength)?Math.min(960,aimLength):160;if(aimLength>.0001){t.aimX=raw.aimX/aimLength;t.aimY=raw.aimY/aimLength;}
   for(let y=Math.floor((t.y-13)/32);y<=Math.floor((t.y+13)/32);y++)for(let x=Math.floor((t.x-13)/32);x<=Math.floor((t.x+13)/32);x++){
     const key=y*w.map.width+x,a=ITEM_ABILITIES[tileAt(w.map,x,y)];
+    if(t.ghostBody)continue;
     if(!a||a===t.ability||(w.pickups[key]??0)>w.tick)continue;
     const ny=t.y+(t.ability==='bicycle'?26:t.hammerBrace?17:0)-(a==='bicycle'?26:0);
     if(a==='bicycle'?bicycleBlocked(w,t.x,ny):collision.runnerBox(t.x,ny,-1))continue;
-    t.y=ny;t.hammerBrace=false;t.ability=a;t.held=null;t.wireState=0;t.wireRunner=-1;t.wireWord=-1;t.wireBall=-1;t.spit.charge=0;
+    t.y=ny;t.hammerBrace=false;t.holdTicks=0;t.ability=a;t.held=null;t.wireState=0;t.wireRunner=-1;t.wireWord=-1;t.wireBall=-1;t.spit.charge=0;
     w.pickups[key]=w.tick+150;
   }
+  const released=!raw.fire&&t.actionDown,previousHold=t.holdTicks;
+  t.holdTicks=raw.fire?t.holdTicks+1:0;
   const pressed=raw.fire&&!t.actionDown,subPressed=raw.wire&&!t.subDown;t.actionDown=raw.fire;t.subDown=raw.wire;
   const brace=t.ability==='hammer'&&raw.wire&&t.stun===0;
   if(brace!==t.hammerBrace){
@@ -83,14 +97,14 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
   }
   if(subPressed&&t.stun===0){
     if(t.ability==='hand'){t.gesture=(Math.imul(w.tick+1,1103515245)^(t.id*12345))>>>0;t.gesture%=3;t.gestureTick=w.tick;}
-    if(t.ability==='bicycle'){t.wheelieTick=w.tick;for(const b of w.balls)if(b.carriedBy===undefined&&Math.hypot(b.x-t.x,b.y-t.y)<=COLLECTION_RADIUS)collectBall(w,t,b);}
+    if(t.ability==='bicycle'){t.wheelieTick=w.tick;explodeOwned(w,t.id);}
   }
   if(t.stun>0)t.held=null;
   if(pressed&&t.stun===0&&t.ability==='hand'){
     if(t.held)t.held=null;
     else{
       const occupied=(kind:string,id:number)=>w.runners.some(r=>r.held?.kind===kind&&r.held.id===id);
-      const candidates=[...w.balls.filter(b=>b.carriedBy===undefined).map(b=>({kind:'ball' as const,id:b.id,x:b.x,y:b.y})),
+      const candidates=[...w.balls.filter(b=>b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick)).map(b=>({kind:'ball' as const,id:b.id,x:b.x,y:b.y})),
         ...w.words.filter(b=>b.solid&&b.kind==='mini').map(b=>({kind:'word' as const,id:b.id,x:b.x+16,y:b.y+16})),
         ...w.runners.filter(r=>r!==t&&!r.held).map(r=>({kind:'runner' as const,id:r.id,x:r.x,y:r.y}))]
         .filter(o=>!occupied(o.kind,o.id)&&Math.hypot(o.x-t.x,o.y-t.y)<75&&(o.x-t.x)*t.aimX+(o.y-t.y)*t.aimY>0&&!blockedLine(w,t.x,t.y,o.x,o.y))
@@ -100,20 +114,31 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
   }
   if(t.stun===0&&t.ability==='bicycle'){
     if(w.tick-t.shotTick>15)for(const b of w.balls){
-      if(b.carriedBy===undefined&&!w.runners.some(r=>r.wireState===2&&r.wireBall===b.id)&&Math.hypot(b.x-t.x,b.y-(t.y+24))<62&&!blockedLine(w,t.x,t.y,b.x,b.y))collectBall(w,t,b);
+      if(b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick)&&!w.runners.some(r=>r.wireState===2&&r.wireBall===b.id)&&Math.hypot(b.x-t.x,b.y-(t.y+24))<62&&!blockedLine(w,t.x,t.y,b.x,b.y))collectBall(w,t,b);
     }
     if(pressed){
       const b=w.balls.find(b=>b.carriedBy===t.id),launch=shotLaunch(t);
       if(b&&!blockedLine(w,t.x,t.y,launch.x,launch.y)&&!collision.staticRect(launch.x-32,launch.y-32,64,64)&&!wordBoxSolid(w,launch.x-32,launch.y-32,64,64)&&!metalOverlap(w,launch.x-32,launch.y-32,64,64,t.id)){
-        delete b.carriedBy;Object.assign(b,{x:launch.x,y:launch.y,vx:launch.vx,vy:launch.vy});t.shotTick=w.tick;
+        delete b.carriedBy;b.owner=t.id;Object.assign(b,{x:launch.x,y:launch.y,vx:launch.vx,vy:launch.vy});t.shotTick=w.tick;
       }
     }
   }
-  return {...raw,left:raw.left&&!t.hammerBrace,right:raw.right&&!t.hammerBrace,jump:raw.jump&&!t.hammerBrace,wire:t.ability==='hook'&&(raw.fire||(raw.wire&&t.wireState===2)),fire:t.ability==='hammer'&&raw.fire&&!t.hammerBrace,
-    spit:t.ability==='bun'&&(raw.fire||raw.spit),miniSpit:t.ability==='bun'&&(raw.wire||raw.miniSpit),clearWord:t.ability==='bun'&&raw.clearWord,weapon:undefined};
+  if(t.ability==='ghost'&&t.holdTicks===30&&!t.stun){
+    if(t.ghostBody){if(collision.runnerBox(t.ghostBody.x,t.ghostBody.y,-1))return {...raw,fire:false,wire:raw.wire};t.x=t.ghostBody.x;t.y=t.ghostBody.y;t.ghostBody=null;}
+    else t.ghostBody={x:t.x,y:t.y};
+    t.vx=t.vy=0;t.wireState=0;t.wireRunner=t.wireBall=t.wireWord=-1;
+  }
+  if(t.ability==='bun'&&released&&previousHold<18){
+    const b=w.words.find(b=>b.owner===t.id&&b.kind!=='mini');
+    if(b){b.vx=t.aimX*2.4;b.vy=t.aimY*2.4;}
+  }
+  return {...raw,left:raw.left&&!t.hammerBrace,right:raw.right&&!t.hammerBrace,jump:raw.jump&&!t.hammerBrace,wire:(t.ability==='basic'||t.ability==='ghost')?raw.wire:t.ability==='hook'&&(raw.fire||(raw.wire&&t.wireState===2)),fire:t.ability==='basic'?raw.fire:t.ability==='ghost'?released&&previousHold<30:t.ability==='hammer'&&raw.fire&&!t.hammerBrace,
+    spit:t.ability==='bun'&&((raw.fire&&t.holdTicks>=18)||raw.spit),miniSpit:t.ability==='bun'&&(raw.wire||raw.miniSpit),clearWord:t.ability==='bun'&&raw.clearWord,weapon:t.ability==='basic'?raw.weapon:undefined};
 }
 export function stepBalls(w:World,collision:WordCollision){
+  w.blasts=w.blasts.filter(b=>w.tick-b.tick<30);
   for(const b of w.balls){
+    if(b.respawnAt&&b.respawnAt>w.tick)continue;
     if(b.carriedBy!==undefined){const rider=w.runners.find(r=>r.id===b.carriedBy&&r.ability==='bicycle');if(rider){b.x=rider.x;b.y=rider.y;continue;}delete b.carriedBy;b.x=b.homeX;b.y=b.homeY;b.vx=b.vy=0;}
     if(w.runners.some(r=>r.held?.kind==='ball'&&r.held.id===b.id))continue;
     b.vy+=BALL_GRAVITY;

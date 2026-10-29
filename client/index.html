@@ -10,14 +10,14 @@
   <meta name="apple-mobile-web-app-title" content="KDレース" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-  <title>中華街パルクール大会</title>
-  <meta name="description" content="提灯ゆれる中華街で、仲間と飛んで、つないで、ゴールへ。KDレースの協力パルクール大会。" />
+  <title>ChainRace</title>
+  <meta name="description" content="夕暮れのコースで、仲間と跳んでつながる協力パルクール。" />
   <meta name="robots" content="noindex, nofollow, noarchive" />
   <link rel="canonical" href="https://chainrace.kdking-tools.com/" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://chainrace.kdking-tools.com/" />
-  <meta property="og:title" content="中華街パルクール大会" />
-  <meta property="og:description" content="今夜、中華街を駆けぬけよう。仲間と遊ぶ協力パルクール。" />
+  <meta property="og:title" content="ChainRace" />
+  <meta property="og:description" content="ホストが部屋を作って遊べる、PCブラウザの協力パルクール。" />
   <meta name="twitter:card" content="summary" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="./style.css" />
@@ -26,33 +26,28 @@
   <div id="app">
     <!-- タイトル -->
     <section id="screen-title" class="screen">
-      <picture class="festival-art"><source media="(max-width: 650px) and (orientation: portrait)" srcset="/art/festival-mobile.webp" /><img src="/art/festival-key-art.webp" width="1672" height="941" fetchpriority="high" alt="白いはちまきの丸い青い主人公が、個性豊かな街の人々や小籠包の屋台、寺院、獅子舞に囲まれて元気に走る中華街のお祭り" /></picture>
       <canvas id="title-city" aria-hidden="true"></canvas>
       <div class="city-shade" aria-hidden="true"></div>
       <nav class="city-nav" aria-label="大会メニュー">
-        <div class="city-brand"><span class="city-seal" aria-hidden="true">KD</span><span>KDKING GAMES / 中華街へようこそ</span></div>
+        <div class="city-brand"><span class="city-seal" aria-hidden="true">KD</span><span>KDKING GAMES / COOPERATIVE RACE</span></div>
         <button id="copy-invite" type="button">招待リンクを共有 ↗</button>
         <input id="invite-fallback" aria-label="招待URL" readonly hidden />
       </nav>
       <div class="city-hero">
         <div class="city-heading">
           <p class="festival-kicker">走って、跳んで、つながって！</p>
-          <h1 class="city-title" aria-label="中華街パルクール大会">
-
-            <span class="flame-title" data-text="中華街" aria-hidden="true">中華街</span>
-            <span class="tournament-title">パルクール大会</span>
-          </h1>
-          <p class="city-copy">湯気も、笑顔も、満員御礼。</p>
+          <h1 class="city-title">ChainRace</h1>
+          <p class="city-copy">跳ぶ、つかむ、仲間と進む。</p>
           <div class="festival-tags"><span>協力パルクール</span><span>コースをつくる</span><span>PCブラウザで参加</span></div>
         </div>
-        <button id="open-entry" class="festival-play" type="button">大会に参加する <span aria-hidden="true">→</span></button>
+        <button id="open-entry" class="festival-play" type="button">プレイする <span aria-hidden="true">→</span></button>
         <p class="play-note">名前だけで参加 · 友達と同じ部屋へ</p>
       </div>
       <dialog id="entry-dialog" aria-labelledby="entrance-title">
       <div class="title-card">
         <button id="close-entry" class="entry-close" type="button" aria-label="タイトルに戻る">×</button>
-        <p class="entrance-kicker">WELCOME TO THE NIGHT MARKET</p>
-        <h2 id="entrance-title" class="entrance-title">さあ、中華街へ！</h2>
+        <p class="entrance-kicker">JOIN THE RACE</p>
+        <h2 id="entrance-title" class="entrance-title">プレイヤー名を入力</h2>
         <p class="entrance-copy">友達にリンクを送って、同じ部屋へ。<br />まずは、呼んでほしい名前をどうぞ。</p>
 
         <div id="logged-in" class="hidden">
@@ -69,7 +64,7 @@
           </div>
           <form id="form-guest" class="tab-pane" data-pane="guest">
             <label>プレイヤー名<input name="name" maxlength="16" required autocomplete="nickname" placeholder="あなたの名前" /></label>
-            <button class="primary">中華街へ出発　→</button>
+            <button class="primary">コースへ出発　→</button>
             <p class="note">ゲストの記録はランキングに残りません。</p>
           </form>
           <form id="form-login" class="tab-pane hidden" data-pane="login">
@@ -109,7 +104,7 @@
           </form>
         </div>
         <div class="panel">
-          <h3>能力を拾って、仲間と進もう</h3><p>最初はマジックハンド。目の前のボール・小中華・仲間をつかんで持ち運べます。</p><p>アイテムを取るとフック、ハンマー、自転車、中華まんに持ち替え。前の能力は使えなくなります。</p><p>部屋を作り、コースを選んで開始。自作コースのファイルをそのまま使えます。</p>
+          <h3>能力を拾って、仲間と進もう</h3><p>基本装備はハンマーとフック。左クリックでハンマー、右クリックでフック。</p><p>自転車・中華まん・幽霊のアイテムで追加能力に持ち替えます。</p><p>部屋を作り、コースを選んで開始。自作コースのファイルをそのまま使えます。</p>
           <h3>ランキング</h3>
           <div class="stage-tabs" data-rank="hubs"></div>
           <ol class="ranking" data-rank-list="hubs"></ol>
