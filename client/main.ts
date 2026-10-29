@@ -438,7 +438,7 @@ $('#btn-editor').onclick=()=>{
   show('editor');
   mountEditor($('#screen-editor'),async map=>{const a=await backend.account();if(!a)throw Error('投稿するにはログインしてください。ファイル保存とテストはゲストでも使えます。');await backend.publishCourse(map,a.name);},map=>{
     leaveHub();previewing=true;
-    const room=new HostHub('preview','コースのテスト');
+    const room=new HostHub('preview','コースのテスト',()=>{},true);
     const link={send:(m:ServerMsg)=>queueMicrotask(()=>onMessage(m)),close:()=>{},onMessage:(_:ClientMsg)=>{},onClose:()=>{}};
     room.connect(link,true);const timer=window.setInterval(()=>room.tick(),20);
     conn={hubId:'preview',hubName:'コースのテスト',isHost:true,send:m=>link.onMessage(m),close:()=>{clearInterval(timer);link.onClose();},onMessage:()=>{},onClose:()=>{}};

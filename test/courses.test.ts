@@ -12,7 +12,7 @@ test('DDパーツの全分類を保存して再読込でき、不正な行は拒
   m.dd!.tele=[];m.dd!.doors=[[1,1,0,0,32,1]];assert.throws(()=>validateCourseMap(m));
 });
 import assert from 'node:assert/strict';
-import { canRelease, newCourseMap, validateCourseMap } from '../shared/courses';
+import { canRelease, newCourseMap, validateCourseMap, validateCoursePreview } from '../shared/courses';
 import { HostHub, type Link } from '../client/host/hub';
 import { createWorld, emptyInput, newRunner, stepWorld, TILE } from '../shared/physics';
 import type { ClientMsg, ServerMsg } from '../shared/protocol';
@@ -27,6 +27,20 @@ function peer(hub: HostHub, name: string) {
 }
 const latest = (messages: ServerMsg[]) => messages.filter(m => m.t === 'gameStart').at(-1)!;
 const map = () => ({ ...validateCourseMap(newCourseMap(24, 16)), minPlayers:2, id: 'user-0123456789abcdef01' });
+
+test('制作途中のコースは出現地点だけで1人テストでき、元の下書きを変更しない',()=>{
+ const m=map();m.name='';m.minPlayers=8;m.tiles=m.tiles.map(row=>row.replaceAll('>','.').replaceAll('F','.'));
+ const before=structuredClone(m),preview=validateCoursePreview(m);
+ assert.equal(preview.minPlayers,1);assert.equal(preview.name,'制作中のコース');assert.deepEqual(m,before);
+ assert.throws(()=>validateCourseMap(m));
+ const hub=new HostHub('preview','テスト',()=>{},true),a=peer(hub,'テスト');
+ a.send({t:'courseJoin',map:m});a.send({t:'roomStart'});
+ assert.equal(hub.games.size,1);assert.deepEqual(latest(a.messages).map!.tiles,m.tiles);
+ const runner=[...hub.games][0].world.runners[0],x=runner.x;
+ for(let seq=1;seq<=10;seq++){a.send({t:'input',gameId:latest(a.messages).gameId,list:[{seq,input:{...emptyInput(),right:true}}]});hub.tick();}
+ assert.ok(runner.x>x);
+ assert.throws(()=>validateCoursePreview({...m,tiles:m.tiles.map(row=>row.replaceAll('S','.'))}),/出現/);
+});
 
 test('公開時は未完成のマップを拒否し、下書きでは保持できる', () => {
   const m = newCourseMap(); m.tiles = m.tiles.map(r => r.replaceAll('F', '.'));

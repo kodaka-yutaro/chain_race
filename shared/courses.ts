@@ -44,6 +44,11 @@ export function validateCourseMap(value: unknown, playable = true): MapDef {
     width: m.width, height: m.height, tiles: [...m.tiles], hints: [], channels,
     ...(m.wordBlocks===true?{wordBlocks:true}:{}) };
 }
+export function validateCoursePreview(value:unknown):MapDef {
+  const map=validateCourseMap(value,false);
+  if([...map.tiles.join('')].filter(c=>c==='S').length!==1)throw Error('テストするには「出現」を1つ置いてください。スタート・ゴールは未配置でも試せます。');
+  return {...map,name:map.name||'制作中のコース',minPlayers:1};
+}
 export function newCourseMap(width = 80, height = 30): MapDef {
   const rows: string[][] = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) =>
     y === 0 || x === 0 || x === width - 1 ? 'X' : y >= height - 3 ? '#' : '.'));

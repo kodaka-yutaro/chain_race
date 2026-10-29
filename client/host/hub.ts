@@ -1,4 +1,4 @@
-import { validateCourseMap, newCourseMap } from '../../shared/courses';
+import { validateCourseMap, validateCoursePreview, newCourseMap } from '../../shared/courses';
 import { stageById } from '../../shared/maps';
 import { HUB_CAPACITY, validName, type ClientMsg, type HubState, type ServerMsg } from '../../shared/protocol';
 import { validFace } from '../../shared/face';
@@ -20,7 +20,7 @@ export class HostHub {
   private selected = { ...newCourseMap(), id: 'user-000000000000000000', name: '能力の練習コース', minPlayers: 1 };
   private nextId = 1;
   private tickCount = 0;
-  constructor(readonly id: string, readonly name: string, private onCount: (n:number)=>void = ()=>{}) {
+  constructor(readonly id: string, readonly name: string, private onCount: (n:number)=>void = ()=>{}, private editorPreview=false) {
     const rows = this.selected.tiles.map(r => [...r]);
     for(const [x,c] of [[12,'G'],[19,'P'],[26,'V'],[29,'o'],[31,'o'],[36,'N'],[44,'G']] as const)rows[this.selected.height-4][x]=c;
     this.selected.tiles = rows.map(r=>r.join(''));
@@ -72,7 +72,7 @@ export class HostHub {
       this.selected.tiles=rows.map(r=>r.join(''));this.pushState();return;
     }
     if(msg.t==='courseJoin'){
-      const m=validateCourseMap(msg.map);
+      const m=this.editorPreview?validateCoursePreview(msg.map):validateCourseMap(msg.map);
       if(!/^user-[a-f0-9]{18}$/.test(msg.map.id))return;
       this.selected={...m,id:msg.map.id};this.pushState();return;
     }

@@ -1,5 +1,5 @@
 import {DD_PARTS,blankDD} from '../shared/dd-parts';
-import { newCourseMap, TILE_TOOLS, validateCourseMap } from '../shared/courses';
+import { newCourseMap, TILE_TOOLS, validateCourseMap, validateCoursePreview } from '../shared/courses';
 import type { MapDef } from '../shared/physics';
 
 const KEY = 'tsunagu.course-draft.v1';
@@ -12,6 +12,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     <p class="note">地形・能力アイテム・赤いボールを配置して、自分のコースを作ろう。テストは1人で動作確認できます。</p>
     <div class="editor-meta"><label>コース名<input data-name maxlength="40"></label><label>説明<input data-desc maxlength="280"></label></div>
     <div class="buttons"><label>幅<input data-width type="number" min="20" max="240"></label><label>高さ<input data-height type="number" min="16" max="100"></label><button data-resize>サイズを変更</button><label>開始に必要な人数<select data-players><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option></select></label><button data-test class="primary">今のコースをテスト</button></div>
+    <p data-test-error role="alert" hidden style="color:#ffb1a4"></p>
     <label class="editor-ability" hidden><input type="checkbox" data-word-blocks>「中華」を吐き出す技を使えるようにする</label>
     <p class="note">基本は左ハンマー・右フック。V 自転車・N 中華まん・P 幽霊・G 基本装備を配置できます。赤いボールは o（直径2マス）。赤い円が実際の大きさです。</p>
     <div class="buttons"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo>元に戻す</button><button data-redo>やり直す</button><label>表示倍率<select data-zoom><option value="12">小</option><option value="24" selected>中</option><option value="36">大</option></select></label></div>
@@ -112,7 +113,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     try { save(); await publish(validateCourseMap(map)); status('プレリリースしました！部屋のホストがコース一覧から選べます。'); }
     catch (e) { status((e as Error).message); } finally { b.disabled = false; }
   };
-  q('[data-test]').onclick=()=>{try{save();test?.(validateCourseMap(map));}catch(e){status((e as Error).message);}};
+  q('[data-test]').onclick=()=>{const error=q('[data-test-error]');error.hidden=true;try{save();if(!test)throw Error('テスト機能を読み込めませんでした。ページを再読み込みしてください。');test(validateCoursePreview(map));}catch(e){error.textContent=(e as Error).message;error.hidden=false;error.scrollIntoView({block:'nearest'});}};
   q('[data-players]').onchange=save;
   q('[data-resize]').onclick=()=>{const w=+q<HTMLInputElement>('[data-width]').value,h=+q<HTMLInputElement>('[data-height]').value;
     if(!Number.isInteger(w)||!Number.isInteger(h)||w<20||w>240||h<16||h>100){status('幅20〜240、高さ16〜100の整数にしてください');return;}
