@@ -194,7 +194,8 @@ export interface StepEvents {
 }
 
 export function tileAt(map: MapDef, tx: number, ty: number): string {
-  if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return 'X';
+  if (ty >= map.height) return '^';
+  if (tx < 0 || ty < 0 || tx >= map.width) return 'X';
   return map.tiles[ty][tx];
 }
 
@@ -779,7 +780,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   // タイル効果
   for (const t of w.runners) {
     const tiles = touchedTiles(w, t);
-    if(t.ghostBody)continue;
+    if(t.ghostBody&&t.y+R-1<w.map.height*TILE)continue;
     if (tiles.includes('^')) {
       respawn(w, t);
       ev.killed.push(t.id);
