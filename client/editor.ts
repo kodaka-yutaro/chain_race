@@ -1,46 +1,59 @@
+import {drawPart} from './part-art';
+import './part-art.css';
+import './editor-layout.css';
 import {DD_PARTS,blankDD} from '../shared/dd-parts';
 import { newCourseMap, TILE_TOOLS, validateCourseMap, validateCoursePreview } from '../shared/courses';
 import type { MapDef } from '../shared/physics';
 
 const KEY = 'tsunagu.course-draft.v1';
-const colors: Record<string, string> = { '.': '#11172b', '#': '#81b780', X: '#748397', '~': '#63b9ef', G:'#a6eee5', H:'#f5d582', M:'#c2cad6', V:'#84bece', N:'#ffd0b0', o:'#ef334a', '^': '#f97583', J: '#e89d4b', S: '#ffdb79', '>': '#90dc9a', F: '#f6a1cf' };
+
 export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<void>, test?: (m:MapDef)=>void) {
   let map = newCourseMap(), tool = '#', mode = 'paint', history: MapDef[] = [], future: MapDef[] = [];
   try { const raw = localStorage.getItem(KEY); if (raw) { const draft = JSON.parse(raw); map = { ...validateCourseMap(draft, false), name: draft.name }; } } catch { /* 初期コース */ }
   root.innerHTML = `
-    <div class="bar"><h2>コースをつくる</h2><button data-close>戻る</button></div>
-    <p class="note">地形・能力アイテム・赤いボールを配置して、自分のコースを作ろう。テストは1人で動作確認できます。</p>
-    <div class="editor-meta"><label>コース名<input data-name maxlength="40"></label><label>説明<input data-desc maxlength="280"></label></div>
-    <div class="buttons"><label>幅<input data-width type="number" min="20" max="240"></label><label>高さ<input data-height type="number" min="16" max="100"></label><button data-resize>サイズを変更</button><label>開始に必要な人数<select data-players><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option></select></label><button data-test class="primary">今のコースをテスト</button></div>
-    <p data-test-error role="alert" hidden style="color:#ffb1a4"></p>
-    <label class="editor-ability" hidden><input type="checkbox" data-word-blocks>「中華」を吐き出す技を使えるようにする</label>
-    <p class="note">基本は左ハンマー・右フック。V 自転車・N 中華まん・P 幽霊・G 基本装備を配置できます。赤いボールは o（直径2マス）。赤い円が実際の大きさです。</p>
-    <div class="buttons"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo>元に戻す</button><button data-redo>やり直す</button><label>表示倍率<select data-zoom><option value="12">小</option><option value="24" selected>中</option><option value="36">大</option></select></label></div>
-    <div class="buttons"><label>接続番号<input data-number type="number" min="1" max="255" value="1"></label><label>角度<input data-angle type="number" min="0" max="359" value="0"></label><label>強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label>秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-part-help class="note">パーツを選ぶと説明を表示します。</p><details><summary>パーツの説明一覧</summary><div data-parts-list></div></details><div class="tile-tools" role="group" aria-label="置くタイル"></div>
-    <div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div>
-    <p class="note">マウスをドラッグして配置。スクロールで移動、倍率で拡大縮小。出現地点は1つです。下書きはこの端末に自動保存されます。</p>
-    <details><summary>スイッチの設定</summary><div class="channels"></div></details>
-    <div class="buttons"><button data-export>ファイルに保存</button><label class="file-button">ファイルを開く<input data-import type="file" accept="application/json,.json"></label><button data-new>新しいコース</button><button class="primary" data-publish>プレリリースする</button></div>
-    <p data-status role="status"></p>`;
+    <header class="ed-header"><button data-close title="部屋一覧に戻る">← 戻る</button><strong>コースエディタ</strong><input data-name aria-label="コース名" maxlength="40"><button data-settings>コース設定</button><button data-help>説明一覧</button><button data-test class="primary">テストプレイ ▶</button></header>
+    <nav class="ed-toolbar" aria-label="編集ツール"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo title="Ctrl+Z">↶ 戻す</button><button data-redo title="Ctrl+Shift+Z">↷ やり直す</button><label>倍率<select data-zoom><option value="12">50%</option><option value="24" selected>100%</option><option value="36">150%</option></select></label><button data-spawn>出現地点へ</button><button data-inspector-toggle>パーツ設定</button><span data-dimensions></span></nav>
+    <p data-test-error role="alert" hidden></p>
+    <div class="ed-workspace">
+      <aside class="ed-palette" aria-label="パーツを選ぶ"><h3>パーツ</h3><input data-search type="search" placeholder="パーツを検索" aria-label="パーツを検索"><div data-categories class="ed-categories"></div><div class="tile-tools" role="group" aria-label="置くタイル"></div><div class="ed-pages"><button data-page-prev aria-label="前のパーツ">←</button><span data-page-info></span><button data-page-next aria-label="次のパーツ">→</button></div></aside>
+      <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div><div class="ed-canvas-hint">ドラッグで描く · Space＋ドラッグで移動 · Ctrl＋ホイールで拡大縮小<span data-cursor></span></div></main>
+      <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">選んだパーツの設定は、これから置くパーツに使われます。</p></aside>
+    </div>
+    <footer class="ed-footer"><span data-status role="status">下書きはこの端末に自動保存</span><button data-export>ファイルに保存</button><label class="file-button">開く<input data-import type="file" accept="application/json,.json"></label><button data-publish>プレリリース</button></footer>
+    <dialog class="ed-dialog" data-settings-dialog><div class="ed-dialog-head"><h2>コース設定</h2><button data-dismiss>閉じる</button></div><label>説明<input data-desc maxlength="280"></label><div class="ed-size"><label>幅（マス）<input data-width type="number" min="20" max="240"></label><label>高さ（マス）<input data-height type="number" min="16" max="100"></label><button data-resize>サイズ変更</button></div><label>開始に必要な人数<select data-players>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}人</option>`).join('')}</select></label><p class="note">テストプレイは設定人数にかかわらず1人で試せます。</p><button data-new>新しいコース</button><label hidden><input type="checkbox" data-word-blocks>中華</label></dialog>
+    <dialog class="ed-dialog" data-help-dialog><div class="ed-dialog-head"><h2>パーツの説明一覧</h2><button data-dismiss>閉じる</button></div><p>出現地点を1つ置くとテストできます。公開にはスタートとゴールも必要です。数字はスイッチ・転送先の接続番号です。</p><div data-parts-list></div></dialog>`;
   const q = <T extends HTMLElement = HTMLElement>(s: string) => root.querySelector<T>(s)!;
-  const name = q<HTMLInputElement>('[data-name]'), desc = q<HTMLInputElement>('[data-desc]'), canvas = q<HTMLCanvasElement>('canvas'), viewport = q('.editor-viewport');
+  const name = q<HTMLInputElement>('[data-name]'), desc = q<HTMLInputElement>('[data-desc]'), canvas = q<HTMLCanvasElement>('.editor-viewport canvas'), viewport = q('.editor-viewport');
   const status = (s: string) => { q('[data-status]').textContent = s; };
-  let size = 24;
+  let size = 24, category='地形', page=0;
+  for(const [button,dialog] of [['[data-settings]','[data-settings-dialog]'],['[data-help]','[data-help-dialog]']])q(button).onclick=()=>q<HTMLDialogElement>(dialog).showModal();
+  root.querySelectorAll<HTMLButtonElement>('[data-dismiss]').forEach(b=>b.onclick=()=>b.closest('dialog')!.close());
+  q('[data-inspector-toggle]').onclick=()=>q('.ed-inspector').classList.toggle('ed-open');
+  q('[data-channel-select]').onchange=()=>root.querySelectorAll<HTMLElement>('.channels > div').forEach((row,i)=>row.hidden=i!==+q<HTMLSelectElement>('[data-channel-select]').value);
+  function centreSpawn(){const y=map.tiles.findIndex(row=>row.includes('S')),x=map.tiles[y]?.indexOf('S')??0;viewport.scrollLeft=Math.max(0,(x+.5)*size-viewport.clientWidth/2);viewport.scrollTop=Math.max(0,(y+.5)*size-viewport.clientHeight/2);}
+  q('[data-spawn]').onclick=centreSpawn;
+
   const save = () => {
     map.name = name.value; map.description = desc.value;
     map.wordBlocks=true;map.abilityMode=true;map.minPlayers=+q<HTMLSelectElement>('[data-players]').value;
     try { localStorage.setItem(KEY, JSON.stringify(map)); status('下書きを保存しました'); } catch { status('端末に保存できません。ファイルに保存してください'); }
   };
   function draw() {
+    q('[data-dimensions]').textContent=`${map.width} × ${map.height} マス`;
     canvas.width = map.width * size; canvas.height = map.height * size;
     const g = canvas.getContext('2d')!;
     for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
-      const c = map.tiles[y][x]; g.fillStyle = colors[c] ?? '#af8ee6'; g.fillRect(x * size, y * size, size - 1, size - 1);
-      if (c !== '.' && size >= 20) { g.fillStyle = '#10172a'; g.font = `bold ${size * .6}px system-ui`; g.textAlign = 'center'; g.fillText(c, (x + .5) * size, (y + .72) * size); }
+      const c = map.tiles[y][x];
+      if(c==='.') {g.fillStyle='#17283d';g.fillRect(x*size,y*size,size-1,size-1);} else drawPart(g,c,x*size,y*size,size);
     }
     for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++)if(map.tiles[y][x]==='o'){g.fillStyle='#ef334a99';g.strokeStyle='#ffb2ab';g.lineWidth=2;g.beginPath();g.arc((x+.5)*size,y*size,size,0,Math.PI*2);g.fill();g.stroke();}
-    for(const key of ['game','front','tele','speed','switches','entities'] as const)for(const row of map.dd?.[key]??[]){const x=row[0]%map.width,y=Math.floor(row[0]/map.width),p=DD_PARTS.find(p=>p.layer===key&&(p.type===row[1]||key==='speed'));g.fillStyle='#28446a';g.fillRect(x*size,y*size,size-1,size-1);g.fillStyle='#bce8ff';g.font=`${Math.max(8,size*.35)}px sans-serif`;g.fillText(p?.name.slice(0,3)??String(row[1]),(x+.5)*size,(y+.65)*size,size-2);}
-    for(const [x,y,dx,dy,length] of map.dd?.doors??[]){g.strokeStyle='#ffd48b';g.lineWidth=3;g.beginPath();g.moveTo(x/32*size,y/32*size);g.lineTo((x+dx*length)/32*size,(y+dy*length)/32*size);g.stroke();}
+    for(const key of ['game','front','tele','speed','switches','entities'] as const)for(const row of map.dd?.[key]??[]){
+      const x=row[0]%map.width,y=Math.floor(row[0]/map.width);
+      const p=DD_PARTS.find(p=>p.layer===key&&(p.type===row[1]||key==='speed')&&(!['game','front'].includes(key)||(p.flags??0)===(row[2]??0)));
+      const badge=['tele','switches','entities'].includes(key)?String(row[2]):undefined;
+      drawPart(g,p?.id??String(row[1]),x*size,y*size,size,badge,key==='speed'?row[3]:0);
+    }
+    for(const [x,y,dx,dy,length,number] of map.dd?.doors??[]){g.strokeStyle='#ffd48b';g.lineWidth=3;g.beginPath();g.moveTo(x/32*size,y/32*size);g.lineTo((x+dx*length)/32*size,(y+dy*length)/32*size);g.stroke();drawPart(g,'dd:doors:49:0',Math.floor(x/32)*size,Math.floor(y/32)*size,size,String(number));}
     q<HTMLButtonElement>('[data-undo]').disabled = !history.length; q<HTMLButtonElement>('[data-redo]').disabled = !future.length;
   }
   function load() {
@@ -48,21 +61,53 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     q<HTMLInputElement>('[data-width]').value=String(map.width);q<HTMLInputElement>('[data-height]').value=String(map.height);q<HTMLSelectElement>('[data-players]').value=String(map.minPlayers);
     q<HTMLInputElement>('[data-word-blocks]').checked=!!map.wordBlocks;
     q('.channels').replaceChildren(...Array.from({ length: 5 }, (_, i) => {
-      const row = document.createElement('div'); row.className = 'buttons';
+      const row = document.createElement('div'); row.className = 'ed-channel-row';row.hidden=i!==+q<HTMLSelectElement>('[data-channel-select]').value;
       row.innerHTML = `<span>スイッチ${i + 1}</span><label>必要人数<select><option value="1">1人</option><option value="2">2人</option></select></label><label>離した後の秒数<input type="number" min="0" max="10" step="0.5"></label>`;
       const select = row.querySelector('select')!, input = row.querySelector('input')!;
       select.value = String(map.channels?.[i]?.need ?? 1); input.value = String((map.channels?.[i]?.hold ?? 0) / 50);
       row.onchange = () => { map.channels ??= Array.from({ length: 5 }, () => ({})); map.channels[i] = { need: +select.value, hold: Math.max(0, Math.min(500, Math.round(+input.value * 50))) }; save(); };
       return row;
-    })); draw(); viewport.scrollTop = canvas.height;
+    })); draw();requestAnimationFrame(centreSpawn);
   }
   for (const [c, label] of [...TILE_TOOLS,...DD_PARTS.map(p=>[p.id,p.name])]) {
-    const b = document.createElement('button'); b.textContent = c.startsWith('dd:')?label:`${c} ${label}`; b.setAttribute('aria-pressed', String(c === tool));
-    b.onclick = () => { tool = c; q('[data-part-help]').textContent=DD_PARTS.find(p=>p.id===c)?.description??`${label}をマウスで配置します`; q('.tile-tools').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); };
-    q('.tile-tools').append(b);
+    const b = document.createElement('button'); b.className='part-button'; b.title=DD_PARTS.find(p=>p.id===c)?.description??label;
+    const icon=document.createElement('canvas');icon.width=64;icon.height=64;icon.setAttribute('aria-hidden','true');drawPart(icon.getContext('2d')!,c,0,0,64);
+    const caption=document.createElement('span');caption.textContent=label;b.append(icon,caption); b.setAttribute('aria-pressed', String(c === tool));
+    b.onclick = () => { tool = c;selectPart(c,label); q('.tile-tools').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); };
+    b.dataset.label=label;b.dataset.category=partCategory(c);q('.tile-tools').append(b);
   }
   const descriptions:Record<string,string>={'.':'選択位置の地形とDDパーツを消去','#':'フックが掛かる岩壁',X:'フックが掛からない金属',S:'プレイヤーの出現位置（1つ）','>':'計測開始',F:'ゴール',V:'赤ボールを保持し、左で発射・右で自分の弾を爆破して回収',N:'毎回溜めて大中華を1発、単押しで操舵、右で小中華',P:'左長押しで幽体離脱・帰還。本体はフックで引ける。単押しハンマー、右フック',G:'ハンマーとフックの基本装備',o:'直径2マスの赤ボール','~':'凍結する床','^':'触れると出現位置に戻る',U:'凍結解除',O:'プレイヤーは通れずフックが通る',J:'上向きに跳ねる'};
   for(const [name,desc] of [...TILE_TOOLS.map(([c,n])=>[n,descriptions[c]??'同じ番号のスイッチ・扉・橋を接続']),...DD_PARTS.map(p=>[p.name,p.description])]){const row=document.createElement('p');row.textContent=`${name}：${desc}`;q('[data-parts-list]').append(row);}
+  function partCategory(c:string){
+    if(!c.startsWith('dd:'))return 'GHMPVNo'.includes(c)?'能力・物体':/^[1-5a-eA-E]$/.test(c)?'スイッチ':'地形';
+    const p=DD_PARTS.find(p=>p.id===c)!;
+    if(p.layer==='tele')return '転送';if(['switches','doors'].includes(p.layer))return 'スイッチ';
+    if(p.layer==='entities')return '装置';if(p.layer==='speed'||[16,32,105,89,17,18,60,61,62].includes(p.type))return '移動';
+    if([197,199,200,201,202,106,90].includes(p.type))return '能力・物体';return '状態';
+  }
+  const categories=['地形','能力・物体','移動','転送','スイッチ','状態','装置','すべて'];
+  for(const c of categories){const b=document.createElement('button');b.textContent=c;b.onclick=()=>{category=c;page=0;filterParts();};q('[data-categories]').append(b);}
+  function filterParts(){
+    const search=q<HTMLInputElement>('[data-search]').value.trim();
+    const buttons=[...root.querySelectorAll<HTMLButtonElement>('.tile-tools button')];
+    const found=buttons.filter(b=>(search||category==='すべて'||b.dataset.category===category)&&(!search||(b.dataset.label+b.title).includes(search)));
+    const pages=Math.max(1,Math.ceil(found.length/9));page=Math.min(page,pages-1);
+    buttons.forEach(b=>b.hidden=true);found.slice(page*9,page*9+9).forEach(b=>b.hidden=false);
+    q('[data-page-info]').textContent=found.length?`${page+1} / ${pages} · ${found.length}種類`:'該当なし';
+    q<HTMLButtonElement>('[data-page-prev]').disabled=page===0;q<HTMLButtonElement>('[data-page-next]').disabled=page===pages-1;
+    root.querySelectorAll<HTMLButtonElement>('[data-categories] button').forEach(b=>b.setAttribute('aria-pressed',String(!search&&b.textContent===category)));
+  }
+  q('[data-search]').oninput=()=>{page=0;filterParts();};
+  q('[data-page-prev]').onclick=()=>{page--;filterParts();};q('[data-page-next]').onclick=()=>{page++;filterParts();};
+  function selectPart(c:string,label:string){
+    const p=DD_PARTS.find(p=>p.id===c);q('[data-selected-name]').textContent=label;q('[data-part-help]').textContent=p?.description??descriptions[c]??'同じ番号のスイッチ・扉・橋を接続します。';
+    const fields:string[]=[];
+    if(p){if(['tele','switches','doors','entities'].includes(p.layer))fields.push('number');if(['speed','entities','doors'].includes(p.layer))fields.push('angle');if(['speed','entities'].includes(p.layer)||p.type===7)fields.push('force');if(p.layer==='switches'&&[22,23].includes(p.type))fields.push('delay');}
+    root.querySelectorAll<HTMLElement>('[data-field]').forEach(e=>e.hidden=!fields.includes(e.dataset.field!));q('[data-no-settings]').hidden=fields.length>0;
+    q('.ed-channel').hidden=!/^[1-5a-eA-E]$/.test(c);
+    if(/^[1-5a-eA-E]$/.test(c)){const n=/[1-5]/.test(c)?+c-1:c.toLowerCase().charCodeAt(0)-97;q<HTMLSelectElement>('[data-channel-select]').value=String(n);q('[data-channel-select]').dispatchEvent(new Event('change'));}
+  }
+  filterParts();selectPart('#','岩壁');
   function placeDD(x:number,y:number){
     map.dd??=blankDD();const idx=y*map.width+x;
     for(const key of ['game','front','tele','speed','switches','entities'] as const)map.dd[key]=(map.dd[key]??[]).filter(r=>r[0]!==idx);
@@ -76,8 +121,9 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     mode = b.dataset.mode!; viewport.style.touchAction = mode === 'pan' ? 'pan-x pan-y' : 'none';
     root.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
   });
+  let spacePan=false;
   let panPoint:{x:number;y:number;left:number;top:number}|null=null;
-  viewport.addEventListener('pointerdown',e=>{if(mode!=='pan')return;panPoint={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);e.preventDefault();});
+  viewport.addEventListener('pointerdown',e=>{if(mode!=='pan'&&!spacePan&&e.button!==1)return;panPoint={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);e.preventDefault();});
   viewport.addEventListener('pointermove',e=>{if(!panPoint)return;viewport.scrollLeft=panPoint.left-e.clientX+panPoint.x;viewport.scrollTop=panPoint.top-e.clientY+panPoint.y;});
   viewport.addEventListener('pointerup',()=>panPoint=null);viewport.addEventListener('pointercancel',()=>panPoint=null);
   let pointer: number | null = null, lastCell: { x: number; y: number } | null = null;
@@ -92,13 +138,24 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     else for (let i = 0; i <= n; i++){const px=Math.round(start.x+(x-start.x)*i/n),py=Math.round(start.y+(y-start.y)*i/n);placeDD(px,py);rows[py][px]=tool.startsWith('dd:')?'.':tool;}
     map.tiles = rows.map(r => r.join('')); lastCell = { x, y }; draw();
   };
-  canvas.onpointerdown = e => { if (mode !== 'paint' || pointer !== null) return; history.push(structuredClone(map)); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
-  canvas.onpointermove = e => { if (e.pointerId === pointer) paint(e); };
+  canvas.onpointerdown = e => { if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(structuredClone(map)); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
+  canvas.onpointermove = e => { if (e.pointerId === pointer) paint(e);
+    const r=canvas.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/size),y=Math.floor((e.clientY-r.top)/size),idx=y*map.width+x;
+    const names:string[]=[];const tile=map.tiles[y]?.[x];if(tile&&tile!=='.')names.push(TILE_TOOLS.find(t=>t[0]===tile)?.[1]??tile);
+    for(const key of ['game','front','tele','speed','switches','entities'] as const)for(const row of map.dd?.[key]??[])if(row[0]===idx){const p=DD_PARTS.find(p=>p.layer===key&&(p.type===row[1]||key==='speed')&&(!['game','front'].includes(key)||(p.flags??0)===(row[2]??0)));names.push(p?.name??'特殊パーツ');}
+    for(const row of map.dd?.doors??[])if(Math.floor(row[0]/32)===x&&Math.floor(row[1]/32)===y)names.push(`スイッチドア ${row[5]}`);
+    canvas.title=names.join(' / ')||'空白';q('[data-cursor]').textContent=`${x}, ${y} · ${canvas.title}`;
+  };
   const end = (e: PointerEvent) => { if (e.pointerId !== pointer) return; pointer = null; lastCell = null; save(); };
   canvas.onpointerup = canvas.onpointercancel = canvas.onlostpointercapture = end;
   q('[data-undo]').onclick = () => { const rows = history.pop(); if (rows) { future.push(structuredClone(map)); map = rows; save(); draw(); } };
   q('[data-redo]').onclick = () => { const rows = future.pop(); if (rows) { history.push(structuredClone(map)); map = rows; save(); draw(); } };
-  q<HTMLSelectElement>('[data-zoom]').onchange = e => { size = +(e.target as HTMLSelectElement).value; draw(); };
+  function zoom(next:number){const x=(viewport.scrollLeft+viewport.clientWidth/2)/size,y=(viewport.scrollTop+viewport.clientHeight/2)/size;size=next;q<HTMLSelectElement>('[data-zoom]').value=String(size);draw();viewport.scrollLeft=x*size-viewport.clientWidth/2;viewport.scrollTop=y*size-viewport.clientHeight/2;}
+  q<HTMLSelectElement>('[data-zoom]').onchange=e=>zoom(+(e.target as HTMLSelectElement).value);
+  viewport.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();const levels=[12,24,36];zoom(levels[Math.max(0,Math.min(2,levels.indexOf(size)+(e.deltaY<0?1:-1)))]);},{passive:false});
+  root.onkeydown=e=>{if((e.target as HTMLElement).closest('input,select,textarea,dialog'))return;if(e.code==='Space'){e.preventDefault();spacePan=true;viewport.style.cursor='grab';}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();q<HTMLButtonElement>(e.shiftKey?'[data-redo]':'[data-undo]').click();}};
+  root.onkeyup=e=>{if(e.code==='Space'){spacePan=false;viewport.style.cursor='';}};
+  viewport.onblur=()=>{spacePan=false;viewport.style.cursor='';};
   name.oninput = desc.oninput = save;
   q<HTMLInputElement>('[data-word-blocks]').onchange=save;
   q('[data-new]').onclick = () => { if (!confirm('下書きを新しくします。必要なら先にファイルに保存してください。')) return; map = newCourseMap(); history = []; future = []; load(); save(); };
@@ -121,3 +178,4 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     map.tiles=Array.from({length:h},(_,y)=>Array.from({length:w},(_,x)=>map.tiles[y]?.[x]??'.').join(''));if(map.dd){for(const key of ['game','front','tele','speed','switches','entities'] as const)map.dd[key]=(map.dd[key]??[]).filter(r=>r[0]%map.width<w&&Math.floor(r[0]/map.width)<h).map(r=>[Math.floor(r[0]/map.width)*w+r[0]%map.width,...r.slice(1)]);map.dd.doors=map.dd.doors.filter(r=>r[0]<w*32&&r[1]<h*32);}map.width=w;map.height=h;history=[];future=[];load();save();};
   load();
 }
+
