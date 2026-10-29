@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createWorld,newRunner,emptyInput,stepWorld,type Input,type World} from '../shared/physics';
+import {createWorld,newRunner,emptyInput,stepWorld,wordCollision,type Input,type World} from '../shared/physics';
 import {newCourseMap,validateCourseMap} from '../shared/courses';
-import {bicycleBlocked} from '../shared/abilities';
+import {BALL_RADIUS,COLLECTION_RADIUS,ballCount,ballStep,shotLaunch,shotPreview,metalPart,bicycleBlocked} from '../shared/abilities';
 import {defaultFace,validFace} from '../shared/face';
 function setup(){const m=newCourseMap(40,20),w=createWorld(m),r=newRunner(1,m);w.runners.push(r);r.x=200;r.y=17*32-14;return {m,w,r};}
 function tick(w:World,n=1,input:Partial<Input>={}){for(let i=0;i<n;i++)stepWorld(w,new Map([[1,{...emptyInput(),...input}]]));}
@@ -28,11 +28,11 @@ test('自転車の車輪はしびれ床とトゲの上を走れるが、乗員�
    r.y=16*32+16;tick(w);if(hazard==='~')assert.ok(r.stun>0);else assert.equal(r.ability,'hand');}
 });
 test('マジックハンドで赤いボールを持ち運んで離せる。壁越しにはつかめない',()=>{
- const {w,r}=setup();w.balls.push({id:1,x:r.x+40,y:r.y,vx:0,vy:0,homeX:240,homeY:r.y});tick(w,1,{fire:true});assert.deepEqual(r.held,{kind:'ball',id:1});tick(w,10,{right:true});assert.ok(Math.abs(w.balls[0].x-r.x-48)<1);
+ const {w,r}=setup();w.balls.push({id:1,x:r.x+40,y:r.y,vx:0,vy:0,homeX:240,homeY:r.y});tick(w,1,{fire:true});assert.deepEqual(r.held,{kind:'ball',id:1});tick(w,10,{right:true});assert.ok(Math.abs(w.balls[0].x-r.x-70)<1);
  tick(w,1,{fire:true});assert.equal(r.held,null);tick(w);r.x=200;r.y=400;w.balls[0].x=250;w.balls[0].y=400;tile(w,7,12,'X');tick(w,1,{fire:true});assert.equal(r.held,null);
 });
 test('赤いボールを自転車でシュートでき、別のプレイヤーのフックでつかめる',()=>{
- const {w,r}=setup();r.ability='bicycle';r.y=17*32-40;w.balls.push({id:0,x:r.x+38,y:r.y+24,vx:0,vy:0,homeX:240,homeY:r.y});tick(w,1,{fire:true});assert.ok(w.balls[0].vx>10);
+ const {w,r}=setup();r.ability='bicycle';r.y=17*32-40;w.balls.push({id:0,x:r.x+38,y:r.y+24,vx:0,vy:0,homeX:240,homeY:r.y});tick(w,1,{fire:true,aimX:500});assert.ok(w.balls[0].vx>5);
  r.ability='hook';r.x=180;r.y=400;w.balls[0].x=270;w.balls[0].y=400;w.balls[0].vx=w.balls[0].vy=0;tick(w);tick(w,1,{fire:true});assert.equal(r.wireBall,0);assert.equal(r.wireState,2);
 });
 test('乗員のボディをフックでつかめる',()=>{
@@ -49,33 +49,27 @@ test('メインとサブは能力ごとに独立し、じゃんけんは保持�
  r.ability='hook';r.held=null;tick(w,1,{wire:true});assert.equal(r.wireState,0);tick(w,1,{fire:true});assert.notEqual(r.wireState,0);
 });
 test('ハンマーのサブは地上で固定、空中で真下に落下し、離すと動ける',()=>{
- const {w,r}=setup();r.ability='hammer';tick(w,20);const x=r.x,y=r.y;r.vx=10;tick(w,10,{wire:true,right:true,jump:true,fire:true});assert.equal(r.x,x);assert.equal(r.y,y);assert.equal(r.hammerTick,-100);
+ const {w,r}=setup();r.ability='hammer';tick(w,20);const x=r.x,y=r.y;r.vx=10;tick(w,10,{wire:true,right:true,jump:true,fire:true});assert.equal(r.x,x);assert.equal(r.y,y-17);assert.equal(r.hammerTick,-100);
  r.y-=100;r.vy=-10;const airY=r.y;tick(w,8,{wire:true,right:true,jump:true});assert.equal(r.x,x);assert.ok(r.y>airY);tick(w,8,{right:true});assert.ok(r.x>x);
 });
-test('自転車はボールを一つ保持してドリブルし、三段階の威力で発射する',()=>{
- const speeds:number[]=[];
- for(let power=1;power<=3;power++){
-  const {w,r}=setup();r.ability='bicycle';r.y=17*32-40;
-  tick(w,1,{fire:true});assert.equal(r.shotTick,-100);
-  for(let i=1;i<power;i++){tick(w);tick(w,1,{wire:true});}assert.equal(r.bikePower,power);
-  w.balls.push({id:0,x:r.x+24,y:r.y+24,vx:0,vy:0,homeX:224,homeY:r.y});tick(w);assert.equal(r.held?.id,0);const y=w.balls[0].y;tick(w,3);assert.notEqual(w.balls[0].y,y);
-  tick(w,1,{fire:true});assert.equal(r.held,null);speeds.push(w.balls[0].vx);tick(w);assert.equal(r.held,null);
- }
- assert.ok(speeds[0]<speeds[1]&&speeds[1]<speeds[2]);
- const {w,r}=setup();r.ability='bicycle';tick(w,1,{wire:true});tick(w,5,{wire:true});assert.equal(r.bikePower,2);tick(w);tick(w,1,{wire:true});tick(w);tick(w,1,{wire:true});assert.equal(r.bikePower,1);
+test('ウィリーは半径10マス以内だけを複数回収し、回収後は判定がなくなる',()=>{
+ const {w,r}=setup();r.ability='bicycle';r.x=500;r.y=300;
+ for(const [id,dx] of [[0,100],[1,320],[2,321]])w.balls.push({id,x:r.x+dx,y:r.y,vx:0,vy:0,homeX:r.x+dx,homeY:r.y});
+ tick(w,1,{wire:true});assert.equal(ballCount(w,r.id),2);assert.equal(w.balls[2].carriedBy,undefined);assert.equal(r.wheelieTick,w.tick);assert.equal(BALL_RADIUS,32);assert.equal(COLLECTION_RADIUS,320);
+ const a=w.balls[0];assert.equal(a.carriedBy,r.id);tick(w,10,{right:true});assert.ok(Math.abs(a.x-(r.x-r.vx))<.001);assert.equal(a.vx,0);
+ tick(w,1,{fire:true,aimX:500,aimY:-100});assert.equal(ballCount(w,r.id),1);assert.equal(a.carriedBy,undefined);assert.ok(a.vx>0);
+ tick(w);tick(w,1,{fire:true,aimX:500,aimY:-100});assert.equal(ballCount(w,r.id),0);
 });
 test('中華まんは左で大中華、右で従来の小中華を出す',()=>{
  const {w,r}=setup();r.ability='bun';tick(w,1,{wire:true});assert.equal(w.words.filter(b=>b.kind==='mini').length,1);tick(w,15,{wire:true});assert.equal(w.words.length,1);tick(w);r.x=400;tick(w,1,{fire:true});tick(w,30);assert.equal(w.words.filter(b=>b.kind!=='mini').length,1);
 });
 
-test('所持ボールは二重取得されず、フックで奪ったボールは即座に取り戻されない',()=>{
- const {w,r}=setup();r.ability='bicycle';r.y=400;w.balls.push({id:0,x:224,y:424,vx:0,vy:0,homeX:224,homeY:424});tick(w);assert.ok(r.held);
- const other=newRunner(2,w.map);other.ability='bicycle';other.x=r.x;other.y=r.y;w.runners.push(other);tick(w);assert.equal(other.held,null);
- other.ability='hook';other.x=r.x+100;other.y=w.balls[0].y;
- stepWorld(w,new Map([[2,{...emptyInput(),fire:true,aimX:-1,aimY:0}]]));assert.equal(other.wireBall,0);assert.equal(r.held,null);
- stepWorld(w,new Map([[2,{...emptyInput(),fire:true,aimX:-1,aimY:0}]]));assert.equal(r.held,null);
+test('回収済みのボールは別の自転車やフックが取得せず、能力を失うと元の位置に戻る',()=>{
+ const {w,r}=setup();r.ability='bicycle';r.y=300;w.balls.push({id:0,x:240,y:300,vx:0,vy:0,homeX:240,homeY:300});tick(w);assert.equal(ballCount(w,1),1);
+ const o=newRunner(2,w.map);o.ability='bicycle';o.x=300;o.y=300;w.runners.push(o);stepWorld(w,new Map([[2,{...emptyInput(),wire:true}]]));assert.equal(ballCount(w,2),0);
+ o.ability='hook';o.x=300;o.y=r.y;stepWorld(w,new Map([[2,{...emptyInput(),fire:true,aimX:-1}]]));assert.equal(o.wireBall,-1);
+ r.ability='hand';tick(w);assert.equal(ballCount(w,1),0);assert.equal(w.balls[0].carriedBy,undefined);
 });
-
 test('ハンマーの長押しは30tickごとで、連打でも間隔を短縮しない',()=>{
  const {w,r}=setup();r.ability='hammer';const hits:number[]=[];
  for(let i=0;i<95;i++){tick(w,1,{fire:true});if(r.hammerTick===w.tick)hits.push(w.tick);}
@@ -103,4 +97,32 @@ test('サブを離すとフックの引き寄せが戻り、復活や能力交�
  const {w,r}=setup();r.ability='hook';r.x=300;r.y=350;r.wireState=2;r.wireX=300;r.wireY=200;r.prevWire=true;
  tick(w,5,{fire:true,wire:true});const distance=Math.hypot(r.x-r.wireX,r.y-r.wireY);tick(w,10,{fire:true});assert.equal(r.hookLengthLock,-1);assert.ok(Math.hypot(r.x-r.wireX,r.y-r.wireY)<distance);
  tick(w,1,{fire:true,wire:true});assert.ok(r.hookLengthLock>=0);tick(w,1,{kill:true});assert.equal(r.hookLengthLock,-1);
+});
+
+test('マウスの距離で飛距離が増え、点線の予測と実際の放物線が一致する',()=>{
+ const {w,r}=setup();r.ability='bicycle';r.x=200;r.y=300;r.aimX=1;r.aimY=0;
+ const close=shotLaunch(r,120,0),far=shotLaunch(r,600,0);assert.ok(far.vx>close.vx);assert.ok(far.vy<0);
+ r.aimDistance=600;const points=shotPreview(w,r,wordCollision(w));const shot=shotLaunch(r);
+ w.balls.push({id:0,...shot,homeX:shot.x,homeY:shot.y});
+ for(let i=1;i<Math.min(15,points.length-1);i++){tick(w);assert.ok(Math.abs(w.balls[0].x-points[i].x)<.001);assert.ok(Math.abs(w.balls[0].y-points[i].y)<.001);}
+ const b={...far};for(let i=0;i<Math.round(far.frames);i++)ballStep(b);assert.ok(Math.abs(b.x-(r.x+600))<far.vx+1);
+});
+test('車体と下向きハンマーは金属。胴体にはフックが掛かる',()=>{
+ for(const ability of ['bicycle','hammer'] as const){
+  const {w,r}=setup();r.ability='hook';r.x=180;r.y=300;const o=newRunner(2,w.map);o.ability=ability;o.x=260;o.y=300;o.hammerBrace=ability==='hammer';w.runners.push(o);
+  const otherInput={...emptyInput(),wire:ability==='hammer'};
+  stepWorld(w,new Map([[1,{...emptyInput(),fire:true}],[2,otherInput]]));assert.equal(r.wireRunner,2);
+  r.wireState=0;r.prevWire=false;r.x=180;r.y=o.y+(ability==='hammer'?26:25);
+  stepWorld(w,new Map([[1,{...emptyInput(),fire:true}],[2,otherInput]]));assert.equal(r.wireState,0);assert.equal(r.wireRunner,-1);
+  assert.ok(metalPart(o));
+ }
+});
+test('ハンマーに乗ると足が地面から浮き、車体とハンマーは歩行を遮る',()=>{
+ for(const ability of ['bicycle','hammer'] as const){
+  const {w,r}=setup();r.ability=ability;r.x=300;if(ability==='bicycle')r.y=17*32-40;
+  tick(w,1,{wire:ability==='hammer'});const part=metalPart(r)!;assert.ok(part);assert.ok(r.y+14<17*32);assert.ok(Math.abs(part.y+part.h-17*32)<1);
+  const o=newRunner(2,w.map);o.x=240;o.y=17*32-14;w.runners.push(o);
+  for(let i=0;i<30;i++)stepWorld(w,new Map([[1,{...emptyInput(),wire:ability==='hammer'}],[2,{...emptyInput(),right:true}]]));
+  assert.ok(o.x+14<=metalPart(r)!.x+.1);
+ }
 });

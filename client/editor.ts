@@ -12,7 +12,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     <div class="editor-meta"><label>コース名<input data-name maxlength="40"></label><label>説明<input data-desc maxlength="280"></label></div>
     <div class="buttons"><label>幅<input data-width type="number" min="20" max="240"></label><label>高さ<input data-height type="number" min="16" max="100"></label><button data-resize>サイズを変更</button><label>開始に必要な人数<select data-players><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option></select></label><button data-test class="primary">今のコースをテスト</button></div>
     <label class="editor-ability" hidden><input type="checkbox" data-word-blocks>「中華」を吐き出す技を使えるようにする</label>
-    <p class="note">初期能力はマジックハンド。H フック・M ハンマー・V 自転車・N 中華まん・G マジックハンドを配置できます。取得で持ち替えます。赤いボールは o。</p>
+    <p class="note">初期能力はマジックハンド。H フック・M ハンマー・V 自転車・N 中華まん・G マジックハンドを配置できます。取得で持ち替えます。赤いボールは o（直径2マス）。赤い円が実際の大きさです。</p>
     <div class="buttons"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo>元に戻す</button><button data-redo>やり直す</button><label>表示倍率<select data-zoom><option value="12">小</option><option value="24" selected>中</option><option value="36">大</option></select></label></div>
     <div class="tile-tools" role="group" aria-label="置くタイル"></div>
     <div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div>
@@ -36,6 +36,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       const c = map.tiles[y][x]; g.fillStyle = colors[c] ?? '#af8ee6'; g.fillRect(x * size, y * size, size - 1, size - 1);
       if (c !== '.' && size >= 20) { g.fillStyle = '#10172a'; g.font = `bold ${size * .6}px system-ui`; g.textAlign = 'center'; g.fillText(c, (x + .5) * size, (y + .72) * size); }
     }
+    for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++)if(map.tiles[y][x]==='o'){g.fillStyle='#ef334a99';g.strokeStyle='#ffb2ab';g.lineWidth=2;g.beginPath();g.arc((x+.5)*size,y*size,size,0,Math.PI*2);g.fill();g.stroke();}
     q<HTMLButtonElement>('[data-undo]').disabled = !history.length; q<HTMLButtonElement>('[data-redo]').disabled = !future.length;
   }
   function load() {

@@ -587,7 +587,7 @@ function drawLifts(g: CanvasRenderingContext2D, m: MapDef, st: LiveState, now: n
 // ---------- キャラとフック ----------
 
 export interface RunnerLook {
-  hammerBrace?:boolean;bikePower?:number;wheelieAge?:number;gesture?:number;gestureAge?:number;
+  hammerBrace?:boolean;wheelieAge?:number;gesture?:number;gestureAge?:number;
   ability?:Ability;face?:string;shotAge?:number;
   id: number; x: number; y: number; vx: number; grounded: boolean;
   stun: number; aimX: number; aimY: number; hammerAge: number;
@@ -636,13 +636,12 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   const face = r.aimX >= 0 ? 1 : -1;
   const body = stunned ? '#a9b4c2' : '#f5c9a5';
   if(r.ability==='bicycle'){
-    g.save();g.translate(r.x-19*face,r.y+28);g.rotate((r.wheelieAge??100)<30?-face*Math.sin((r.wheelieAge??0)/30*Math.PI)*(.15+(r.bikePower??1)*.12):0);g.translate(-(r.x-19*face),-(r.y+28));
+    g.save();g.translate(r.x-19*face,r.y+28);g.rotate((r.wheelieAge??100)<30?-face*Math.sin((r.wheelieAge??0)/30*Math.PI)*.45:0);g.translate(-(r.x-19*face),-(r.y+28));
     g.strokeStyle='#23304b';g.lineWidth=4;for(const dx of [-19,19]){g.beginPath();g.arc(r.x+dx,r.y+28,11,0,Math.PI*2);g.stroke();}
     g.strokeStyle='#e94a5e';g.lineWidth=3;g.beginPath();g.moveTo(r.x-19,r.y+28);g.lineTo(r.x-5,r.y+10);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x-19,r.y+28);g.lineTo(r.x+6,r.y+14);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x+14,r.y+5);g.stroke();
     g.save();g.translate(r.x+14,r.y+5);g.rotate((r.shotAge??100)<12?Math.sin((r.shotAge??0)/12*Math.PI)*1.2:0);g.strokeStyle='#ffd578';g.beginPath();g.moveTo(-4,0);g.lineTo(10,-3);g.stroke();g.restore();
   }
   if(r.ability==='bicycle')g.restore();
-  if(r.ability==='hand'&&(r.gestureAge??100)<65){g.save();g.font='24px sans-serif';g.textAlign='center';g.fillText(['✊','✌','✋'][r.gesture??0],r.x,r.y-32);g.restore();}
   const puff=r.spitCharge?Math.sin((1-r.spitCharge/19)*Math.PI/2):0;
 
   // 足（歩くと交互に動く、空中では縮める）
@@ -673,7 +672,17 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   g.restore();
 
   }
-  if(r.ability==='hand'){g.strokeStyle='#82eee0';g.lineWidth=3;g.beginPath();g.moveTo(r.x+r.aimX*12,r.y+r.aimY*12);g.lineTo(r.x+r.aimX*27,r.y+r.aimY*27);g.stroke();g.fillStyle='#e1ffef';g.fillRect(r.x+r.aimX*27-4,r.y+r.aimY*27-4,8,8);}
+  if(r.ability==='hand'){
+    const gesture=(r.gestureAge??100)<65?(r.gesture??2):2;
+    g.save();g.translate(r.x+r.aimX*48,r.y+r.aimY*48);g.rotate(Math.atan2(r.aimY,r.aimX)+Math.PI/2);
+    g.fillStyle='#fff';g.strokeStyle='#9aacc0';g.lineWidth=2;
+    // A 48px glove: the fingers themselves change for rock, scissors and paper.
+    g.beginPath();g.roundRect(-15,-3,30,24,8);g.fill();g.stroke();
+    const fingers=gesture===0?[8,8,8,8]:gesture===1?[28,31,8,8]:[22,29,31,24];
+    for(let i=0;i<4;i++){g.beginPath();g.roundRect(-18+i*9,-fingers[i]+7,9,fingers[i],4);g.fill();g.stroke();}
+    g.save();g.translate(-16,10);g.rotate(-.65);g.beginPath();g.roundRect(-5,-13,10,23,5);g.fill();g.stroke();g.restore();
+    g.restore();
+  }
   drawFace(g,r.face??'',r.x,r.y,34+puff*2);
 
   // 目

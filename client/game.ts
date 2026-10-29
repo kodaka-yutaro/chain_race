@@ -1,5 +1,5 @@
 import {
-  CHANNELS, createWorld, emptyInput, inZone, newRunner, stepWorld, TICK_RATE, TILE, WIRE_ATTACHED,
+  wordCollision, CHANNELS, createWorld, emptyInput, inZone, newRunner, stepWorld, TICK_RATE, TILE, WIRE_ATTACHED,
   WIRE_FLYING, type Input, type MapDef, type Runner, type World,
 } from '../shared/physics';
 import { mapById as stageOrLobby, stageById } from '../shared/maps';
@@ -10,7 +10,7 @@ import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles,
 import { WEAPON_NAMES } from '../shared/ddrace';
 import { drawDD } from './dd-render';
 import { drawWords } from './word-render';
-import { ABILITY_NAMES, ITEM_ABILITIES } from '../shared/abilities';
+import { BALL_RADIUS,COLLECTION_RADIUS,ballCount,shotPreview,ABILITY_NAMES, ITEM_ABILITIES } from '../shared/abilities';
 import { MINI_LIMIT } from '../shared/word-blocks';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
@@ -261,7 +261,7 @@ export class ClientGame {
     this.smoothX *= 0.85;
     this.smoothY *= 0.85;
     this.render(now);
-    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='hook'&&this.me.hookLengthLock>=0?' ／ フック長さ固定':'')+(this.me.ability==='bicycle'?` ／ 威力 ${this.me.bikePower}/3 ／ ${this.me.held?'ボール所持':'ボールなし'}`:'');
+    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='hook'&&this.me.hookLengthLock>=0?' ／ フック長さ固定':'')+(this.me.ability==='bicycle'?` ／ ボール ${ballCount(this.world,this.me.id)}個 ／ マウスで軌道調整`:'');
     if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
@@ -423,8 +423,25 @@ export class ClientGame {
         g.fillStyle='#ffd26c';g.beginPath();g.roundRect(x*32+3,y*32+3,26,26,7);g.fill();g.fillStyle='#7b1830';g.font='bold 18px sans-serif';g.textAlign='center';g.fillText(labels[c],x*32+16,y*32+23);g.restore();
       }
     }
-    for(const b of this.world.balls){g.fillStyle='#ef334a';g.strokeStyle='#79152b';g.lineWidth=2;g.beginPath();g.arc(b.x,b.y,9,0,Math.PI*2);g.fill();g.stroke();g.fillStyle='#ffb2ab';g.beginPath();g.arc(b.x-3,b.y-3,3,0,Math.PI*2);g.fill();}
-    for(const r of this.world.runners)if(r.held&&r.ability==='hand'){g.strokeStyle='#b1f6ed';g.lineWidth=3;g.beginPath();g.moveTo(r.x,r.y);g.lineTo(r.x+r.aimX*48,r.y+r.aimY*48);g.stroke();}
+    const paintBall=(x:number,y:number,count?:number)=>{
+      g.fillStyle='#ef334a';g.strokeStyle='#79152b';g.lineWidth=2;g.beginPath();g.arc(x,y,BALL_RADIUS,0,Math.PI*2);g.fill();g.stroke();
+      g.fillStyle='#ffb2ab';g.beginPath();g.arc(x-10,y-10,8,0,Math.PI*2);g.fill();
+      if(count!==undefined){g.font='bold 26px sans-serif';g.textAlign='center';g.textBaseline='middle';g.lineWidth=4;g.strokeStyle='#79152b';g.strokeText(String(count),x,y);g.fillStyle='white';g.fillText(String(count),x,y);g.textBaseline='alphabetic';}
+    };
+    for(const b of this.world.balls)if(b.carriedBy===undefined)paintBall(b.x,b.y);
+    for(const r of this.world.runners){
+      const count=ballCount(this.world,r.id);
+      if(r.ability==='bicycle'&&count)paintBall(r.x+(r.aimX>=0?50:-50),r.y-20+Math.abs(Math.sin(this.world.tick*.32))*16,count);
+      const age=this.world.tick-r.wheelieTick;
+      if(r.ability==='bicycle'&&age>=0&&age<40){
+        g.save();g.globalAlpha=1-age/40;g.strokeStyle='#ffe09a';g.fillStyle='#ffe09a15';g.lineWidth=3;g.setLineDash([12,10]);g.beginPath();g.arc(r.x,r.y,COLLECTION_RADIUS,0,Math.PI*2);g.fill();g.stroke();g.setLineDash([]);g.font='16px sans-serif';g.textAlign='center';g.fillStyle='#ffe09a';g.fillText('回収範囲：半径10マス',r.x,r.y-COLLECTION_RADIUS+24);g.restore();
+      }
+    }
+    if(this.me.ability==='bicycle'){
+      const points=shotPreview(this.world,this.me,wordCollision(this.world));
+      g.save();g.strokeStyle=ballCount(this.world,this.me.id)?'#fff2b4':'#ffffff66';g.lineWidth=3;g.setLineDash([3,9]);g.lineCap='round';g.beginPath();points.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y));g.stroke();g.setLineDash([]);
+      const last=points[points.length-1];g.beginPath();g.arc(last.x,last.y,6,0,Math.PI*2);g.stroke();g.restore();
+    }
 
     this.drawZones(g);
 
@@ -457,7 +474,7 @@ export class ClientGame {
 
     for (const r of all) {
       const state=r.id===this.youId?this.me:views.find(v=>v.id===r.id);
-      drawRunner(g, { ...r, hammerBrace:state?.hammerBrace,bikePower:state?.bikePower,wheelieAge:this.world.tick-(state?.wheelieTick??-100),gesture:state?.gesture,gestureAge:this.world.tick-(state?.gestureTick??-100), ability:r.id===this.youId?this.me.ability:views.find(v=>v.id===r.id)?.ability, face:this.faces[r.id], shotAge:this.world.tick-(r.id===this.youId?this.me.shotTick:views.find(v=>v.id===r.id)?.shotTick??-100), name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
+      drawRunner(g, { ...r, hammerBrace:state?.hammerBrace,wheelieAge:this.world.tick-(state?.wheelieTick??-100),gesture:state?.gesture,gestureAge:this.world.tick-(state?.gestureTick??-100), ability:r.id===this.youId?this.me.ability:views.find(v=>v.id===r.id)?.ability, face:this.faces[r.id], shotAge:this.world.tick-(r.id===this.youId?this.me.shotTick:views.find(v=>v.id===r.id)?.shotTick??-100), name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
       drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);
     }
     if (touch.active) {
@@ -577,7 +594,7 @@ export class ClientGame {
 
 function viewToRunner(v: RunnerView, map: MapDef): Runner {
   const r = newRunner(v.id, map);
-  r.hookLengthLock=v.hookLengthLock??-1;r.subDown=v.subDown??false;r.hammerBrace=v.hammerBrace??false;r.bikePower=v.bikePower??1;r.wheelieTick=v.wheelieTick??-100;r.gesture=v.gesture??0;r.gestureTick=v.gestureTick??-100;
+  r.aimDistance=v.aimDistance??160;r.hookLengthLock=v.hookLengthLock??-1;r.subDown=v.subDown??false;r.hammerBrace=v.hammerBrace??false;r.wheelieTick=v.wheelieTick??-100;r.gesture=v.gesture??0;r.gestureTick=v.gestureTick??-100;
   r.ability=v.ability??'hand';r.held=v.held??null;r.wireBall=v.wireBall??-1;r.shotTick=v.shotTick??-100;
   r.x = v.x; r.y = v.y; r.vx = v.vx; r.vy = v.vy;
   r.wireState = v.ws; r.wireX = v.wx; r.wireY = v.wy; r.wireRunner = v.wr;
@@ -588,4 +605,3 @@ function viewToRunner(v: RunnerView, map: MapDef): Runner {
   if(v.spit)r.spit={...v.spit};r.wireWord=v.wg??-1;r.wireLocalX=v.wlx??0;r.wireLocalY=v.wly??0;
   return r;
 }
-

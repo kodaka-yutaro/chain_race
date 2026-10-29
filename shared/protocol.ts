@@ -26,7 +26,7 @@ export interface HubState {
 
 /** 他プレイヤーの描画用の軽量な状態 */
 export interface RunnerView {
-  hookLengthLock?:number;subDown?:boolean;hammerBrace?:boolean;bikePower?:number;wheelieTick?:number;gesture?:number;gestureTick?:number;
+  aimDistance?:number;hookLengthLock?:number;subDown?:boolean;hammerBrace?:boolean;wheelieTick?:number;gesture?:number;gestureTick?:number;
   ability?:Ability;held?:Runner['held'];wireBall?:number;shotTick?:number;
   id: number;
   x: number; y: number; vx: number; vy: number;
@@ -76,7 +76,7 @@ export function validName(name: string): string | null {
 export function toView(r: Runner): RunnerView {
   const q = (n: number) => Math.round(n * 100) / 100;
   return {
-    hookLengthLock:r.hookLengthLock,subDown:r.subDown,hammerBrace:r.hammerBrace,bikePower:r.bikePower,wheelieTick:r.wheelieTick,gesture:r.gesture,gestureTick:r.gestureTick,
+    aimDistance:r.aimDistance,hookLengthLock:r.hookLengthLock,subDown:r.subDown,hammerBrace:r.hammerBrace,wheelieTick:r.wheelieTick,gesture:r.gesture,gestureTick:r.gestureTick,
     ability:r.ability,held:r.held,wireBall:r.wireBall,shotTick:r.shotTick,
     id: r.id, x: q(r.x), y: q(r.y), vx: q(r.vx), vy: q(r.vy),
     ws: r.wireState, wx: q(r.wireX), wy: q(r.wireY), wr: r.wireRunner,
