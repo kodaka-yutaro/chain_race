@@ -29,7 +29,7 @@ export const PHYS = {
   hookPlayerTicks: 60,
   springSpeed: 18,
   stunTicks: 150,
-  hammerCooldown: 6,
+  hammerCooldown: 25,
   maxSpeed: 40,
   /** 昇降リフトの速さ（px/tick） */
   liftSpeed: 4,
@@ -665,7 +665,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     const weaponFired = (!w.map.abilityMode||t.ability==='basic') && ddFire(w,t,inp);
     if (t.hammerCd > 0) t.hammerCd--;
     if (!weaponFired && !stunned && inp.fire && (w.map.abilityMode || !t.prevFire) && t.hammerCd === 0) {
-      t.hammerCd = w.map.abilityMode?Math.round(.6*TICK_RATE):PHYS.hammerCooldown;
+      t.hammerCd = PHYS.hammerCooldown;
       t.hammerTick = w.tick;
       const hx = t.x + t.aimX * R * 1.5, hy = t.y + t.aimY * R * 1.5;
       hammerMinis(w,t,hx,hy);

@@ -6,17 +6,19 @@ import { newCourseMap, TILE_TOOLS, validateCourseMap, validateCoursePreview } fr
 import type { MapDef } from '../shared/physics';
 
 const KEY = 'tsunagu.course-draft.v1';
+const RECENT_KEY = 'tsunagu.editor-recent.v1', PAGE_SIZE = 18;
+const PARTS = [...TILE_TOOLS,...DD_PARTS.map(p=>[p.id,p.name])];
 
 export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<void>, test?: (m:MapDef)=>void) {
   let map = newCourseMap(), tool = '#', mode = 'paint', history: MapDef[] = [], future: MapDef[] = [];
   try { const raw = localStorage.getItem(KEY); if (raw) { const draft = JSON.parse(raw); map = { ...validateCourseMap(draft, false), name: draft.name }; } } catch { /* 初期コース */ }
   root.innerHTML = `
     <header class="ed-header"><button data-close title="部屋一覧に戻る">← 戻る</button><strong>コースエディタ</strong><input data-name aria-label="コース名" maxlength="40"><button data-settings>コース設定</button><button data-help>説明一覧</button><button data-test class="primary">テストプレイ ▶</button></header>
-    <nav class="ed-toolbar" aria-label="編集ツール"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo title="Ctrl+Z">↶ 戻す</button><button data-redo title="Ctrl+Shift+Z">↷ やり直す</button><label>倍率<select data-zoom><option value="12">50%</option><option value="24" selected>100%</option><option value="36">150%</option></select></label><button data-spawn>出現地点へ</button><button data-inspector-toggle>パーツ設定</button><span data-dimensions></span></nav>
+    <nav class="ed-toolbar" aria-label="編集ツール"><button data-mode="paint" aria-pressed="true">描く</button><button data-erase aria-pressed="false" title="Eキーで消去">消去 (E)</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo title="Ctrl+Z">↶ 戻す</button><button data-redo title="Ctrl+Shift+Z">↷ やり直す</button><label>倍率<select data-zoom><option value="12">50%</option><option value="24" selected>100%</option><option value="36">150%</option></select></label><button data-spawn>出現地点へ</button><button data-inspector-toggle>パーツ設定</button><span data-dimensions></span></nav>
     <p data-test-error role="alert" hidden></p>
     <div class="ed-workspace">
-      <aside class="ed-palette" aria-label="パーツを選ぶ"><h3>パーツ</h3><input data-search type="search" placeholder="パーツを検索" aria-label="パーツを検索"><div data-categories class="ed-categories"></div><div class="tile-tools" role="group" aria-label="置くタイル"></div><div class="ed-pages"><button data-page-prev aria-label="前のパーツ">←</button><span data-page-info></span><button data-page-next aria-label="次のパーツ">→</button></div></aside>
-      <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div><div class="ed-canvas-hint">ドラッグで描く · Space＋ドラッグで移動 · Ctrl＋ホイールで拡大縮小<span data-cursor></span></div></main>
+      <aside class="ed-palette" aria-label="パーツを選ぶ"><input data-search type="search" placeholder="パーツを検索" aria-label="パーツを検索"><div data-categories class="ed-categories"></div><section class="ed-recent"><h3>最近使ったパーツ</h3><div data-recent role="group" aria-label="最近使ったパーツ"></div></section><div class="tile-tools" role="group" aria-label="置くタイル"></div><div class="ed-pages"><button data-page-prev aria-label="前のパーツ">←</button><span data-page-info></span><button data-page-next aria-label="次のパーツ">→</button></div></aside>
+      <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div><div class="ed-canvas-hint">ドラッグで描く · Eで消去 · Space＋ドラッグで移動 · Ctrl＋ホイールで拡大縮小<span data-cursor></span></div></main>
       <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">選んだパーツの設定は、これから置くパーツに使われます。</p></aside>
     </div>
     <footer class="ed-footer"><span data-status role="status">下書きはこの端末に自動保存</span><button data-export>ファイルに保存</button><label class="file-button">開く<input data-import type="file" accept="application/json,.json"></label><button data-publish>プレリリース</button></footer>
@@ -69,11 +71,25 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       return row;
     })); draw();requestAnimationFrame(centreSpawn);
   }
-  for (const [c, label] of [...TILE_TOOLS,...DD_PARTS.map(p=>[p.id,p.name])]) {
+  let recent:string[]=[];
+  try {const saved=JSON.parse(localStorage.getItem(RECENT_KEY)??'[]');if(Array.isArray(saved))recent=[...new Set(saved)].filter((c):c is string=>typeof c==='string'&&c!=='.'&&PARTS.some(p=>p[0]===c)).slice(0,6);}catch{/* 履歴がない場合 */}
+  function choosePart(c:string){
+    const part=PARTS.find(p=>p[0]===c);if(!part)return;
+    tool=c;mode='paint';viewport.style.touchAction='none';selectPart(c,part[1]);
+    root.querySelectorAll<HTMLElement>('[data-part]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===c)));
+    root.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode==='paint'&&c!=='.')));
+    q('[data-erase]').setAttribute('aria-pressed',String(c==='.'));
+  }
+  function renderRecent(){
+    q('[data-recent]').replaceChildren(...recent.map(c=>{const b=q<HTMLButtonElement>(`.tile-tools [data-part="${c}"]`).cloneNode(true) as HTMLButtonElement;b.hidden=false;drawPart(b.querySelector('canvas')!.getContext('2d')!,c,0,0,64);b.title=PARTS.find(p=>p[0]===c)![1];b.onclick=()=>choosePart(c);return b;}));
+    if(!recent.length)q('[data-recent]').textContent='配置したパーツがここに並びます';
+  }
+  function rememberPart(){if(tool==='.'||recent[0]===tool)return;recent=[tool,...recent.filter(c=>c!==tool)].slice(0,6);renderRecent();try{localStorage.setItem(RECENT_KEY,JSON.stringify(recent));}catch{/* 配置は保存エラーに関係なく続行 */}}
+  for (const [c, label] of PARTS) {
     const b = document.createElement('button'); b.className='part-button'; b.title=DD_PARTS.find(p=>p.id===c)?.description??label;
     const icon=document.createElement('canvas');icon.width=64;icon.height=64;icon.setAttribute('aria-hidden','true');drawPart(icon.getContext('2d')!,c,0,0,64);
     const caption=document.createElement('span');caption.textContent=label;b.append(icon,caption); b.setAttribute('aria-pressed', String(c === tool));
-    b.onclick = () => { tool = c;selectPart(c,label); q('.tile-tools').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); };
+    b.dataset.part=c;b.onclick = () => choosePart(c);
     b.dataset.label=label;b.dataset.category=partCategory(c);q('.tile-tools').append(b);
   }
   const descriptions:Record<string,string>={'.':'選択位置の地形とDDパーツを消去','#':'フックが掛かる岩壁',X:'フックが掛からない金属',S:'プレイヤーの出現位置（1つ）','>':'計測開始',F:'ゴール',V:'赤ボールを保持し、左で発射・右で自分の弾を爆破して回収',N:'毎回溜めて大中華を1発、単押しで操舵、右で小中華',P:'左長押しで幽体離脱・帰還。本体はフックで引ける。単押しハンマー、右フック',G:'ハンマーとフックの基本装備',o:'直径2マスの赤ボール','~':'凍結する床','^':'触れると出現位置に戻る',U:'凍結解除',O:'プレイヤーは通れずフックが通る',J:'上向きに跳ねる'};
@@ -91,8 +107,8 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     const search=q<HTMLInputElement>('[data-search]').value.trim();
     const buttons=[...root.querySelectorAll<HTMLButtonElement>('.tile-tools button')];
     const found=buttons.filter(b=>(search||category==='すべて'||b.dataset.category===category)&&(!search||(b.dataset.label+b.title).includes(search)));
-    const pages=Math.max(1,Math.ceil(found.length/9));page=Math.min(page,pages-1);
-    buttons.forEach(b=>b.hidden=true);found.slice(page*9,page*9+9).forEach(b=>b.hidden=false);
+    const pages=Math.max(1,Math.ceil(found.length/PAGE_SIZE));page=Math.min(page,pages-1);
+    buttons.forEach(b=>b.hidden=true);found.slice(page*PAGE_SIZE,page*PAGE_SIZE+PAGE_SIZE).forEach(b=>b.hidden=false);
     q('[data-page-info]').textContent=found.length?`${page+1} / ${pages} · ${found.length}種類`:'該当なし';
     q<HTMLButtonElement>('[data-page-prev]').disabled=page===0;q<HTMLButtonElement>('[data-page-next]').disabled=page===pages-1;
     root.querySelectorAll<HTMLButtonElement>('[data-categories] button').forEach(b=>b.setAttribute('aria-pressed',String(!search&&b.textContent===category)));
@@ -107,7 +123,8 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     q('.ed-channel').hidden=!/^[1-5a-eA-E]$/.test(c);
     if(/^[1-5a-eA-E]$/.test(c)){const n=/[1-5]/.test(c)?+c-1:c.toLowerCase().charCodeAt(0)-97;q<HTMLSelectElement>('[data-channel-select]').value=String(n);q('[data-channel-select]').dispatchEvent(new Event('change'));}
   }
-  filterParts();selectPart('#','岩壁');
+  filterParts();selectPart('#','岩壁');renderRecent();
+  q('[data-erase]').onclick=()=>choosePart('.');
   function placeDD(x:number,y:number){
     map.dd??=blankDD();const idx=y*map.width+x;
     for(const key of ['game','front','tele','speed','switches','entities'] as const)map.dd[key]=(map.dd[key]??[]).filter(r=>r[0]!==idx);
@@ -118,6 +135,8 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     (map.dd[part.layer]??=[]).push(row);
   }
   root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.onclick = () => {
+    if(b.dataset.mode==='paint'&&tool==='.')choosePart('#');
+    q('[data-erase]').setAttribute('aria-pressed','false');
     mode = b.dataset.mode!; viewport.style.touchAction = mode === 'pan' ? 'pan-x pan-y' : 'none';
     root.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
   });
@@ -136,9 +155,9 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     if (tool === 'S') for (const row of rows) for (let i = 0; i < row.length; i++) if (row[i] === 'S') row[i] = '.';
     if (tool === 'S') rows[y][x] = tool;
     else for (let i = 0; i <= n; i++){const px=Math.round(start.x+(x-start.x)*i/n),py=Math.round(start.y+(y-start.y)*i/n);placeDD(px,py);rows[py][px]=tool.startsWith('dd:')?'.':tool;}
-    map.tiles = rows.map(r => r.join('')); lastCell = { x, y }; draw();
+    map.tiles = rows.map(r => r.join('')); lastCell = { x, y }; rememberPart(); draw();
   };
-  canvas.onpointerdown = e => { if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(structuredClone(map)); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
+  canvas.onpointerdown = e => { if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(structuredClone(map)); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; viewport.focus({preventScroll:true}); lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
   canvas.onpointermove = e => { if (e.pointerId === pointer) paint(e);
     const r=canvas.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/size),y=Math.floor((e.clientY-r.top)/size),idx=y*map.width+x;
     const names:string[]=[];const tile=map.tiles[y]?.[x];if(tile&&tile!=='.')names.push(TILE_TOOLS.find(t=>t[0]===tile)?.[1]??tile);
@@ -153,7 +172,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   function zoom(next:number){const x=(viewport.scrollLeft+viewport.clientWidth/2)/size,y=(viewport.scrollTop+viewport.clientHeight/2)/size;size=next;q<HTMLSelectElement>('[data-zoom]').value=String(size);draw();viewport.scrollLeft=x*size-viewport.clientWidth/2;viewport.scrollTop=y*size-viewport.clientHeight/2;}
   q<HTMLSelectElement>('[data-zoom]').onchange=e=>zoom(+(e.target as HTMLSelectElement).value);
   viewport.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();const levels=[12,24,36];zoom(levels[Math.max(0,Math.min(2,levels.indexOf(size)+(e.deltaY<0?1:-1)))]);},{passive:false});
-  root.onkeydown=e=>{if((e.target as HTMLElement).closest('input,select,textarea,dialog'))return;if(e.code==='Space'){e.preventDefault();spacePan=true;viewport.style.cursor='grab';}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();q<HTMLButtonElement>(e.shiftKey?'[data-redo]':'[data-undo]').click();}};
+  root.onkeydown=e=>{if((e.target as HTMLElement).closest('input,select,textarea,dialog,[contenteditable]'))return;if(e.code==='KeyE'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();choosePart('.');}if(e.code==='Space'){e.preventDefault();spacePan=true;viewport.style.cursor='grab';}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();q<HTMLButtonElement>(e.shiftKey?'[data-redo]':'[data-undo]').click();}};
   root.onkeyup=e=>{if(e.code==='Space'){spacePan=false;viewport.style.cursor='';}};
   viewport.onblur=()=>{spacePan=false;viewport.style.cursor='';};
   name.oninput = desc.oninput = save;
@@ -176,6 +195,6 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     if(!Number.isInteger(w)||!Number.isInteger(h)||w<20||w>240||h<16||h>100){status('幅20〜240、高さ16〜100の整数にしてください');return;}
     if((w<map.width||h<map.height)&&!confirm('外側のタイルが切り取られます。サイズを変更しますか？'))return;
     map.tiles=Array.from({length:h},(_,y)=>Array.from({length:w},(_,x)=>map.tiles[y]?.[x]??'.').join(''));if(map.dd){for(const key of ['game','front','tele','speed','switches','entities'] as const)map.dd[key]=(map.dd[key]??[]).filter(r=>r[0]%map.width<w&&Math.floor(r[0]/map.width)<h).map(r=>[Math.floor(r[0]/map.width)*w+r[0]%map.width,...r.slice(1)]);map.dd.doors=map.dd.doors.filter(r=>r[0]<w*32&&r[1]<h*32);}map.width=w;map.height=h;history=[];future=[];load();save();};
-  load();
+  load();root.tabIndex=-1;root.focus({preventScroll:true});
 }
 

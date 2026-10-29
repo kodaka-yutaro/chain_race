@@ -67,11 +67,11 @@ test('回収済みのボールは別の自転車やフックが取得せず、�
  o.ability='hook';o.x=300;o.y=r.y;stepWorld(w,new Map([[2,{...emptyInput(),fire:true,aimX:-1}]]));assert.equal(o.wireBall,-1);
  r.ability='hand';tick(w);assert.equal(ballCount(w,1),0);assert.equal(w.balls[0].carriedBy,undefined);
 });
-test('ハンマーの長押しは30tickごとで、連打でも間隔を短縮しない',()=>{
+test('ハンマーの長押しは25tick（0.5秒）ごとで、連打でも間隔を短縮しない',()=>{
  const {w,r}=setup();r.ability='hammer';const hits:number[]=[];
  for(let i=0;i<95;i++){tick(w,1,{fire:true});if(r.hammerTick===w.tick)hits.push(w.tick);}
- assert.deepEqual(hits,[1,31,61,91]);tick(w,1,{fire:false});tick(w,1,{fire:true});assert.equal(r.hammerTick,91);
- tick(w,40);assert.equal(r.hammerTick,91);
+ assert.deepEqual(hits,[1,26,51,76]);tick(w,1,{fire:false});tick(w,1,{fire:true});assert.equal(r.hammerTick,76);
+ tick(w,40);assert.equal(r.hammerTick,76);
 });
 test('大中華は長押し1回につき1発、小中華は30tick間隔',()=>{
  const {w,r}=setup();r.ability='bun';const starts:number[]=[],born:number[]=[];let last=0;

@@ -29,3 +29,18 @@ body:has(#screen-editor:not(.hidden)) .music-dock{display:none}
 @media(max-height:720px){.ed-palette{gap:6px;padding:8px}#screen-editor .tile-tools .part-button{height:64px;font-size:10px}#screen-editor .part-button canvas{width:26px;height:26px;flex-basis:26px}.ed-inspector{padding:10px}}
 @media(max-width:1000px){.ed-workspace{grid-template-columns:210px minmax(0,1fr)}.ed-inspector{display:none;position:absolute;right:0;top:94px;bottom:46px;width:230px;border:1px solid #557088;z-index:4;box-shadow:-8px 0 24px #0005}.ed-inspector.ed-open{display:block}[data-inspector-toggle]{display:block}.ed-header strong{display:none}}
 @media(max-width:600px){.ed-header,.ed-toolbar,.ed-footer{gap:4px;padding:6px}.ed-header [data-settings],.ed-header [data-help]{font-size:10px!important}.ed-header [data-close]{display:none}.ed-toolbar{flex-wrap:wrap}.ed-toolbar button{font-size:11px!important}.ed-toolbar [data-dimensions]{display:none}.ed-workspace{grid-template-columns:148px minmax(0,1fr)}.ed-palette{padding:5px}.ed-categories{gap:3px}.ed-canvas-hint{display:none}.ed-footer [data-publish]{display:none}.ed-footer [data-status]{font-size:10px}.ed-header [data-test]{font-size:11px!important}.ed-header [data-name]{width:60px;min-width:40px}.ed-pages{font-size:10px}}
+
+/* 18個のパーツと履歴をPC画面内に収める */
+#screen-editor .ed-palette{gap:6px;padding:8px}
+#screen-editor .ed-palette>input{min-height:28px;padding:4px 8px}
+#screen-editor .ed-categories{grid-template-columns:repeat(4,minmax(0,1fr));gap:3px}
+#screen-editor .ed-categories button{font-size:10px;min-height:24px;padding:3px 0;white-space:nowrap}
+#screen-editor .tile-tools{gap:4px}
+#screen-editor .tile-tools .part-button{flex-direction:row;justify-content:flex-start;text-align:left;height:45px;padding:3px;gap:3px;font-size:11px}
+#screen-editor .part-button canvas{width:22px;height:22px;flex:0 0 22px}
+.ed-recent{flex:none}.ed-recent h3{font-size:11px!important;margin-bottom:4px!important}
+[data-recent]{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px;min-height:32px;font-size:10px;color:#a2b8ce}
+#screen-editor [data-recent] .part-button{padding:3px;display:flex;align-items:center;justify-content:center;min-width:0;height:32px}
+[data-recent] .part-button span{display:none!important}
+[data-recent]:not(:has(button)){display:flex;align-items:center}
+#screen-editor .ed-pages button{min-height:28px;padding:3px 9px}
