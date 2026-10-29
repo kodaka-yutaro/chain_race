@@ -370,31 +370,11 @@ function checkGrounded(w: World, t: Runner): boolean {
   return false;
 }
 
-// A small opening only at diagonal tile contacts; straight walls stay solid.
-function hookCornerGap(w:World,x:number,y:number){
-  const gx=Math.round(x/TILE),gy=Math.round(y/TILE);
-  if(Math.abs(x-gx*TILE)+Math.abs(y-gy*TILE)>1)return false;
-  const solid=(dx:number,dy:number)=>{const c=tileAt(w.map,gx+dx,gy+dy);return c!=='O'&&isSolidChar(c,w.doorsOpen);};
-  const a=solid(-1,-1),b=solid(0,-1),c=solid(-1,0),d=solid(0,0);
-  return a&&d&&!b&&!c||b&&c&&!a&&!d;
-}
-
-// When the body is touching a diagonal opening, launch at that opening.
-// This keeps a full 80-degree aiming fan without carving a hole in wall faces.
-function cornerHookOrigin(w:World,t:Runner){
-  const x=Math.round(t.x/TILE)*TILE,y=Math.round(t.y/TILE)*TILE;
-  const dx=x-t.x,dy=y-t.y;
-  if(!dx||!dy||Math.abs(dx)>R+1||Math.abs(dy)>R+1||!hookCornerGap(w,x,y))return;
-  const sx=Math.sign(dx),sy=Math.sign(dy);
-  if(isSolidChar(charAtPx(w,x-sx,y-sy),w.doorsOpen)||isSolidChar(charAtPx(w,x+sx,y+sy),w.doorsOpen))return;
-  if((t.aimX*sx+t.aimY*sy)/Math.SQRT2<Math.cos(40*Math.PI/180)-1e-10)return;
-  if(intersectLine(w,t.x,t.y,x,y,t.id).hit)return;
-  return {x:x+t.aimX*.01,y:y+t.aimY*.01};
-}
-
+// DDNet-compatible terrain hook sampling: gamecore.cpp / collision.cpp.
+// Original TypeScript adaptation; see THIRD_PARTY_NOTICES.md.
 export function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number,ignoreRunner=-1) {
   const d = Math.hypot(x1 - x0, y1 - y0);
-  const n = Math.max(1, Math.ceil(d / 4));
+  const n = Math.max(1, Math.floor(d + 1));
   let px = x0, py = y0;
   for (let i = 0; i <= n; i++) {
     const a = i / n;
@@ -404,7 +384,9 @@ export function intersectLine(w: World, x0: number, y0: number, x1: number, y1: 
     if(word)return {x:px,y:py,hit:true,stick:true,teleport:undefined,word};
     const teleport = ddHookExit(w.map,x,y);
     if (teleport) return { x: px, y: py, hit: false, stick: false, teleport, word:undefined };
-    if (!hookCornerGap(w,x,y) && charAtPx(w, x, y) !== 'O' && !ddHookThrough(w.map,x,y,x1-x0,y1-y0) && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#', teleport: undefined,word:undefined };
+    const round=(v:number)=>Math.sign(v)*Math.floor(Math.abs(v)+.5);
+    const ix=round(x),iy=round(y),tile=charAtPx(w,ix,iy);
+    if (tile !== 'O' && !ddHookThrough(w.map,ix,iy,x1-x0,y1-y0) && solidBase(w,ix,iy)) return { x, y, hit: true, stick: tile === '#', teleport: undefined,word:undefined };
     px = x; py = y;
   }
   return { x: x1, y: y1, hit: false, stick: false, teleport: undefined,word:undefined };
@@ -587,9 +569,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       releaseWire(t);
     } else if (!t.prevWire && t.wireState === WIRE_IDLE) {
       t.wireState = WIRE_FLYING;
-      const corner=cornerHookOrigin(w,t);
-      t.wireX = corner?.x ?? t.x + t.aimX * R * 1.5;
-      t.wireY = corner?.y ?? t.y + t.aimY * R * 1.5;
+      t.wireX = t.x + t.aimX * TEE_SIZE * 1.5;
+      t.wireY = t.y + t.aimY * TEE_SIZE * 1.5;
       t.wireDX = t.aimX; t.wireDY = t.aimY;
       t.wireRunner = -1;
       t.wireWord=-1;
@@ -601,8 +582,11 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     else t.vx *= friction;
 
     if (t.wireState === WIRE_FLYING) {
-      const nx = t.wireX + t.wireDX * PHYS.hookFireSpeed;
-      const ny = t.wireY + t.wireDY * PHYS.hookFireSpeed;
+      let nx = t.wireX + t.wireDX * PHYS.hookFireSpeed;
+      let ny = t.wireY + t.wireDY * PHYS.hookFireSpeed;
+      const baseX=t.dd?.hookTeleported?t.dd.hookBaseX:t.x,baseY=t.dd?.hookTeleported?t.dd.hookBaseY:t.y;
+      const distance=Math.hypot(nx-baseX,ny-baseY),reachedLimit=distance>PHYS.hookLength;
+      if(reachedLimit){nx=baseX+(nx-baseX)/distance*PHYS.hookLength;ny=baseY+(ny-baseY)/distance*PHYS.hookLength;}
       const hit = intersectLine(w, t.wireX, t.wireY, nx, ny,t.id);
       let best = -1, bestD = Infinity;
       for (const o of w.runners) {
@@ -628,7 +612,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
           t.wireX = hit.x; t.wireY = hit.y;
           if(hit.word){t.wireWord=hit.word.id;t.wireLocalX=hit.word.kind==='mini'?16:hit.x-hit.word.x;t.wireLocalY=hit.word.kind==='mini'?16:hit.y-hit.word.y;}
         } else releaseWire(t);
-      } else if (Math.hypot(nx - (t.dd?.hookTeleported ? t.dd.hookBaseX : t.x), ny - (t.dd?.hookTeleported ? t.dd.hookBaseY : t.y)) > PHYS.hookLength) {
+      } else if (reachedLimit) {
         releaseWire(t);
       } else {
         t.wireX = hit.x; t.wireY = hit.y;

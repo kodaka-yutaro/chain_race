@@ -27,3 +27,5 @@ freely, subject to the following restrictions:
   misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 ```
+
+Hook launch offset (28 × 1.5), terrain sampling (floor(distance + 1)), coordinate rounding, and terrain hit positions were aligned with DDNet gamecore.cpp, gamecore.h and [collision.cpp](https://github.com/ddnet/ddnet/blob/master/src/game/collision.cpp) on 2026-10-30. ChainRace-specific moving objects and abilities remain independent extensions.

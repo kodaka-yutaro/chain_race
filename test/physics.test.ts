@@ -97,6 +97,8 @@ test('しびれ洞窟の回廊は岩の支点をフックでたどって渡れ�
   const anchors = [30.5, 37.5, 44.5, 51.5, 58.5, 66].map((x) => x * TILE);
   let idx = 0, gap = 0;
   for (let i = 0; i < 800 && r.x < 62 * TILE && r.stun === 0; i++) {
+    // Retry after an out-of-range shot while the jump raises the player.
+    if (gap === 0 && r.wireState === WIRE_IDLE && r.prevWire) gap = 1;
     if (gap === 0 && r.wireState === WIRE_ATTACHED && r.x > anchors[idx] - TILE) { idx++; gap = 2; }
     const hold = gap === 0;
     if (gap > 0) gap--;
@@ -115,7 +117,7 @@ test('しびれ洞窟の煙突は左右の岩壁にフックを掛けて登れ�
   let top = r.y;
   for (let i = 0; i < 600; i++) {
     const side = Math.floor(i / 17) % 2 ? 1 : -1;
-    stepWorld(w, new Map([[1, inp({ jump: i < 3 || (i >= 12 && i < 15), wire: i % 17 < 15, aimX: side * 0.8, aimY: -1 })]]));
+    stepWorld(w, new Map([[1, inp({ jump: i < 3 || (i >= 12 && i < 15), wire: i % 17 < 15, aimX: side * 0.65, aimY: -1 })]]));
     top = Math.min(top, r.y);
   }
   assert.ok(top < 4 * TILE, `top=${top / TILE}`);
