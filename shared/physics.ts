@@ -1,3 +1,4 @@
+import {ddFreezeAt} from './ddrace';
 import {hammerImpulse} from './hammer';
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
 import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
@@ -51,7 +52,7 @@ export const SAW_THICK = 12;
 //   .  空
 //   #  岩壁（フックが掛かる）
 //   X  金属壁（フックが掛からない）
-//   ~  しびれ床（触れている間しびれ、離れて 3 秒で回復）
+//   ~  凍結床（触れている間凍結、離れて 3 秒で回復）
 //   ^  トゲ（スタートからやり直し）
 //   J  バネ床
 //   S  スポーン  >  スタート線  F  ゴール線
@@ -369,7 +370,16 @@ function checkGrounded(w: World, t: Runner): boolean {
   return false;
 }
 
-function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number,ignoreRunner=-1) {
+// A small opening only at diagonal tile contacts; straight walls stay solid.
+function hookCornerGap(w:World,x:number,y:number){
+  const gx=Math.round(x/TILE),gy=Math.round(y/TILE);
+  if(Math.abs(x-gx*TILE)+Math.abs(y-gy*TILE)>1)return false;
+  const solid=(dx:number,dy:number)=>{const c=tileAt(w.map,gx+dx,gy+dy);return c!=='O'&&isSolidChar(c,w.doorsOpen);};
+  const a=solid(-1,-1),b=solid(0,-1),c=solid(-1,0),d=solid(0,0);
+  return a&&d&&!b&&!c||b&&c&&!a&&!d;
+}
+
+export function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number,ignoreRunner=-1) {
   const d = Math.hypot(x1 - x0, y1 - y0);
   const n = Math.max(1, Math.ceil(d / 4));
   let px = x0, py = y0;
@@ -381,7 +391,7 @@ function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number,
     if(word)return {x:px,y:py,hit:true,stick:true,teleport:undefined,word};
     const teleport = ddHookExit(w.map,x,y);
     if (teleport) return { x: px, y: py, hit: false, stick: false, teleport, word:undefined };
-    if (charAtPx(w, x, y) !== 'O' && !ddHookThrough(w.map,x,y,x1-x0,y1-y0) && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#', teleport: undefined,word:undefined };
+    if (!hookCornerGap(w,x,y) && charAtPx(w, x, y) !== 'O' && !ddHookThrough(w.map,x,y,x1-x0,y1-y0) && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#', teleport: undefined,word:undefined };
     px = x; py = y;
   }
   return { x: x1, y: y1, hit: false, stick: false, teleport: undefined,word:undefined };
@@ -662,7 +672,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
 
     if(lockHook&&t.wireState===WIRE_ATTACHED&&t.hookLengthLock<0)t.hookLengthLock=Math.hypot(t.wireX-t.x,t.wireY-t.y);
 
-    // ハンマー：すぐ前の仲間を叩いて飛ばし、しびれを解く
+    // ハンマー：すぐ前の仲間を叩いて飛ばし、凍結を解く
     const weaponFired = (!w.map.abilityMode||t.ability==='basic') && ddFire(w,t,inp);
     if (t.hammerCd > 0) t.hammerCd--;
     if (!weaponFired && !stunned && inp.fire && (w.map.abilityMode || !t.prevFire) && t.hammerCd === 0) {
@@ -786,13 +796,14 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       ev.killed.push(t.id);
       continue;
     }
-    if (tiles.includes('~')) {
+    const ddTouch=(type:9|11)=>[[-R+1,-R+1],[R-1,-R+1],[-R+1,R-1],[R-1,R-1],[0,0]].some(([dx,dy])=>ddFreezeAt(w.map,t.x+dx,t.y+dy,type));
+    if (tiles.includes('~')||ddTouch(9)) {
       t.stun = PHYS.stunTicks;
       releaseWire(t);
     } else if (t.stun > 0) {
       t.stun--;
     }
-    if (tiles.includes('U')) t.stun = 0;
+    if (tiles.includes('U')||ddTouch(11)) t.stun = 0;
     if (tiles.includes('J') && t.vy > -PHYS.springSpeed) {
       t.vy = -PHYS.springSpeed;
       t.jumped &= ~2;

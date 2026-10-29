@@ -116,7 +116,7 @@ export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTele
   for (const idx of indices) {
     for (const row of [c.game.get(idx),c.front.get(idx)]) {
       const type = row?.[1];
-      if(type===9)t.stun=150;if(type===11)t.stun=0;
+      // Normal freeze/unfreeze uses the same body contact test as legacy tiles.
       if(type===12)d.deepFreeze=true;if(type===13){d.deepFreeze=false;t.stun=0;}
       if(type===144)d.liveFreeze=true;if(type===145)d.liveFreeze=false;
       if(type===104)d.noCollision=true;if(type===88)d.noCollision=false;
@@ -280,3 +280,5 @@ export function ddProjectiles(w:World) {
   }
   w.dd.shots=keep;
 }
+
+export function ddFreezeAt(m:MapDef,x:number,y:number,type:9|11){if(!m.dd)return false;const c=ddCache(m),idx=indexAt(m,x,y);return c.game.get(idx)?.[1]===type||c.front.get(idx)?.[1]===type;}
