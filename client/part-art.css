@@ -1,0 +1,6 @@
+.tile-tools .part-button{display:flex;align-items:center;gap:9px;min-height:56px;text-align:left;line-height:1.35;padding:7px;}
+.part-button canvas{width:36px;height:36px;flex:0 0 36px;border-radius:5px;pointer-events:none;}
+.part-button span{overflow-wrap:anywhere;}
+.tile-tools .part-button[aria-pressed=true]{outline:2px solid #ffe0a0;outline-offset:-2px;background:#385574;}
+.part-legend{font-size:12px;line-height:1.7;color:#c5d5e8;}
+@media(max-width:600px){.tile-tools .part-button{gap:5px;font-size:11px;padding:5px;}.part-button canvas{width:28px;height:28px;flex-basis:28px;}}

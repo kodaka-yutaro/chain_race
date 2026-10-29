@@ -57,7 +57,7 @@ test('押し出しに失敗したときは途中まで動かした箱や乗っ�
 
 test('ハンマーは狙ったミニを打ち飛ばし、長押しで連打せず、壁をすり抜けない',()=>{
   const {w,r}=arena(14);const b=mini(w,330);
-  tick(w,1,{fire:true});assert.ok(b.vx>15);assert.ok(b.vy<0);assert.equal(b.hitTick,w.tick);
+  tick(w,1,{fire:true});assert.ok(b.vx>5&&b.vx<10);assert.ok(b.vy<0);assert.equal(b.hitTick,w.tick);
   const hit=b.hitTick;tick(w,30,{fire:true});assert.equal(b.hitTick,hit);assert.ok(b.x+32<=448.001);separate(w);
   assert.ok(Math.abs(r.y-946)<1,'鎖なしで叩いても自分だけ飛ばない');
 });
@@ -65,9 +65,9 @@ test('ハンマーは狙ったミニを打ち飛ばし、長押しで連打せ�
 test('頭上へ吐いたミニを鎖でつかんで叩くと、箱と自分が上へ飛ぶ',()=>{
   const {w,r}=arena();const start=r.y;
   tick(w,1,{miniSpit:true,wire:true,fire:true,aimX:0,aimY:-1});
-  assert.equal(r.wireState,WIRE_ATTACHED);assert.equal(r.wireWord,w.words[0].id);assert.ok(w.words[0].vy< -18);
+  assert.equal(r.wireState,WIRE_ATTACHED);assert.equal(r.wireWord,w.words[0].id);assert.ok(w.words[0].vy< -10&&w.words[0].vy> -16);
   tick(w,12,{wire:true,aimX:0,aimY:-1});
-  assert.ok(r.y<start-100,`runner y=${r.y}`);assert.ok(w.words[0].y<start-170);separate(w);
+  assert.ok(r.y<start-40&&r.y>start-150,`runner y=${r.y}`);assert.ok(w.words[0].y<start-100);separate(w);
   tick(w,1);assert.equal(r.wireState,WIRE_IDLE);
 });
 
@@ -76,7 +76,7 @@ test('吐く・つかむ・叩くを別々に操作しても、頭の上に戻�
   tick(w,1,{miniSpit:true,aimX:0,aimY:-1});tick(w,35);
   tick(w,2,{wire:true,aimX:0,aimY:-1});assert.equal(r.wireState,WIRE_ATTACHED);
   tick(w,1,{wire:true,fire:true,aimX:0,aimY:-1});tick(w,12,{wire:true,aimX:0,aimY:-1});
-  assert.ok(r.y<start-100,`runner y=${r.y}`);separate(w);
+  assert.ok(r.y<start-40&&r.y>start-150,`runner y=${r.y}`);separate(w);
 });
 
 test('頭上の箱を打ち上げても天井へ埋まらず、鎖を離すと箱だけが飛ぶ',()=>{
@@ -88,7 +88,7 @@ test('頭上の箱を打ち上げても天井へ埋まらず、鎖を離すと�
   assert.equal(free.r.wireState,WIRE_IDLE);assert.ok(Math.abs(free.r.y-y)<1);assert.ok(free.w.words[0].y<y-170);
 });
 
-test('左右どちらに叩いても飛ぶミニに鎖で引かれ、歩く速さを超えて移動する',()=>{
+test('左右どちらも弱めたミニの反動で鎖に引かれ、以前の高速発射にはならない',()=>{
   for(const dir of [-1,1]){
     const {w,r}=arena();r.x=700;const start=r.x;
     tick(w,1,{miniSpit:true,wire:true,fire:true,aimX:dir,aimY:0});
@@ -97,7 +97,7 @@ test('左右どちらに叩いても飛ぶミニに鎖で引かれ、歩く速�
       tick(w,1,{wire:true,aimX:dir,aimY:0,right:dir===1,left:dir===-1});
       speed=Math.max(speed,r.vx*dir);
     }
-    assert.ok(speed>12,`speed=${speed}`);assert.ok((r.x-start)*dir>125,`distance=${(r.x-start)*dir}`);separate(w);
+    assert.ok(speed>5&&speed<12,`speed=${speed}`);assert.ok((r.x-start)*dir>60&&(r.x-start)*dir<150,`distance=${(r.x-start)*dir}`);separate(w);
   }
 });
 

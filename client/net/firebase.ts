@@ -104,31 +104,32 @@ export function firebaseBackend(config: FirebaseOptions): Backend {
     },
 
     async listHubs() {
-      const snap = await getDocs(query(collection(db, 'hubs'), where('updatedAt', '>', Date.now() - HUB_STALE_MS)));
-      const live: HubInfo[] = snap.docs.map((d) => ({
-        id: d.id, name: String(d.get('name')), count: Number(d.get('count')) || 0, capacity: Number(d.get('capacity')) || HUB_CAPACITY,
+      const snap = await getDocs(query(collection(db, 'hubs'), where('visibility', '==', 'public'), where('updatedAt', '>', Date.now() - HUB_STALE_MS)));
+      const live: HubInfo[] = snap.docs.filter(d => d.get('updatedAt') > Date.now() - HUB_STALE_MS).map((d) => ({
+        id: d.id, name: String(d.get('name')), members: d.get('members') ?? [], count: Number(d.get('count')) || 0, capacity: Number(d.get('capacity')) || HUB_CAPACITY,
       }));
       return mergeHubs(live, HUB_CAPACITY);
     },
 
-    async claimHub(id, name, hostId) {
+    async claimHub(id, name, hostId, visibility = 'public') {
       const u = await ensureUser();
       const ref = doc(db, 'hubs', id ?? randomId());
       return runTransaction(db, async (tx) => {
         const cur = await tx.get(ref);
         const d = cur.data();
         const now = Date.now();
-        if (d && d.updatedAt > now - HUB_STALE_MS && d.hostId !== hostId) {
+        if (id) {
+          if (!d || d.updatedAt <= now - HUB_STALE_MS) throw new Error('この部屋は終了しました');
           if (d.count >= d.capacity) throw new Error('この大部屋は満員です');
           return { id: ref.id, name: String(d.name), role: 'join' as const };
         }
-        tx.set(ref, { name, hostId, hostUid: u.uid, count: 1, capacity: HUB_CAPACITY, updatedAt: now });
+        tx.set(ref, { name, hostId, hostUid: u.uid, visibility, members: [], count: 1, capacity: HUB_CAPACITY, updatedAt: now });
         return { id: ref.id, name, role: 'host' as const };
       });
     },
 
-    async heartbeat(id, count) {
-      await updateDoc(doc(db, 'hubs', id), { count, updatedAt: Date.now() });
+    async heartbeat(id, count, members = []) {
+      await updateDoc(doc(db, 'hubs', id), { count, members, updatedAt: Date.now() });
     },
 
     async releaseHub(id) {

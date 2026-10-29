@@ -1,5 +1,5 @@
-import './chinatown.css';
-import './festival-title.css';
+import './dusk.css';
+import {drawDusk} from './dusk';
 import { mountMusic } from './music';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#title-city')!;
@@ -24,14 +24,7 @@ function draw(now: number) {
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     g.clearRect(0,0,w,h);
     const time=reduced.matches?0:now;
-    // Only small peripheral confetti moves over the illustrated cover.
-    for(let i=0;i<32;i++){
-      const side=i%2, x=(side?.8:.03)*w+(Math.sin(i*37.9)*.5+.5)*w*.16;
-      const y=((i*79+time*(.009+i%3*.003))%(h+30))-15;
-      g.save();g.translate(x+Math.sin(time/1500+i)*5,y);g.rotate(i+time/1600);
-      g.fillStyle=['#e94a4b','#efb93c','#3caa9d','#fff4b5'][i%4];g.globalAlpha=.75;
-      g.fillRect(-2,-1,4,i%3?2:5);g.restore();
-    }
+    drawDusk(g,w,h,time*.002);
   }
   if (!reduced.matches) frame = requestAnimationFrame(draw);
 }
@@ -51,7 +44,7 @@ document.querySelector('#copy-invite')?.addEventListener('click', async () => {
   const button = document.querySelector<HTMLButtonElement>('#copy-invite')!;
   const url = new URL(location.pathname, location.origin).href;
   try {
-    if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ title: 'KDレース 中華街 パルクール大会', url });
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ title: 'ChainRace', url });
     else await navigator.clipboard.writeText(url);
     button.textContent = 'リンクをコピーしました';
   } catch (err) { if ((err as Error).name !== 'AbortError') { button.textContent = 'URLを選んでコピー'; const input = document.querySelector<HTMLInputElement>('#invite-fallback')!; input.value = url; input.hidden = false; input.select(); } }

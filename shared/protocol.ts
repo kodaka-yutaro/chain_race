@@ -1,3 +1,4 @@
+import type { Ability, Ball, Blast } from './abilities';
 import type { MapDef, Input, Runner } from './physics';
 import type { DDRunner, DDWorld } from './ddrace';
 import type { SpitState, WordBlock } from './word-blocks';
@@ -16,6 +17,7 @@ export interface ZoneState { id: string; count: number; countdown: number }
 export interface UserInfo { id: number; name: string; guest: boolean }
 
 export interface HubState {
+  host: number; stageId: string; stageName: string; playing: boolean;
   id: string;
   name: string;
   members: (UserInfo & { status: string })[];
@@ -24,6 +26,8 @@ export interface HubState {
 
 /** 他プレイヤーの描画用の軽量な状態 */
 export interface RunnerView {
+  ghostBody?:Runner['ghostBody'];holdTicks?:number;aimDistance?:number;hookLengthLock?:number;subDown?:boolean;hammerBrace?:boolean;wheelieTick?:number;gesture?:number;gestureTick?:number;
+  ability?:Ability;held?:Runner['held'];wireBall?:number;shotTick?:number;
   id: number;
   x: number; y: number; vx: number; vy: number;
   ws: number; wx: number; wy: number; wr: number;
@@ -35,25 +39,31 @@ export interface RunnerView {
 
 /** 参加者 → 大部屋の主（ホスト） */
 export type ClientMsg =
-  | { t: 'hello'; name: string; guest: boolean }
+  | { t: 'hello'; name: string; guest: boolean; face?: string }
+  | { t: 'dummy'; action:'add'|'remove'|'switch'|'configure'; face?:string; copy?:boolean; hammer?:boolean }
+  | { t: 'roomStart'; withDummy?:boolean; dummyFace?:string }
+  | { t: 'roomStop' }
+  | { t: 'roomResume' }
   | { t: 'chat'; text: string }
   | { t: 'interact' }
   | { t: 'courseJoin'; map: MapDef }
   | { t: 'stageJoin'; stageId: string }
   | { t: 'leaveGame' }
   /** 取りこぼしに備えて直近の入力をまとめて送る */
-  | { t: 'input'; gameId: string; list: { seq: number; input: Input }[] };
+  | { t: 'input'; gameId: string; controlledId?:number; list: { seq: number; input: Input }[] };
 
 /** 大部屋の主（ホスト） → 参加者 */
 export type ServerMsg =
+  | { t:'dummyState'; gameId:string; dummyId:number|null; activeId:number; copy:boolean; hammer:boolean }
+  | { t:'control'; gameId:string; runner:Runner }
   | { t: 'welcome'; you: UserInfo }
   | { t: 'hubState'; hub: HubState }
   | { t: 'chat'; from: string; fromId?: number; text: string; system?: boolean }
-  | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string>; map?: MapDef }
-  | { t: 'names'; names: Record<number, string> }
-  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean; dd?: DDWorld; words?:WordBlock[]; wordSeq?:number }
-  | { t: 'finish'; runnerId: number; name: string; time: number }
-  | { t: 'partyClear'; stageId: string; gameId: string; results: { id: number; name: string; time: number }[] }
+  | { t: 'gameStart'; gameId: string; stageId: string; mode: GameMode; youId: number; names: Record<number, string>; faces?: Record<number, string>; map?: MapDef }
+  | { t: 'names'; names: Record<number, string>; faces?: Record<number, string> }
+  | { t: 'snap'; gameId: string; tick: number; me: Runner | null; lastSeq: number; others: RunnerView[]; doors: boolean[]; timers: number[]; lifts: number[]; saws: number[]; zones?: ZoneState[]; waiting?: boolean; dd?: DDWorld; words?:WordBlock[]; wordSeq?:number; blasts?:Blast[];balls?:Ball[];pickups?:Record<number,number> }
+  | { t: 'finish'; assisted?:boolean; runnerId: number; name: string; time: number }
+  | { t: 'partyClear'; assisted?:boolean; stageId: string; gameId: string; results: { id: number; name: string; time: number }[] }
   | { t: 'error'; message: string };
 
 /** 届かなくてもよい（次のぶんで上書きされる）メッセージ */
@@ -69,6 +79,8 @@ export function validName(name: string): string | null {
 export function toView(r: Runner): RunnerView {
   const q = (n: number) => Math.round(n * 100) / 100;
   return {
+    ghostBody:r.ghostBody,holdTicks:r.holdTicks,aimDistance:r.aimDistance,hookLengthLock:r.hookLengthLock,subDown:r.subDown,hammerBrace:r.hammerBrace,wheelieTick:r.wheelieTick,gesture:r.gesture,gestureTick:r.gestureTick,
+    ability:r.ability,held:r.held,wireBall:r.wireBall,shotTick:r.shotTick,
     id: r.id, x: q(r.x), y: q(r.y), vx: q(r.vx), vy: q(r.vy),
     ws: r.wireState, wx: q(r.wireX), wy: q(r.wireY), wr: r.wireRunner,
     st: r.stun, ax: q(r.aimX), ay: q(r.aimY), ct: r.hammerTick,

@@ -1,5 +1,6 @@
+import {renderPosition,correctionDecay,type Point} from './motion';
 import {
-  CHANNELS, createWorld, emptyInput, inZone, newRunner, stepWorld, TICK_RATE, TILE, WIRE_ATTACHED,
+  wordCollision, CHANNELS, createWorld, emptyInput, inZone, newRunner, stepWorld, TICK_RATE, TILE, WIRE_ATTACHED,
   WIRE_FLYING, type Input, type MapDef, type Runner, type World,
 } from '../shared/physics';
 import { mapById as stageOrLobby, stageById } from '../shared/maps';
@@ -10,6 +11,7 @@ import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles,
 import { WEAPON_NAMES } from '../shared/ddrace';
 import { drawDD } from './dd-render';
 import { drawWords } from './word-render';
+import { BALL_RADIUS,COLLECTION_RADIUS,ballCount,shotPreview,ABILITY_NAMES, ITEM_ABILITIES } from '../shared/abilities';
 import { MINI_LIMIT } from '../shared/word-blocks';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
@@ -22,6 +24,8 @@ export class ClientGame {
   private seq = 0;
   private others = new Map<number, { prev: RunnerView; cur: RunnerView; at: number }>();
   private names: Record<number, string> = {};
+  private faces:Record<number,string>={};
+  setFaces(f:Record<number,string>){this.faces=f;}
   private doors = Array<boolean>(CHANNELS).fill(false);
   private ctx: CanvasRenderingContext2D;
   private staticLayer: HTMLCanvasElement | null;
@@ -36,6 +40,7 @@ export class ClientGame {
   private acc = 0;
   private last = performance.now();
   private raf = 0;
+  private previousPosition:Point={x:0,y:0};
   private smoothX = 0;
   private smoothY = 0;
   private cam = { x: 0, y: 0, zoom: 1 };
@@ -58,17 +63,18 @@ export class ClientGame {
   constructor(
     private canvas: HTMLCanvasElement,
     stageId: string,
-    readonly youId: number,
+    public youId: number,
     names: Record<number, string>,
     private send: (input: { seq: number; input: Input }) => void,
     private onHud: (timer: number, running: boolean) => void,
     private onInteract: () => void = () => {},
   ) {
     this.map = stageOrLobby(stageId)!;
-    this.waitingForParty = stageId.startsWith('user-');
+    this.waitingForParty = false;
     this.world = createWorld(this.map);
     this.me = newRunner(youId, this.map);
     this.world.runners.push(this.me);
+    this.previousPosition={x:this.me.x,y:this.me.y};
     this.names = names;
     this.ctx = canvas.getContext('2d')!;
     this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
@@ -90,6 +96,9 @@ export class ClientGame {
     this.bubbles.set(id, { text: text.length > 40 ? `${text.slice(0, 40)}…` : text, until: performance.now() + 5000 });
   }
 
+  switchControl(r:Runner){
+    this.youId=r.id;this.me=structuredClone(r);this.world.runners=[this.me];this.pending=[];this.others.clear();this.keys.clear();this.tapped.clear();this.mouse.left=this.mouse.right=false;this.clicked={left:false,right:false};this.killQueued=false;this.spitQueued=this.miniQueued=this.clearWordQueued=false;this.smoothX=this.smoothY=0;this.previousPosition={x:r.x,y:r.y};
+  }
   queueKill() { this.killQueued = true; }
   queueSpit() { if(this.map.wordBlocks)this.spitQueued=true; }
   queueMini() { if(this.map.wordBlocks)this.miniQueued=true; }
@@ -140,6 +149,7 @@ export class ClientGame {
   private lastSnapTick = -1;
 
   onSnap(s: Snap) {
+    if(s.me&&s.me.id!==this.youId)return;
     this.waitingForParty = !!s.waiting;
     // 届く順番が入れ替わることがあるので、古いものは捨てる
     if (s.tick <= this.lastSnapTick) return;
@@ -159,9 +169,13 @@ export class ClientGame {
     if (!s.me) return;
 
     // サーバーの状態から未確認の入力をやり直す（クライアント予測の補正）
-    const beforeX = this.me.x + this.smoothX, beforeY = this.me.y + this.smoothY;
+    const displayed=this.displayPosition();
+    const beforeX=displayed.x,beforeY=displayed.y;
+    const dx=this.me.x-this.previousPosition.x,dy=this.me.y-this.previousPosition.y;
+    const oldX=this.me.x,oldY=this.me.y;
     this.pending = this.pending.filter((p) => p.seq > s.lastSeq);
     this.me = structuredClone(s.me);
+    this.previousPosition={x:this.me.x-dx,y:this.me.y-dy};
     this.world = createWorld(this.map);
     this.world.tick = s.tick;
     this.world.doorsOpen = [...s.doors];
@@ -170,11 +184,13 @@ export class ClientGame {
     this.world.saws = [...s.saws];
     if(s.dd) this.world.dd=structuredClone(s.dd);
     this.world.words=structuredClone(s.words??[]);this.world.wordSeq=s.wordSeq??0;
+    this.world.blasts=structuredClone(s.blasts??[]);this.world.balls=structuredClone(s.balls??[]);this.world.pickups={...s.pickups};
     this.world.runners = [this.me, ...s.others.map((v) => viewToRunner(v, this.map))];
     for (const p of this.pending) this.predictStep(p.input);
-    this.smoothX = beforeX - this.me.x;
-    this.smoothY = beforeY - this.me.y;
-    if (Math.hypot(this.smoothX, this.smoothY) > TILE * 4) { this.smoothX = 0; this.smoothY = 0; }
+    const corrected=renderPosition(this.previousPosition,this.me,this.acc/(1000/TICK_RATE));
+    this.smoothX = beforeX - corrected.x;
+    this.smoothY = beforeY - corrected.y;
+    if (Math.hypot(this.me.x-oldX,this.me.y-oldY)>TILE*4 || Math.hypot(this.smoothX, this.smoothY) > TILE * 4) { this.smoothX = 0; this.smoothY = 0;this.previousPosition={x:this.me.x,y:this.me.y}; }
   }
 
   private predictStep(input: Input) {
@@ -182,8 +198,9 @@ export class ClientGame {
     const inputs = new Map<number, Input>([[this.me.id, input]]);
     // 他プレイヤーの入力は分からないので、フックだけは握ったままとみなす
     for (const r of this.world.runners) {
-      if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire: r.wireState !== 0, aimX: r.aimX, aimY: r.aimY });
+      if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire:this.map.abilityMode?(r.hammerBrace||(['hook','basic','ghost'].includes(r.ability)&&r.subDown)):r.wireState!==0,fire:!!this.map.abilityMode&&r.ability==='hook'&&r.wireState!==0, aimX: r.aimX, aimY: r.aimY });
     }
+    this.previousPosition={x:this.me.x,y:this.me.y};
     stepWorld(this.world, inputs);
   }
 
@@ -204,16 +221,17 @@ export class ClientGame {
     i.wire = this.mouse.right || clicked.right || k.has('KeyE') || k.has('ShiftLeft');
     i.fire = this.mouse.left || clicked.left || k.has('KeyQ');
     i.kill = this.killQueued;
-    i.spit=this.spitQueued;this.spitQueued=false;
-    i.miniSpit=this.miniQueued;this.miniQueued=false;
+    i.spit=this.spitQueued||!!(this.map.abilityMode&&k.has('KeyR'));this.spitQueued=false;
+    i.miniSpit=this.miniQueued||!!(this.map.abilityMode&&k.has('KeyT'));this.miniQueued=false;
     i.clearWord=this.clearWordQueued;this.clearWordQueued=false;
     for(let n=0;n<6;n++)if(k.has(`Digit${n+1}`))this.weaponQueued=n;
     i.weapon=this.weaponQueued;this.weaponQueued=undefined;
     this.killQueued = false;
     const wx = this.mouse.x / this.cam.zoom + this.cam.x;
     const wy = this.mouse.y / this.cam.zoom + this.cam.y;
-    i.aimX = wx - (this.me.x + this.smoothX);
-    i.aimY = wy - (this.me.y + this.smoothY);
+    const displayed=this.displayPosition();
+    i.aimX = wx - displayed.x;
+    i.aimY = wy - displayed.y;
     if(!this.mouseAimed){i.aimX=this.me.aimX;i.aimY=this.me.aimY;}
     if (Math.hypot(i.aimX, i.aimY) < 1) { i.aimX = 1; i.aimY = 0; }
     if (touch.active) {
@@ -229,7 +247,7 @@ export class ClientGame {
         const r = this.canvas.getBoundingClientRect();
         const tx = (touch.aimClientX - r.left) * (this.canvas.width / r.width) / this.cam.zoom + this.cam.x;
         const ty = (touch.aimClientY - r.top) * (this.canvas.height / r.height) / this.cam.zoom + this.cam.y;
-        const ax = tx - (this.me.x + this.smoothX), ay = ty - (this.me.y + this.smoothY);
+        const ax = tx - displayed.x, ay = ty - displayed.y;
         if (Math.hypot(ax, ay) >= 1) this.touchAim = { x: ax, y: ay };
       }
       i.aimX = this.touchAim.x;
@@ -254,9 +272,12 @@ export class ClientGame {
       this.send({ seq, input });
       this.predictStep(input);
     }
-    this.smoothX *= 0.85;
-    this.smoothY *= 0.85;
+    const decay=correctionDecay(dt);
+    this.smoothX *= decay;
+    this.smoothY *= decay;
     this.render(now);
+    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='ghost'?(this.me.ghostBody?' ／ 霊体：WASDで飛行・長押しで帰還':' ／ 長押しで幽体離脱'):'')+(this.me.ability==='hook'&&this.me.hookLengthLock>=0?' ／ フック長さ固定':'')+(this.me.ability==='bicycle'?` ／ ボール ${ballCount(this.world,this.me.id)}個 ／ マウスで軌道調整`:'');
+    if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
       this.wordPanel.querySelector<HTMLButtonElement>('.word-spit')!.disabled=!!s.charge||!!s.cooldown||big||this.waitingForParty;
@@ -267,6 +288,7 @@ export class ClientGame {
       if(miniButton){miniButton.textContent=`ミニ ${miniCount}/${MINI_LIMIT}`;miniButton.disabled=!!s.miniCooldown||this.waitingForParty;}
       this.wordPanel.querySelector<HTMLButtonElement>('.word-clear')!.disabled=(!big&&!s.charge)||this.waitingForParty;
     }
+    if(this.weaponPanel)this.weaponPanel.hidden=this.me.ability!=="basic";
     if(this.me.dd&&this.weaponPanel){
       const d=this.me.dd;
       for(const b of this.weaponPanel.querySelectorAll<HTMLButtonElement>('[data-weapon]')){
@@ -370,11 +392,16 @@ export class ClientGame {
     return out;
   }
 
+  private displayPosition():Point{
+    const p=renderPosition(this.previousPosition,this.me,this.acc/(1000/TICK_RATE));
+    return {x:p.x+this.smoothX,y:p.y+this.smoothY};
+  }
+
   private render(now: number) {
     const g = this.ctx;
     const W = this.canvas.width, H = this.canvas.height;
     const z = this.cam.zoom;
-    const meX = this.me.x + this.smoothX, meY = this.me.y + this.smoothY;
+    const displayed=this.displayPosition(),meX=displayed.x,meY=displayed.y;
     const vw = W / z, vh = H / z;
     const mw = this.map.width * TILE, mh = this.map.height * TILE;
     this.cam.x = Math.max(0, Math.min(mw - vw, meX - vw / 2));
@@ -409,6 +436,31 @@ export class ClientGame {
       Math.ceil((this.cam.x + vw) / TILE) + 1, Math.ceil((this.cam.y + vh) / TILE) + 1, now);
     drawDD(g,this.world,Math.floor(this.cam.x/TILE)-1,Math.floor(this.cam.y/TILE)-1,Math.ceil((this.cam.x+vw)/TILE)+1,Math.ceil((this.cam.y+vh)/TILE)+1);
     drawWords(g,this.world);
+    if(this.map.abilityMode){
+      const labels:Record<string,string>={G:'H',H:'H',M:'H',P:'G',V:'B',N:'包'};
+      for(let y=Math.max(0,Math.floor(this.cam.y/32));y<Math.min(this.map.height,Math.ceil((this.cam.y+vh)/32));y++)for(let x=Math.max(0,Math.floor(this.cam.x/32));x<Math.min(this.map.width,Math.ceil((this.cam.x+vw)/32));x++){
+        const c=this.map.tiles[y][x];if(!ITEM_ABILITIES[c])continue;
+        g.save();g.globalAlpha=(this.world.pickups[y*this.map.width+x]??0)>this.world.tick?.18:1;
+        g.fillStyle='#59829a';g.beginPath();g.roundRect(x*32+3,y*32+3,26,26,7);g.fill();g.fillStyle='#eef5ff';g.font='bold 18px sans-serif';g.textAlign='center';g.fillText(labels[c],x*32+16,y*32+23);g.restore();
+      }
+    }
+    const paintBall=(x:number,y:number,count?:number)=>{
+      g.fillStyle='#ef334a';g.strokeStyle='#79152b';g.lineWidth=2;g.beginPath();g.arc(x,y,BALL_RADIUS,0,Math.PI*2);g.fill();g.stroke();
+      g.fillStyle='#ffb2ab';g.beginPath();g.arc(x-10,y-10,8,0,Math.PI*2);g.fill();
+      if(count!==undefined){g.font='bold 26px sans-serif';g.textAlign='center';g.textBaseline='middle';g.lineWidth=4;g.strokeStyle='#79152b';g.strokeText(String(count),x,y);g.fillStyle='white';g.fillText(String(count),x,y);g.textBaseline='alphabetic';}
+    };
+    for(const b of this.world.balls)if(b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>this.world.tick))paintBall(b.x,b.y);
+    for(const r of this.world.runners){
+      const count=ballCount(this.world,r.id);
+      if(r.ability==='bicycle'&&count)paintBall(r.x+(r.aimX>=0?50:-50),r.y-20+Math.abs(Math.sin(this.world.tick*.32))*16,count);
+    }
+    for(const b of this.world.blasts){const p=(this.world.tick-b.tick)/30;g.save();g.globalAlpha=1-p;g.fillStyle='#ffbd4b55';g.strokeStyle='#ffe2a0';g.lineWidth=5*(1-p)+1;g.beginPath();g.arc(b.x,b.y,b.radius*Math.min(1,p*3),0,Math.PI*2);g.fill();g.stroke();for(let i=0;i<16;i++){const a=i*Math.PI/8;g.beginPath();g.moveTo(b.x+Math.cos(a)*p*100,b.y+Math.sin(a)*p*100);g.lineTo(b.x+Math.cos(a)*p*180,b.y+Math.sin(a)*p*180);g.stroke();}g.restore();}
+    if(this.me.ability==='bicycle'){
+      const points=shotPreview(this.world,this.me,wordCollision(this.world));
+      g.save();g.strokeStyle=ballCount(this.world,this.me.id)?'#fff2b4':'#ffffff66';g.lineWidth=3;g.setLineDash([3,9]);g.lineCap='round';g.beginPath();points.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y));g.stroke();g.setLineDash([]);
+      const last=points[points.length-1];g.beginPath();g.arc(last.x,last.y,6,0,Math.PI*2);g.stroke();g.restore();
+    }
+
     this.drawZones(g);
 
     const views = this.othersInterpolated(now);
@@ -439,8 +491,11 @@ export class ClientGame {
     }
 
     for (const r of all) {
-      drawRunner(g, { ...r, name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
-      drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);
+      const state=r.id===this.youId?this.me:views.find(v=>v.id===r.id);
+      if(state?.ghostBody){g.save();g.globalAlpha=1;drawRunner(g,{...r,x:state.ghostBody.x,y:state.ghostBody.y,vx:0,grounded:true,ability:'ghost',name:'本体',me:false,face:this.faces[r.id]},now);g.strokeStyle='#add7ff55';g.setLineDash([4,8]);g.beginPath();g.moveTo(r.x,r.y);g.lineTo(state.ghostBody.x,state.ghostBody.y);g.stroke();g.restore();}
+      g.save();if(state?.ghostBody)g.globalAlpha=.55;
+      drawRunner(g, { ...r, hammerBrace:state?.hammerBrace,wheelieAge:this.world.tick-(state?.wheelieTick??-100),gesture:state?.gesture,gestureAge:this.world.tick-(state?.gestureTick??-100), ability:r.id===this.youId?this.me.ability:views.find(v=>v.id===r.id)?.ability, face:this.faces[r.id], shotAge:this.world.tick-(r.id===this.youId?this.me.shotTick:views.find(v=>v.id===r.id)?.shotTick??-100), name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
+      g.restore();drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);
     }
     if (touch.active) {
       const len = Math.hypot(this.touchAim.x, this.touchAim.y) || 1;
@@ -559,6 +614,8 @@ export class ClientGame {
 
 function viewToRunner(v: RunnerView, map: MapDef): Runner {
   const r = newRunner(v.id, map);
+  r.ghostBody=v.ghostBody??null;r.holdTicks=v.holdTicks??0;r.aimDistance=v.aimDistance??160;r.hookLengthLock=v.hookLengthLock??-1;r.subDown=v.subDown??false;r.hammerBrace=v.hammerBrace??false;r.wheelieTick=v.wheelieTick??-100;r.gesture=v.gesture??0;r.gestureTick=v.gestureTick??-100;
+  r.ability=v.ability??'basic';r.held=v.held??null;r.wireBall=v.wireBall??-1;r.shotTick=v.shotTick??-100;
   r.x = v.x; r.y = v.y; r.vx = v.vx; r.vy = v.vy;
   r.wireState = v.ws; r.wireX = v.wx; r.wireY = v.wy; r.wireRunner = v.wr;
   r.stun = v.st; r.aimX = v.ax; r.aimY = v.ay; r.hammerTick = v.ct;

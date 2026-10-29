@@ -1,6 +1,10 @@
+import {ddFreezeAt} from './ddrace';
+import {hammerImpulse} from './hammer';
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
-import { ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
+import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
 import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
+
+import { abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
 
 export const TILE = 32;
 export const TICK_RATE = 50;
@@ -26,7 +30,7 @@ export const PHYS = {
   hookPlayerTicks: 60,
   springSpeed: 18,
   stunTicks: 150,
-  hammerCooldown: 6,
+  hammerCooldown: 25,
   maxSpeed: 40,
   /** 昇降リフトの速さ（px/tick） */
   liftSpeed: 4,
@@ -48,7 +52,7 @@ export const SAW_THICK = 12;
 //   .  空
 //   #  岩壁（フックが掛かる）
 //   X  金属壁（フックが掛からない）
-//   ~  しびれ床（触れている間しびれ、離れて 3 秒で回復）
+//   ~  凍結床（触れている間凍結、離れて 3 秒で回復）
 //   ^  トゲ（スタートからやり直し）
 //   J  バネ床
 //   S  スポーン  >  スタート線  F  ゴール線
@@ -74,6 +78,7 @@ export interface MapDef {
   saws?: Saw[];
   dd?: DDMapData;
   wordBlocks?: boolean;
+  abilityMode?: boolean;
   /** A private run for one player; no other player can join the same world. */
   solo?: boolean;
 }
@@ -136,6 +141,9 @@ export const emptyInput = (): Input => ({
 export const WIRE_IDLE = 0, WIRE_FLYING = 1, WIRE_ATTACHED = 2;
 
 export interface Runner {
+  bodyOwner?:number;ghostBody:{x:number;y:number;vx:number;vy:number;stun:number}|null;holdTicks:number;aimDistance:number; hookLengthLock:number; subDown:boolean; hammerBrace:boolean; wheelieTick:number; gesture:number; gestureTick:number;
+  ability: Ability; actionDown: boolean; wireBall: number; shotTick:number;
+  held: {kind:'ball'|'word'|'runner';id:number}|null;
   id: number;
   x: number; y: number;
   vx: number; vy: number;
@@ -178,6 +186,7 @@ export interface World {
   dd?: DDWorld;
   words: WordBlock[];
   wordSeq: number;
+  blasts:Blast[];balls: Ball[]; pickups: Record<number,number>;
 }
 
 export interface StepEvents {
@@ -186,7 +195,8 @@ export interface StepEvents {
 }
 
 export function tileAt(map: MapDef, tx: number, ty: number): string {
-  if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return 'X';
+  if (ty >= map.height) return '^';
+  if (tx < 0 || ty < 0 || tx >= map.width) return 'X';
   return map.tiles[ty][tx];
 }
 
@@ -243,7 +253,7 @@ function testBox(w: World, x: number, y: number, ignoreWord:number|ReadonlySet<n
     || wordBoxSolid(w,x-h,y-h,h*2,h*2,ignoreWord);
 }
 
-function wordCollision(w:World):WordCollision {
+export function wordCollision(w:World):WordCollision {
   return {runnerBox:(x,y,id)=>testBox(w,x,y,id),staticRect:(x,y,width,height)=>{
     for(let ty=Math.floor(y/TILE);ty<=Math.floor((y+height-.001)/TILE);ty++)
       for(let tx=Math.floor(x/TILE);tx<=Math.floor((x+width-.001)/TILE);tx++)
@@ -255,6 +265,11 @@ function wordCollision(w:World):WordCollision {
 }
 
 function moveBox(w: World, t: Runner, collision:WordCollision) {
+  const blocked=(x:number,y:number)=>{
+    const part=metalPart({...t,x,y});
+    if(part&&(collision.staticRect(part.x,part.y,part.w,part.h)||wordBoxSolid(w,part.x,part.y,part.w,part.h)||metalOverlap(w,part.x,part.y,part.w,part.h,t.id)))return true;
+    return (w.map.abilityMode&&t.ability==='bicycle'?bicycleBlocked(w,x,y):testBox(w,x,y))||metalOverlap(w,x-13.99,y-13.99,27.98,27.98,t.id);
+  };
   const dist = Math.max(Math.abs(t.vx), Math.abs(t.vy));
   const steps = Math.max(1, Math.ceil(dist));
   const f = 1 / steps;
@@ -262,23 +277,20 @@ function moveBox(w: World, t: Runner, collision:WordCollision) {
     ddClamp(w, t);
     let nx = t.x + t.vx * f;
     let ny = t.y + t.vy * f;
-    if(t.vx&&testBox(w,nx,t.y))pushMinis(w,t,nx,t.y,collision);
-    if(t.vy<0&&testBox(w,t.x,ny))pushMinis(w,t,t.x,ny,collision);
-    if (testBox(w, nx, ny)) {
+    if(t.vx&&blocked(nx,t.y))pushMinis(w,t,nx,t.y,collision);
+    if(t.vy<0&&blocked(t.x,ny))pushMinis(w,t,t.x,ny,collision);
+    if(w.map.abilityMode&&(t.ability==='bicycle'||t.hammerBrace)&&t.vy>=0){
+      const bottom=t.hammerBrace?31:40,oldBottom=t.y+bottom,nextBottom=ny+bottom;
+      for(const x of [nx-(t.hammerBrace?7:29),nx,nx+(t.hammerBrace?7:29)]){const row=Math.floor(nextBottom/32);if(oldBottom<=row*32+.01&&bicycleFloor(w,x,nextBottom)){ny=row*32-bottom;t.vy=0;break;}}
+    }
+    if (blocked(nx,ny)) {
       let hits = 0;
-      if (testBox(w, t.x, ny)) { ny = t.y; t.vy = 0; hits++; }
-      if (testBox(w, nx, t.y)) { nx = t.x; t.vx = 0; hits++; }
+      if (blocked(t.x,ny)) { ny = t.y; t.vy = 0; hits++; }
+      if (blocked(nx,t.y)) { nx = t.x; t.vx = 0; hits++; }
       if (hits === 0) { nx = t.x; ny = t.y; t.vx = 0; t.vy = 0; }
     }
     t.x = nx; t.y = ny;
   }
-}
-
-/** 位置をずらす（壁にめり込むならできるところまで） */
-function shiftTo(w: World, t: Runner, nx: number, ny: number) {
-  if (!testBox(w, nx, ny)) { t.x = nx; t.y = ny; return; }
-  if (!testBox(w, nx, t.y)) { t.x = nx; return; }
-  if (!testBox(w, t.x, ny)) { t.y = ny; }
 }
 
 function saturatedAdd(min: number, max: number, cur: number, mod: number): number {
@@ -293,6 +305,8 @@ function saturatedAdd(min: number, max: number, cur: number, mod: number): numbe
 export function newRunner(id: number, map: MapDef): Runner {
   const s = findSpawn(map);
   return {
+    ghostBody:null,holdTicks:0,aimDistance:160,hookLengthLock:-1,subDown:false,hammerBrace:false,wheelieTick:-100,gesture:0,gestureTick:-100,
+    ability:'basic',actionDown:false,wireBall:-1,shotTick:-100,held:null,
     id, x: s.x, y: s.y, vx: 0, vy: 0, grounded: false, jumped: 0,
     prevJump: false, prevWire: false, prevFire: false,
     wireState: WIRE_IDLE, wireX: 0, wireY: 0, wireDX: 0, wireDY: 0, wireRunner: -1, wireTick: 0,
@@ -304,14 +318,15 @@ export function newRunner(id: number, map: MapDef): Runner {
 
 export function createWorld(map: MapDef): World {
   const off = () => Array<number>(CHANNELS).fill(0);
-  return {
+  const world:World = {
     map, tick: 0, runners: [], doorsOpen: Array<boolean>(CHANNELS).fill(false), timers: off(), plates: off(),
     // リフトは下にいる状態から始まる
     lifts: (map.lifts ?? []).map((l) => (l.bottom - l.top) * TILE),
     saws: (map.saws ?? []).map(() => -1),
-    words:[],wordSeq:0,
+    words:[],wordSeq:0,blasts:[],balls:[],pickups:{},
     ...(map.dd ? {dd: newDDWorld()} : {}),
   };
+  initBalls(world);return world;
 }
 
 export function respawn(w: World, t: Runner) {
@@ -321,7 +336,7 @@ export function respawn(w: World, t: Runner) {
   t.stun = 0; t.jumped = 0;
   t.raceStart = -1;
   t.finishedTime = -1;
-  t.spit.charge=0;
+  t.spit.charge=0;t.hammerBrace=false;t.subDown=false;t.gestureTick=-100;t.wheelieTick=-100;t.held=null;t.ability='basic';t.ghostBody=null;t.holdTicks=0;t.wireBall=-1;
   if (w.map.dd) t.dd = newDDRunner();
   for (const o of w.runners) if (o.wireRunner === t.id) releaseWire(o);
 }
@@ -334,29 +349,63 @@ function touchedTiles(w: World, t: Runner): string[] {
 }
 
 function checkGrounded(w: World, t: Runner): boolean {
+  if(w.map.abilityMode&&(t.ability==='bicycle'||t.hammerBrace)){const bottom=t.hammerBrace?31:40,half=t.hammerBrace?7:29;return [t.x-half,t.x,t.x+half].some(x=>isSolid(w,x,t.y+bottom+1)||bicycleFloor(w,x,t.y+bottom+1))||metalOverlap(w,t.x-half,t.y+bottom,half*2,2,t.id);}
+  if(metalOverlap(w,t.x-13,t.y+14,26,3,t.id))return true;
   if (ddRestrictions(w,t.x,t.y) & 2) return true;
   if (wordBoxSolid(w,t.x-R+1,t.y+R-.01,TEE_SIZE-2,3.01)) return true;
   if (isSolid(w, t.x - R + 1, t.y + R + 3) || isSolid(w, t.x + R - 1, t.y + R + 3)) return true;
-  for (const o of w.runners) {
-    if (o === t || !ddInteracts(t,o)) continue;
-    const dy = o.y - t.y;
-    if (Math.abs(o.x - t.x) < TEE_SIZE * 0.8 && dy > 0 && dy <= TEE_SIZE + 3) return true;
-  }
   return false;
 }
 
-function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number) {
+// DDNet TickDeferred / Move player-contact adaptation (see notices).
+function playerCollides(a:Runner,b:Runner){return a!==b&&!a.ghostBody&&!b.ghostBody&&!a.dd?.noCollision&&!b.dd?.noCollision&&ddInteracts(a,b);}
+export function collidePlayerVelocity(w:World,t:Runner){
+  for(const o of w.runners){
+    if(!playerCollides(t,o))continue;
+    const dx=t.x-o.x,dy=t.y-o.y,d=Math.hypot(dx,dy);
+    if(d<=0||d>=TEE_SIZE*1.25)continue;
+    const nx=dx/d,ny=dy/d,speed=Math.hypot(t.vx,t.vy);
+    const approach=speed>.0001?1-((t.vx*nx+t.vy*ny)/speed+1)/2:.5;
+    const force=(TEE_SIZE*1.45-d)*approach*.75;
+    t.vx=(t.vx+nx*force)*.85;t.vy=(t.vy+ny*force)*.85;
+  }
+}
+export function collidePlayerMovement(w:World,t:Runner,oldX:number,oldY:number){
+  const nx=t.x,ny=t.y,distance=Math.hypot(nx-oldX,ny-oldY);
+  if(!distance)return;
+  let lastX=oldX,lastY=oldY;
+  for(let i=0;i<Math.floor(distance+1);i++){
+    const a=i/distance,x=oldX+(nx-oldX)*a,y=oldY+(ny-oldY)*a;
+    for(const o of w.runners){
+      if(!playerCollides(t,o))continue;
+      const d=Math.hypot(x-o.x,y-o.y);
+      if(d<TEE_SIZE){
+        if(a>0){t.x=lastX;t.y=lastY;}
+        else if(Math.hypot(nx-o.x,ny-o.y)<=d){t.x=oldX;t.y=oldY;}
+        return;
+      }
+    }
+    lastX=x;lastY=y;
+  }
+}
+
+// DDNet-compatible terrain hook sampling: gamecore.cpp / collision.cpp.
+// Original TypeScript adaptation; see THIRD_PARTY_NOTICES.md.
+export function intersectLine(w: World, x0: number, y0: number, x1: number, y1: number,ignoreRunner=-1) {
   const d = Math.hypot(x1 - x0, y1 - y0);
-  const n = Math.max(1, Math.ceil(d / 4));
+  const n = Math.max(1, Math.floor(d + 1));
   let px = x0, py = y0;
   for (let i = 0; i <= n; i++) {
     const a = i / n;
     const x = x0 + (x1 - x0) * a, y = y0 + (y1 - y0) * a;
+    if(metalOverlap(w,x,y,.01,.01,ignoreRunner))return {x:px,y:py,hit:true,stick:false,teleport:undefined,word:undefined};
     const word=wordPoint(w,x,y);
     if(word)return {x:px,y:py,hit:true,stick:true,teleport:undefined,word};
     const teleport = ddHookExit(w.map,x,y);
     if (teleport) return { x: px, y: py, hit: false, stick: false, teleport, word:undefined };
-    if (charAtPx(w, x, y) !== 'O' && !ddHookThrough(w.map,x,y,x1-x0,y1-y0) && isSolid(w, x, y)) return { x: px, y: py, hit: true, stick: charAtPx(w, x, y) === '#', teleport: undefined,word:undefined };
+    const round=(v:number)=>Math.sign(v)*Math.floor(Math.abs(v)+.5);
+    const ix=round(x),iy=round(y),tile=charAtPx(w,ix,iy);
+    if (tile !== 'O' && !ddHookThrough(w.map,ix,iy,x1-x0,y1-y0) && solidBase(w,ix,iy)) return { x, y, hit: true, stick: tile === '#', teleport: undefined,word:undefined };
     px = x; py = y;
   }
   return { x: x1, y: y1, hit: false, stick: false, teleport: undefined,word:undefined };
@@ -371,9 +420,10 @@ function closestPointOnSegment(ax: number, ay: number, bx: number, by: number, p
 }
 
 function releaseWire(t: Runner) {
+  t.hookLengthLock=-1;
   t.wireState = WIRE_IDLE;
   t.wireRunner = -1;
-  t.wireWord=-1;
+  t.wireWord=-1;t.wireBall=-1;
 }
 
 const byId = (w: World, id: number) => w.runners.find((e) => e.id === id);
@@ -382,10 +432,24 @@ const byId = (w: World, id: number) => w.runners.find((e) => e.id === id);
 function updateSwitches(w: World) {
   const plates = Array<number>(CHANNELS).fill(0);
   for (const t of w.runners) {
+    if(t.ghostBody)continue;
     const on = new Set<number>();
     for (const c of touchedTiles(w, t)) if (c >= '1' && c <= '5') on.add(c.charCodeAt(0) - 49);
     for (const i of on) plates[i]++;
   }
+  const pressRect=(x:number,y:number,width:number,height:number,circle=false)=>{
+    const on=new Set<number>();
+    for(let ty=Math.floor(y/32);ty<=Math.floor((y+height-.001)/32);ty++)for(let tx=Math.floor(x/32);tx<=Math.floor((x+width-.001)/32);tx++){
+      if(tx<0||ty<0||tx>=w.map.width||ty>=w.map.height)continue;
+      const c=tileAt(w.map,tx,ty);
+      if(circle){const cx=x+width/2,cy=y+height/2;if(Math.hypot(cx-Math.max(tx*32,Math.min((tx+1)*32,cx)),cy-Math.max(ty*32,Math.min((ty+1)*32,cy)))>width/2)continue;}
+      ddPressSwitch(w,ty*w.map.width+tx);
+      if(c>='1'&&c<='5')on.add(c.charCodeAt(0)-49);
+    }
+    for(const i of on)plates[i]++;
+  };
+  for(const b of w.words)if(b.kind==='mini'&&b.solid)pressRect(b.x,b.y,32,32);
+  for(const b of w.balls)if(b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick))pressRect(b.x-32,b.y-32,64,64,true);
   w.plates = plates;
   w.doorsOpen = plates.map((n, i) => {
     const ch = w.map.channels?.[i];
@@ -457,6 +521,14 @@ function moveLifts(w: World) {
 /** 1 tick 進める。inputs は runner.id -> Input */
 export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   const ev: StepEvents = { finished: [], killed: [] };
+  // Transient passive runners let bodies use the same hooks, terrain, platforms,
+  // hazards and player collisions. Only their compact physical state is synced.
+  const players=[...w.runners];
+  for(const owner of players)if(owner.ghostBody){
+    const body=newRunner(1000000000+owner.id,w.map);
+    Object.assign(body,owner.ghostBody,{bodyOwner:owner.id,ability:'basic'});
+    w.runners.push(body);
+  }
   w.tick++;
   ddTick(w);
 
@@ -467,7 +539,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
 
   const dirs = new Map<number, number>();
   for (const t of w.runners) {
-    const inp = inputs.get(t.id) ?? emptyInput();
+    const inp = abilityInput(w,t,inputs.get(t.id) ?? emptyInput(),collision);
     if (inp.kill) {
       respawn(w, t);
       ev.killed.push(t.id);
@@ -490,7 +562,10 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vy += PHYS.gravity;
 
     // ジャンプ（押しっぱなしでは連続しない）と二段ジャンプ
-    if (t.dd) {
+    if (t.ability==='bicycle'&&w.map.abilityMode) {
+      if(!stunned&&inp.jump&&!(t.jumped&1)&&t.grounded){t.vy=-PHYS.jump;t.jumped|=1;}
+      if(!inp.jump)t.jumped&=~1;
+    } else if (t.dd) {
       const d=t.dd;
       if(t.grounded) d.usedJumps=0;
       if(!stunned && inp.jump && !(t.jumped&1)) {
@@ -513,8 +588,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       releaseWire(t);
     } else if (!t.prevWire && t.wireState === WIRE_IDLE) {
       t.wireState = WIRE_FLYING;
-      t.wireX = t.x + t.aimX * R * 1.5;
-      t.wireY = t.y + t.aimY * R * 1.5;
+      t.wireX = t.x + t.aimX * TEE_SIZE * 1.5;
+      t.wireY = t.y + t.aimY * TEE_SIZE * 1.5;
       t.wireDX = t.aimX; t.wireDY = t.aimY;
       t.wireRunner = -1;
       t.wireWord=-1;
@@ -526,19 +601,24 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     else t.vx *= friction;
 
     if (t.wireState === WIRE_FLYING) {
-      const nx = t.wireX + t.wireDX * PHYS.hookFireSpeed;
-      const ny = t.wireY + t.wireDY * PHYS.hookFireSpeed;
-      const hit = intersectLine(w, t.wireX, t.wireY, nx, ny);
+      let nx = t.wireX + t.wireDX * PHYS.hookFireSpeed;
+      let ny = t.wireY + t.wireDY * PHYS.hookFireSpeed;
+      const baseX=t.dd?.hookTeleported?t.dd.hookBaseX:t.x,baseY=t.dd?.hookTeleported?t.dd.hookBaseY:t.y;
+      const distance=Math.hypot(nx-baseX,ny-baseY),reachedLimit=distance>PHYS.hookLength;
+      if(reachedLimit){nx=baseX+(nx-baseX)/distance*PHYS.hookLength;ny=baseY+(ny-baseY)/distance*PHYS.hookLength;}
+      const hit = intersectLine(w, t.wireX, t.wireY, nx, ny,t.id);
       let best = -1, bestD = Infinity;
       for (const o of w.runners) {
-        if (o === t || !ddInteracts(t,o)) continue;
+        if (o === t || !ddInteracts(t,o)||t.dd?.noHook||o.dd?.noHook) continue;
         const c = closestPointOnSegment(t.wireX, t.wireY, hit.x, hit.y, o.x, o.y);
         if (Math.hypot(c.x - o.x, c.y - o.y) < R + 2) {
           const d = Math.hypot(c.x - t.wireX, c.y - t.wireY);
           if (d < bestD) { bestD = d; best = o.id; }
         }
       }
-      if (hit.teleport && t.dd) {
+      const ball=w.balls.find(b=>{if(b.carriedBy!==undefined||(b.respawnAt&&b.respawnAt>w.tick))return false;const c=closestPointOnSegment(t.wireX,t.wireY,hit.x,hit.y,b.x,b.y);return Math.hypot(c.x-b.x,c.y-b.y)<BALL_RADIUS;});
+      if(ball){for(const holder of w.runners)if(holder.held?.kind==='ball'&&holder.held.id===ball.id)holder.held=null;t.wireState=WIRE_ATTACHED;t.wireBall=ball.id;t.wireX=ball.x;t.wireY=ball.y;}
+      else if (hit.teleport && t.dd) {
         t.wireX=hit.teleport.x;t.wireY=hit.teleport.y;
         t.dd.hookBaseX=t.wireX;t.dd.hookBaseY=t.wireY;
         t.dd.hookTeleported=true;
@@ -549,9 +629,9 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         if (hit.stick) {
           t.wireState = WIRE_ATTACHED;
           t.wireX = hit.x; t.wireY = hit.y;
-          if(hit.word){t.wireWord=hit.word.id;t.wireLocalX=hit.x-hit.word.x;t.wireLocalY=hit.y-hit.word.y;}
+          if(hit.word){t.wireWord=hit.word.id;t.wireLocalX=hit.word.kind==='mini'?16:hit.x-hit.word.x;t.wireLocalY=hit.word.kind==='mini'?16:hit.y-hit.word.y;}
         } else releaseWire(t);
-      } else if (Math.hypot(nx - (t.dd?.hookTeleported ? t.dd.hookBaseX : t.x), ny - (t.dd?.hookTeleported ? t.dd.hookBaseY : t.y)) > PHYS.hookLength) {
+      } else if (reachedLimit) {
         releaseWire(t);
       } else {
         t.wireX = hit.x; t.wireY = hit.y;
@@ -561,11 +641,16 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     if(t.wireState===WIRE_ATTACHED&&t.wireWord>=0){
       const block=w.words.find(b=>b.id===t.wireWord&&b.solid);
       if(!block)releaseWire(t);
-      else {t.wireX=block.x+t.wireLocalX;t.wireY=block.y+t.wireLocalY;}
+      else {if(block.kind==='mini')t.wireLocalX=t.wireLocalY=16;t.wireX=block.x+t.wireLocalX;t.wireY=block.y+t.wireLocalY;}
     }
+    const lockHook=!!w.map.abilityMode&&t.ability==='hook'&&t.subDown;
+    if(!lockHook)t.hookLengthLock=-1;
     if (t.wireState === WIRE_ATTACHED) {
-      t.wireTick++;
-      if (t.wireRunner >= 0) {
+      if(!lockHook)t.wireTick++;
+      if(t.wireBall>=0){
+        const b=w.balls.find(b=>b.id===t.wireBall);
+        if(!b||b.carriedBy!==undefined)releaseWire(t);else{t.wireX=b.x;t.wireY=b.y;const dx=t.x-b.x,dy=t.y-b.y,d=Math.hypot(dx,dy);if(d>PHYS.hookLength+32)releaseWire(t);else if(!lockHook&&d>35){b.vx+=dx/d*.8;b.vy+=dy/d*.8;}}
+      } else if (t.wireRunner >= 0) {
         const o = byId(w, t.wireRunner);
         // 仲間をつかめるのは少しの間だけ
         if (!o || !ddInteracts(t,o) || (!t.dd?.endlessHook && t.wireTick > PHYS.hookPlayerTicks)) releaseWire(t);
@@ -574,7 +659,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         const block=w.words.find(b=>b.id===t.wireWord)!;
         const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
         if(d>PHYS.hookLength+32)releaseWire(t);
-        else if(d>38){
+        else if(!lockHook&&d>38){
           // A taut chain cancels separating radial velocity in every direction.
           // The box has four times the runner's effective mass; both receive the
           // same opposite impulse. There is no launch state or hammer trigger here.
@@ -588,7 +673,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
           block.vx=saturatedAdd(-6,6,block.vx,dx/d*.95);
           block.vy=saturatedAdd(-6,10,block.vy,dy/d*.95);
         }
-      } else if (Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
+      } else if (!lockHook&&Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
         // 掛かった所へ引き寄せられる
         const d = Math.hypot(t.wireX - t.x, t.wireY - t.y);
         let hx = ((t.wireX - t.x) / d) * PHYS.hookDragAccel;
@@ -602,23 +687,20 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       }
     }
 
-    // ハンマー：すぐ前の仲間を叩いて飛ばし、しびれを解く
-    const weaponFired = ddFire(w,t,inp);
+    if(lockHook&&t.wireState===WIRE_ATTACHED&&t.hookLengthLock<0)t.hookLengthLock=Math.hypot(t.wireX-t.x,t.wireY-t.y);
+
+    // ハンマー：すぐ前の仲間を叩いて飛ばし、凍結を解く
+    const weaponFired = (!w.map.abilityMode||t.ability==='basic') && ddFire(w,t,inp);
     if (t.hammerCd > 0) t.hammerCd--;
-    if (!weaponFired && !stunned && inp.fire && !t.prevFire && t.hammerCd === 0) {
+    if (!weaponFired && !stunned && inp.fire && (w.map.abilityMode || !t.prevFire) && t.hammerCd === 0) {
       t.hammerCd = PHYS.hammerCooldown;
       t.hammerTick = w.tick;
       const hx = t.x + t.aimX * R * 1.5, hy = t.y + t.aimY * R * 1.5;
       hammerMinis(w,t,hx,hy);
       for (const o of w.runners) {
-        if (o === t || !ddInteracts(t,o) || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE / 2) continue;
-        let dx = o.x - t.x, dy = o.y - t.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 0) { dx /= d; dy /= d; } else { dx = 0; dy = -1; }
-        dy -= 1.1;
-        const n = Math.hypot(dx, dy);
-        o.vx += (dx / n) * 10;
-        o.vy += (dy / n) * 10 - 1;
+        if (o === t || !ddInteracts(t,o) || t.dd?.noHit || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE / 2) continue;
+        const impulse=hammerImpulse(o.x-t.x,o.y-t.y);
+        o.vx+=impulse.vx;o.vy+=impulse.vy;
         o.stun = 0;
       }
     }
@@ -628,9 +710,12 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.prevFire = inp.fire;
   }
 
+  // Returning or respawning removes the passive body before applying forces.
+  w.runners=w.runners.filter(t=>t.bodyOwner===undefined||players.find(p=>p.id===t.bodyOwner)?.ghostBody);
+  for(const t of w.runners)collidePlayerVelocity(w,t);
   // 仲間を掛けたフック：相手を強く、自分を少し引き寄せる
   for (const t of w.runners) {
-    if (t.wireState !== WIRE_ATTACHED || t.wireRunner < 0) continue;
+    if (t.wireState !== WIRE_ATTACHED || t.wireRunner < 0 || t.hookLengthLock>=0) continue;
     const o = byId(w, t.wireRunner);
     if (!o || !ddInteracts(t,o)) continue;
     const d = Math.hypot(t.x - o.x, t.y - o.y);
@@ -645,66 +730,82 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   }
 
   ddProjectiles(w);
+  stepBalls(w,collision);
   const fall = new Map<Runner, number>();
   const before = new Map<Runner, [number,number]>();
+  const braceGrounded=new Set(w.runners.filter(t=>t.hammerBrace&&checkGrounded(w,t)));
   for (const t of w.runners) {
     before.set(t,[t.x,t.y]);
+    if(t.ghostBody){const raw=inputs.get(t.id)??emptyInput();t.vx=((raw.right?1:0)-(raw.left?1:0))*8;t.vy=((raw.down?1:0)-(raw.up?1:0))*8;}
     const m = PHYS.maxSpeed;
     t.vx = Math.max(-m, Math.min(m, t.vx));
     t.vy = Math.max(-m, Math.min(m, t.vy));
+    if(t.hammerBrace){t.vx=0;t.vy=checkGrounded(w,t)?0:Math.max(PHYS.gravity,t.vy);}
     ddMove(w,t);
     fall.set(t, t.vy);
     moveBox(w, t, collision);
+    collidePlayerMovement(w,t,...before.get(t)!);
   }
   kickSaws(w, fall);
 
-  // ランナー同士の衝突（頭に乗れる）
-  for (let i = 0; i < w.runners.length; i++) {
-    for (let j = i + 1; j < w.runners.length; j++) {
-      const a = w.runners[i], b = w.runners[j];
-      if(!ddInteracts(a,b)) continue;
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const d = Math.hypot(dx, dy);
-      if (d >= TEE_SIZE || d === 0) continue;
-      const overlap = TEE_SIZE - d;
-      if (Math.abs(dy) > Math.abs(dx)) {
-        const up = dy < 0 ? b : a, low = dy < 0 ? a : b;
-        shiftTo(w, up, up.x, up.y - overlap);
-        if (up.vy > low.vy) up.vy = low.vy;
-      } else {
-        const s = Math.sign(dx) || 1;
-        shiftTo(w, a, a.x - (s * overlap) / 2, a.y);
-        shiftTo(w, b, b.x + (s * overlap) / 2, b.y);
-      }
-    }
+  for(const t of w.runners)if(t.hammerBrace){const origin=before.get(t)!;t.x=origin[0];if(braceGrounded.has(t)){t.y=origin[1];t.vy=0;}t.vx=0;}
+  // Fixed length preserves tangential movement. Use normal collision sweeps so
+  // correction cannot teleport through walls; release if geometry prevents it.
+  for(const t of w.runners){
+    if(t.hookLengthLock<0||t.wireState!==WIRE_ATTACHED)continue;
+    const anchor=t.wireRunner>=0?byId(w,t.wireRunner):t.wireBall>=0?w.balls.find(b=>b.id===t.wireBall):undefined;
+    if(anchor){t.wireX=anchor.x;t.wireY=anchor.y;}
+    if(t.wireWord>=0){const b=w.words.find(b=>b.id===t.wireWord&&b.solid);if(!b){releaseWire(t);continue;}t.wireX=b.x+t.wireLocalX;t.wireY=b.y+t.wireLocalY;}
+    const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
+    if(d<.001)continue;
+    const vx=t.vx,vy=t.vy;t.vx=dx/d*(t.hookLengthLock-d);t.vy=dy/d*(t.hookLengthLock-d);
+    moveBox(w,t,collision);
+    const avx=anchor?.vx??0,avy=anchor?.vy??0,radial=(vx-avx)*dx/d+(vy-avy)*dy/d;
+    t.vx=vx-radial*dx/d;t.vy=vy-radial*dy/d;
+    if(Math.abs(Math.hypot(t.x-t.wireX,t.y-t.wireY)-t.hookLengthLock)>2)releaseWire(t);
+  }
+  moveHeld(w,collision);
+  for(const t of w.runners)if(t.wireState===WIRE_ATTACHED&&t.wireWord>=0){
+    const b=w.words.find(b=>b.id===t.wireWord&&b.kind==='mini'&&b.solid);
+    if(b){t.wireLocalX=t.wireLocalY=16;t.wireX=b.x+16;t.wireY=b.y+16;}
   }
 
   // タイル効果
   for (const t of w.runners) {
     const tiles = touchedTiles(w, t);
+    if(t.ghostBody&&t.y+R-1<w.map.height*TILE)continue;
     if (tiles.includes('^')) {
       respawn(w, t);
       ev.killed.push(t.id);
       continue;
     }
-    if (tiles.includes('~')) {
+    const ddTouch=(type:9|11)=>[[-R+1,-R+1],[R-1,-R+1],[-R+1,R-1],[R-1,R-1],[0,0]].some(([dx,dy])=>ddFreezeAt(w.map,t.x+dx,t.y+dy,type));
+    if (tiles.includes('~')||ddTouch(9)) {
       t.stun = PHYS.stunTicks;
       releaseWire(t);
     } else if (t.stun > 0) {
       t.stun--;
     }
-    if (tiles.includes('U')) t.stun = 0;
+    if (tiles.includes('U')||ddTouch(11)) t.stun = 0;
     if (tiles.includes('J') && t.vy > -PHYS.springSpeed) {
       t.vy = -PHYS.springSpeed;
       t.jumped &= ~2;
     }
     const [fromX,fromY]=before.get(t)!;
     ddTiles(w,t,fromX,fromY);
+    if(t.bodyOwner!==undefined)continue;
     if (tiles.includes('>') && t.finishedTime < 0) t.raceStart = w.tick;
     if (tiles.includes('F') && t.raceStart >= 0 && t.finishedTime < 0) {
       t.finishedTime = Math.round(((w.tick - t.raceStart) / TICK_RATE) * 1000) / 1000;
       ev.finished.push({ runnerId: t.id, time: t.finishedTime });
     }
   }
+  for(const body of w.runners)if(body.bodyOwner!==undefined){
+    const owner=players.find(p=>p.id===body.bodyOwner);if(!owner?.ghostBody)continue;
+    if(ev.killed.includes(body.id)){respawn(w,owner);ev.killed.push(owner.id);}
+    else owner.ghostBody={x:body.x,y:body.y,vx:body.vx,vy:body.vy,stun:body.stun};
+  }
+  w.runners=players;
+  ev.killed=ev.killed.filter(id=>players.some(p=>p.id===id));
   return ev;
 }
