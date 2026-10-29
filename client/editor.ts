@@ -19,11 +19,11 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   try { const raw = localStorage.getItem(KEY); if (raw) { const draft = JSON.parse(raw); map = { ...validateCourseMap(draft, false), name: draft.name }; } } catch { /* 初期コース */ }
   root.innerHTML = `
     <header class="ed-header"><button data-close title="部屋一覧に戻る">← 戻る</button><strong>コースエディタ</strong><input data-name aria-label="コース名" maxlength="40"><button data-settings>コース設定</button><button data-help>説明一覧</button><button data-test class="primary">テストプレイ ▶</button></header>
-    <nav class="ed-toolbar" aria-label="編集ツール"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="select" aria-pressed="false">マス選択</button><button data-erase aria-pressed="false" title="Eキーで消去">消去 (E)</button><button data-big-erase aria-pressed="false" title="Shift+E：5×5マスを消去">大消去 (Shift+E)</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo title="Ctrl+Z">↶ 戻す</button><button data-redo title="Ctrl+Shift+Z">↷ やり直す</button><label>倍率<select data-zoom>${ZOOMS.map(n=>`<option value="${n}" ${n===24?'selected':''}>${+(n/24*100).toFixed(1)}%</option>`).join('')}</select></label><button data-spawn>出現地点へ</button><button data-inspector-toggle>パーツ設定</button><span data-dimensions></span></nav>
+    <nav class="ed-toolbar" aria-label="編集ツール"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="select" aria-pressed="false">マス選択</button><button data-erase aria-pressed="false" title="Eキーで消去">消去 (E)</button><button data-big-erase aria-pressed="false" title="Shift+E：5×5マスを消去">大消去 (Shift+E)</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo title="R / Ctrl+Z">↶ 戻す (R)</button><button data-redo title="Ctrl+Shift+Z">↷ やり直す</button><label>倍率<select data-zoom>${ZOOMS.map(n=>`<option value="${n}" ${n===24?'selected':''}>${+(n/24*100).toFixed(1)}%</option>`).join('')}</select></label><button data-spawn>出現地点へ</button><button data-inspector-toggle>パーツ設定</button><span data-dimensions></span></nav>
     <p data-test-error role="alert" hidden></p><div data-erase-footprint hidden aria-hidden="true" style="position:fixed;pointer-events:none;z-index:25;border:2px solid #ffbdad;background:#ff78652a;box-sizing:border-box"></div><div data-brush-preview hidden aria-hidden="true"><canvas width="32" height="32"></canvas><span></span></div>
     <div class="ed-workspace">
       <aside class="ed-palette" aria-label="パーツを選ぶ"><input data-search type="search" placeholder="パーツを検索" aria-label="パーツを検索"><div data-categories class="ed-categories"></div><section class="ed-recent"><h3>最近使ったパーツ</h3><div data-recent role="group" aria-label="最近使ったパーツ"></div></section><div class="tile-tools" role="group" aria-label="置くタイル"></div><div class="ed-pages"><button data-page-prev aria-label="前のパーツ">←</button><span data-page-info></span><button data-page-next aria-label="次のパーツ">→</button></div></aside>
-      <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><div class="ed-map-space"><canvas aria-label="タイルを選んで描く"></canvas></div></div><div class="ed-canvas-hint">右クリックでマス選択 · 矢印で延長 · Rで履歴 · Pで塗る · Eで消す · Shift+Eで5×5消去 · ＋／−で倍率 · Spaceで移動<span data-cursor></span></div></main>
+      <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><div class="ed-map-space"><canvas aria-label="タイルを選んで描く"></canvas></div></div><div class="ed-canvas-hint">右クリックでパーツを拾う · 矢印で延長 · Rで元に戻す · Pで塗る · Eで消す · Shift+Eで5×5消去 · ＋／−で倍率 · Spaceで移動<span data-cursor></span></div></main>
       <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">配置済みパーツは「マス選択」か右クリックで選ぶと設定を変更できます。</p></aside>
     </div>
     <footer class="ed-footer"><span data-status role="status">下書きはこの端末に自動保存</span><button data-export>ファイルに保存</button><label class="file-button">開く<input data-import type="file" accept="application/json,.json"></label><button data-publish>プレリリース</button></footer>
@@ -81,12 +81,11 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       return row;
     })); draw();requestAnimationFrame(()=>{centreSpawn();draw();});
   }
-  let recent:string[]=[],recentCursor=-1;
+  let recent:string[]=[];
   try {const saved=JSON.parse(localStorage.getItem(RECENT_KEY)??'[]');if(Array.isArray(saved))recent=[...new Set(saved)].filter((c):c is string=>typeof c==='string'&&c!=='.'&&PARTS.some(p=>p[0]===c)).slice(0,RECENT_LIMIT);}catch{/* 履歴がない場合 */}
-  function choosePart(c:string,fromHistory=false){
+  function choosePart(c:string){
     selected=null;eraseRadius=0;q('[data-big-erase]').setAttribute('aria-pressed','false');
     if(c==='dd:game:9:0')c='~';if(c==='dd:game:11:0')c='U';
-    if(!fromHistory)recentCursor=-1;
     const part=PARTS.find(p=>p[0]===c);if(!part)return;
     tool=c;mode='paint';viewport.style.touchAction='none';selectPart(c,part[1]);
     root.querySelectorAll<HTMLElement>('[data-part]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===c)));
@@ -97,7 +96,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     q('[data-recent]').replaceChildren(...recent.slice(0,6).map(c=>{const b=q<HTMLButtonElement>(`.tile-tools [data-part="${c}"]`).cloneNode(true) as HTMLButtonElement;b.hidden=false;drawPart(b.querySelector('canvas')!.getContext('2d')!,c,0,0,64);b.title=PARTS.find(p=>p[0]===c)![1];b.onclick=()=>choosePart(c);return b;}));
     if(!recent.length)q('[data-recent]').textContent='配置したパーツがここに並びます';
   }
-  function rememberPart(){recentCursor=-1;if(tool==='.'||recent[0]===tool)return;recent=[tool,...recent.filter(c=>c!==tool)].slice(0,RECENT_LIMIT);renderRecent();try{localStorage.setItem(RECENT_KEY,JSON.stringify(recent));}catch{/* 配置は保存エラーに関係なく続行 */}}
+  function rememberPart(){if(tool==='.'||recent[0]===tool)return;recent=[tool,...recent.filter(c=>c!==tool)].slice(0,RECENT_LIMIT);renderRecent();try{localStorage.setItem(RECENT_KEY,JSON.stringify(recent));}catch{/* 配置は保存エラーに関係なく続行 */}}
   for (const [c, label] of PARTS) {
     const b = document.createElement('button'); b.className='part-button'; b.title=DD_PARTS.find(p=>p.id===c)?.description??label;
     const icon=document.createElement('canvas');icon.width=64;icon.height=64;icon.setAttribute('aria-hidden','true');drawPart(icon.getContext('2d')!,c,0,0,64);
@@ -178,7 +177,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     history.push(structuredClone(map));if(history.length>60)history.shift();future=[];
     const rows=map.tiles.map(row=>[...row]);
     for(const idx of cells){const cx=idx%map.width,cy=Math.floor(idx/map.width);if(tool.startsWith('dd:'))placeDD(cx,cy);else rows[cy][cx]=tool;}
-    map.tiles=rows.map(row=>row.join(''));rememberPart();draw();save();status(`${cells.length}マスを塗りつぶしました（Ctrl+Zで戻す）`);
+    map.tiles=rows.map(row=>row.join(''));rememberPart();draw();save();status(`${cells.length}マスを塗りつぶしました（R / Ctrl+Zで戻す）`);
   }
   canvas.onpointerleave=()=>{hover=null;updatePreview();};
   let pointer: number | null = null, lastCell: { x: number; y: number } | null = null;
@@ -204,7 +203,12 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       if(key==='entities'){q<HTMLInputElement>('[data-angle]').value=String(row[3]);q<HTMLInputElement>('[data-force]').value=String(row[4]);}
       if(key==='switches')q<HTMLInputElement>(row[1]===7?'[data-force]':'[data-delay]').value=String(row[4]);
     }
-    choosePart(code);selected={x,y};mode='select';root.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode==='select')));q('[data-erase]').setAttribute('aria-pressed','false');viewport.focus({preventScroll:true});draw();updatePreview();status(`${x}, ${y} を選択。矢印で延長／右の設定で変更`);
+    const door=map.dd?.doors.find(r=>Math.floor(r[0]/32)===x&&Math.floor(r[1]/32)===y);
+    if(door){code='dd:doors:49:0';q<HTMLInputElement>('[data-number]').value=String(door[5]);q<HTMLInputElement>('[data-angle]').value=String((Math.atan2(door[3],door[2])*180/Math.PI+360)%360);}
+    choosePart(code);selected={x,y};
+    if(e.button!==2){mode='select';root.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode==='select')));q('[data-erase]').setAttribute('aria-pressed','false');}
+    hover={x:e.clientX,y:e.clientY};viewport.focus({preventScroll:true});draw();updatePreview();
+    status(e.button===2?'パーツを拾いました。左クリックで配置／矢印で延長':`${x}, ${y} を選択。矢印で延長／右の設定で変更`);
   }
   canvas.oncontextmenu=e=>e.preventDefault();
   for(const field of ['number','angle','force','delay'])q<HTMLInputElement>(`[data-${field}]`).oninput=()=>{
@@ -217,7 +221,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     if(!selected||pointer!==null){status('延ばすマスを右クリック、または「マス選択」で選んでください');return;}
     const old=structuredClone(map),count=extendCell(map,selected.x,selected.y,dx,dy);
     if(!count){status('その方向には延ばせません（空白・出現地点・隣にパーツがある場合）');return;}
-    history.push(old);if(history.length>60)history.shift();future=[];draw();save();status(`${count}マス延ばしました（Ctrl+Zで戻す）`);
+    history.push(old);if(history.length>60)history.shift();future=[];draw();save();status(`${count}マス延ばしました（R / Ctrl+Zで戻す）`);
   }
   canvas.onpointerdown = e => { if(!spacePan&&(e.button===2||mode==='select'&&e.button===0)){selectCell(e);e.preventDefault();return;}if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(structuredClone(map)); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; viewport.focus({preventScroll:true}); lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
   canvas.onpointermove = e => { hover={x:e.clientX,y:e.clientY}; updatePreview();if (e.pointerId === pointer) paint(e);
@@ -235,7 +239,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   function zoomStep(delta:number){zoom(ZOOMS[Math.max(0,Math.min(ZOOMS.length-1,ZOOMS.indexOf(size)+delta))]);}
   q<HTMLSelectElement>('[data-zoom]').onchange=e=>zoom(+(e.target as HTMLSelectElement).value);
   viewport.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();zoomStep(e.deltaY<0?1:-1);},{passive:false});
-  root.onkeydown=e=>{if((e.target as HTMLElement).closest('input,select,textarea,dialog,[contenteditable]'))return;if(e.code==='KeyE'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();if(e.shiftKey)bigErase();else choosePart('.');}if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat){const direction:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};if(direction[e.key]){e.preventDefault();extend(...direction[e.key]);}if(e.key==='+'||e.key==='='||e.code==='NumpadAdd'){e.preventDefault();zoomStep(1);}if(e.key==='-'||e.code==='NumpadSubtract'){e.preventDefault();zoomStep(-1);}if(e.code==='KeyP'){e.preventDefault();fill();}if(e.code==='KeyR'){e.preventDefault();let next=recentCursor+1;while(next<recent.length&&recent[next]===tool)next++;if(next<recent.length){recentCursor=next;choosePart(recent[next],true);}else status('これより前のパーツ履歴はありません');}}if(e.code==='Space'){e.preventDefault();spacePan=true;viewport.style.cursor='grab';}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();q<HTMLButtonElement>(e.shiftKey?'[data-redo]':'[data-undo]').click();}};
+  root.onkeydown=e=>{if((e.target as HTMLElement).closest('input,select,textarea,dialog,[contenteditable]'))return;if(e.code==='KeyE'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();if(e.shiftKey)bigErase();else choosePart('.');}if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat){const direction:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};if(direction[e.key]){e.preventDefault();extend(...direction[e.key]);}if(e.key==='+'||e.key==='='||e.code==='NumpadAdd'){e.preventDefault();zoomStep(1);}if(e.key==='-'||e.code==='NumpadSubtract'){e.preventDefault();zoomStep(-1);}if(e.code==='KeyP'){e.preventDefault();fill();}if(e.code==='KeyR'){e.preventDefault();if(pointer===null)q<HTMLButtonElement>('[data-undo]').click();}}if(e.code==='Space'){e.preventDefault();spacePan=true;viewport.style.cursor='grab';}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();q<HTMLButtonElement>(e.shiftKey?'[data-redo]':'[data-undo]').click();}};
   root.onkeyup=e=>{if(e.code==='Space'){spacePan=false;viewport.style.cursor='';}};
   viewport.onblur=()=>{spacePan=false;viewport.style.cursor='';};
   name.oninput = desc.oninput = save;
