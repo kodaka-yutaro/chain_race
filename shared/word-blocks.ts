@@ -1,3 +1,4 @@
+import {hammerImpulse} from './hammer';
 import { TICK_RATE, type Input, type Runner, type World } from './physics';
 
 export const WORD_CELL = 7;
@@ -193,10 +194,9 @@ export function hammerMinis(w:World,t:Runner,hx:number,hy:number) {
     if(!b.solid||b.kind!=='mini')continue;
     const cx=Math.max(b.x,Math.min(b.x+MINI_SIZE,hx)),cy=Math.max(b.y,Math.min(b.y+MINI_SIZE,hy));
     if(Math.hypot(hx-cx,hy-cy)>22)continue;
-    const bx=b.x+MINI_SIZE/2-t.x,by=b.y+MINI_SIZE/2-t.y,d=Math.hypot(bx,by)||1;
-    const ax=t.aimX*.65+bx/d*.35,ay=t.aimY*.65+by/d*.35-.18,n=Math.hypot(ax,ay)||1;
-    b.vx=Math.max(-32,Math.min(32,b.vx+ax/n*20));
-    b.vy=Math.max(-32,Math.min(32,b.vy+ay/n*20-2));b.hitTick=w.tick;
+    const impulse=hammerImpulse(b.x+MINI_SIZE/2-t.x,b.y+MINI_SIZE/2-t.y);
+    b.vx=Math.max(-32,Math.min(32,b.vx+impulse.vx));
+    b.vy=Math.max(-32,Math.min(32,b.vy+impulse.vy));b.hitTick=w.tick;
   }
 }
 export function stepWords(w:World,collision:WordCollision) {

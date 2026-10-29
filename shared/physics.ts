@@ -1,3 +1,4 @@
+import {hammerImpulse} from './hammer';
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
 import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
 import { carryHeadMinis, hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
@@ -670,13 +671,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       hammerMinis(w,t,hx,hy);
       for (const o of w.runners) {
         if (o === t || !ddInteracts(t,o) || t.dd?.noHit || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE / 2) continue;
-        let dx = o.x - t.x, dy = o.y - t.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 0) { dx /= d; dy /= d; } else { dx = 0; dy = -1; }
-        dy -= 1.1;
-        const n = Math.hypot(dx, dy);
-        o.vx += (dx / n) * 10;
-        o.vy += (dy / n) * 10 - 1;
+        const impulse=hammerImpulse(o.x-t.x,o.y-t.y);
+        o.vx+=impulse.vx;o.vy+=impulse.vy;
         o.stun = 0;
       }
     }
