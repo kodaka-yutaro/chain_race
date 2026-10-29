@@ -303,8 +303,9 @@ test('飛び石の橋は、島のスイッチを交互に踏めば2人で渡れ�
   settle(w);
   // a がスイッチ 2 を踏んでいる間に b が島 1 へ。b が島のスイッチ 2 に乗ったら a が渡る
   const walk = (r: typeof a, tx: number, ticks = 160) => {
+    const other=r===a?b:a,holdX=other.x;
     for (let i = 0; i < ticks; i++) {
-      const ev = stepWorld(w, new Map([[r.id, inp({ right: r.x < tx * TILE, left: r.x > tx * TILE + 8 })]]));
+      const ev = stepWorld(w, new Map([[r.id, inp({ right: r.x < tx * TILE, left: r.x > tx * TILE + 8, jump:other.x-r.x>-10&&other.x-r.x<70 })],[other.id,inp({right:other.x<holdX-4,left:other.x>holdX+4})]]));
       assert.ok(ev.killed.length === 0, `落ちた ${r.id} x=${r.x / TILE}`);
     }
   };

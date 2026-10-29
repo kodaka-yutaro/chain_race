@@ -212,8 +212,7 @@ export function stepWords(w:World,collision:WordCollision) {
       continue;
     }
     if(b.kind==='mini'){
-      const onHead=w.runners.some(t=>!t.ghostBody&&Math.abs(b.y+MINI_SIZE-(t.y-14))<=1&&Math.abs(b.x+16-t.x)<22);
-      const grounded=onHead||!fits(w,{...b,y:b.y+1},collision,false);
+      const grounded=!fits(w,{...b,y:b.y+1},collision,false);
       b.vx*=grounded?.84:.99;
       if(Math.abs(b.vx)<.03)b.vx=0;
       b.vy=Math.min(10,b.vy+.45);
@@ -221,25 +220,12 @@ export function stepWords(w:World,collision:WordCollision) {
       const steps=Math.max(1,Math.ceil(Math.max(Math.abs(b.vx),Math.abs(b.vy))/4));
       for(let n=0;n<steps;n++){
         if(b.vx&&!moveMinis(w,[b],b.vx/steps,0,collision))b.vx=0;
-        if(b.vy>0){
-          const head=w.runners.filter(t=>!t.ghostBody&&Math.abs(b.x+16-t.x)<22&&b.y+MINI_SIZE<=t.y-14+.01&&b.y+MINI_SIZE+b.vy/steps>=t.y-14).sort((a,c)=>a.y-c.y)[0];
-          if(head){const dy=head.y-14-(b.y+MINI_SIZE);if(dy>0)moveMinis(w,[b],0,dy,collision);b.vy=0;continue;}
-        }
         if(b.vy&&!moveMinis(w,[b],0,b.vy/steps,collision))b.vy=0;
       }
     }else{
       if(!move(w,b,b.vx,0,collision)&&!w.map.abilityMode)b.vx=-b.vx;
       if(b.vy&&!move(w,b,0,b.vy,collision)&&!w.map.abilityMode)b.vy=-b.vy;
     }
-  }
-}
-/** Follow a head only while resting on it; launched or pulled boxes stay free. */
-export function carryHeadMinis(w:World,before:Map<Runner,[number,number]>,collision:WordCollision){
-  for(const b of w.words){
-    if(b.kind!=='mini'||!b.solid||b.vy<0)continue;
-    const support=w.runners.find(t=>{const p=before.get(t);return p&&!t.ghostBody&&Math.abs(b.y+32-(p[1]-14))<=1&&Math.abs(b.x+16-p[0])<22;});
-    if(!support)continue;const old=before.get(support)!;
-    moveMinis(w,[b],support.x-old[0],support.y-old[1],collision);
   }
 }
 export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {

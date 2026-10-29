@@ -14,23 +14,22 @@ test('小中華のハンマー反動は同じ位置のプレイヤーと同じ�
  assert.ok(Math.abs(b.vx-other.vx)<.001);assert.ok(Math.abs(b.vy+PHYS.gravity-other.vy)<.001);
  assert.ok(Math.hypot(b.vx,b.vy)<12);
 });
-test('少し横にずれたプレイヤーも頭に着地して安定し、下の移動についてくる',()=>{
- const {w,r}=setup(),up=newRunner(2,w.map);up.x=r.x+20;up.y=460;w.runners.push(up);
- tick(w,60);assert.ok(Math.abs(up.y+28-r.y)<.1);assert.ok(Math.abs(up.x-r.x-20)<1);
- const x=up.x;tick(w,15,{right:true});assert.ok(up.x>x+20);assert.ok(Math.abs(up.y+28-r.y)<1);
- tick(w,1,{jump:true},2);assert.ok(up.vy<0);
+test('頭の上を地面とみなさず空中ジャンプを回復しない',()=>{
+ const {w,r}=setup(),up=newRunner(2,w.map);up.x=r.x;up.y=r.y-28;up.jumped=2;w.runners.push(up);
+ tick(w,1);assert.equal(up.grounded,false);assert.ok(up.jumped&2);
 });
-test('小中華が頭へ落ちるとプレイヤーを押し下げずに乗り、移動についてくる',()=>{
- const {w,r}=setup(),b=mini(w,304,420);tick(w,60);
- assert.ok(Math.abs(b.y+32-(r.y-14))<.1);assert.equal(r.y,530);
- const x=b.x;tick(w,15,{right:true});assert.ok(b.x>x+20);assert.ok(Math.abs(b.y+32-(r.y-14))<1);
+test('頭の上のプレイヤーと小中華を下の人の横移動に追従させない',()=>{
+ const {w,r}=setup(),up=newRunner(2,w.map);up.x=r.x;up.y=r.y-28;w.runners.push(up);const x=up.x;
+ tick(w,1,{right:true});assert.equal(up.x,x);assert.ok(r.x>x);
+ const box=setup(),b=mini(box.w,box.r.x-16,box.r.y-46),bx=b.x;
+ tick(box.w,1,{right:true});assert.equal(b.x,bx);assert.ok(box.r.x>300);
 });
 test('小中華へのフックは当たった端ではなく中心を追従する',()=>{
  const {w,r}=setup(),b=mini(w,450,512);r.ability='basic';r.x=300;r.y=510;
  tick(w,10,{wire:true,aimX:1,aimY:.1});assert.equal(r.wireWord,b.id);assert.equal(r.wireLocalX,16);assert.equal(r.wireLocalY,16);
  assert.equal(r.wireX,b.x+16);assert.equal(r.wireY,b.y+16);
 });
-test('頭への吸着は横からの接触や上向きジャンプを捕まえない',()=>{
+test('横からの接触で頭へ吸着せず上向きの移動を妨げない',()=>{
  const {w,r}=setup(),up=newRunner(2,w.map);up.x=320;up.y=530;w.runners.push(up);tick(w,1);
  assert.ok(Math.abs(up.y-r.y)<1);
  up.x=r.x;up.y=r.y-28;up.vy=-10;tick(w,1);assert.ok(up.y<r.y-30);

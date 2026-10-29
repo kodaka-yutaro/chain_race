@@ -2,7 +2,7 @@ import {ddFreezeAt} from './ddrace';
 import {hammerImpulse} from './hammer';
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
 import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
-import { carryHeadMinis, hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
+import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
 import { abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
 
@@ -293,14 +293,6 @@ function moveBox(w: World, t: Runner, collision:WordCollision) {
   }
 }
 
-/** 位置をずらす（壁にめり込むならできるところまで） */
-function shiftTo(w: World, t: Runner, nx: number, ny: number) {
-  if(w.map.abilityMode&&t.ability==='bicycle'){if(!bicycleBlocked(w,nx,ny)){t.x=nx;t.y=ny;}return;}
-  if (!testBox(w, nx, ny)) { t.x = nx; t.y = ny; return; }
-  if (!testBox(w, nx, t.y)) { t.x = nx; return; }
-  if (!testBox(w, t.x, ny)) { t.y = ny; }
-}
-
 function saturatedAdd(min: number, max: number, cur: number, mod: number): number {
   if (mod < 0) {
     if (cur < min) return cur;
@@ -362,12 +354,39 @@ function checkGrounded(w: World, t: Runner): boolean {
   if (ddRestrictions(w,t.x,t.y) & 2) return true;
   if (wordBoxSolid(w,t.x-R+1,t.y+R-.01,TEE_SIZE-2,3.01)) return true;
   if (isSolid(w, t.x - R + 1, t.y + R + 3) || isSolid(w, t.x + R - 1, t.y + R + 3)) return true;
-  for (const o of w.runners) {
-    if (o === t || t.ghostBody || o.ghostBody || !ddInteracts(t,o)||t.dd?.noCollision||o.dd?.noCollision) continue;
-    const dy = o.y - t.y;
-    if (Math.abs(o.x - t.x) < TEE_SIZE * 0.8 && dy >= TEE_SIZE - 3 && dy <= TEE_SIZE + 3) return true;
-  }
   return false;
+}
+
+// DDNet TickDeferred / Move player-contact adaptation (see notices).
+function playerCollides(a:Runner,b:Runner){return a!==b&&!a.ghostBody&&!b.ghostBody&&!a.dd?.noCollision&&!b.dd?.noCollision&&ddInteracts(a,b);}
+export function collidePlayerVelocity(w:World,t:Runner){
+  for(const o of w.runners){
+    if(!playerCollides(t,o))continue;
+    const dx=t.x-o.x,dy=t.y-o.y,d=Math.hypot(dx,dy);
+    if(d<=0||d>=TEE_SIZE*1.25)continue;
+    const nx=dx/d,ny=dy/d,speed=Math.hypot(t.vx,t.vy);
+    const approach=speed>.0001?1-((t.vx*nx+t.vy*ny)/speed+1)/2:.5;
+    const force=(TEE_SIZE*1.45-d)*approach*.75;
+    t.vx=(t.vx+nx*force)*.85;t.vy=(t.vy+ny*force)*.85;
+  }
+}
+export function collidePlayerMovement(w:World,t:Runner,oldX:number,oldY:number){
+  const nx=t.x,ny=t.y,distance=Math.hypot(nx-oldX,ny-oldY);
+  if(!distance)return;
+  let lastX=oldX,lastY=oldY;
+  for(let i=0;i<Math.floor(distance+1);i++){
+    const a=i/distance,x=oldX+(nx-oldX)*a,y=oldY+(ny-oldY)*a;
+    for(const o of w.runners){
+      if(!playerCollides(t,o))continue;
+      const d=Math.hypot(x-o.x,y-o.y);
+      if(d<TEE_SIZE){
+        if(a>0){t.x=lastX;t.y=lastY;}
+        else if(Math.hypot(nx-o.x,ny-o.y)<=d){t.x=oldX;t.y=oldY;}
+        return;
+      }
+    }
+    lastX=x;lastY=y;
+  }
 }
 
 // DDNet-compatible terrain hook sampling: gamecore.cpp / collision.cpp.
@@ -693,6 +712,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
 
   // Returning or respawning removes the passive body before applying forces.
   w.runners=w.runners.filter(t=>t.bodyOwner===undefined||players.find(p=>p.id===t.bodyOwner)?.ghostBody);
+  for(const t of w.runners)collidePlayerVelocity(w,t);
   // 仲間を掛けたフック：相手を強く、自分を少し引き寄せる
   for (const t of w.runners) {
     if (t.wireState !== WIRE_ATTACHED || t.wireRunner < 0 || t.hookLengthLock>=0) continue;
@@ -724,43 +744,9 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     ddMove(w,t);
     fall.set(t, t.vy);
     moveBox(w, t, collision);
+    collidePlayerMovement(w,t,...before.get(t)!);
   }
   kickSaws(w, fall);
-
-  // Flat head support: retain the support's horizontal motion while leaving
-  // walking/jumping free. Collision-aware shifts never carry through terrain.
-  for(const up of w.runners){
-    if(up.ghostBody||(fall.get(up)??0)<0)continue;
-    const old=before.get(up)!;
-    const low=w.runners.find(o=>o!==up&&!o.ghostBody&&!up.dd?.noCollision&&!o.dd?.noCollision&&ddInteracts(up,o)&&Math.abs(old[0]-before.get(o)![0])<22.4&&Math.abs(old[1]+28-before.get(o)![1])<=3);
-    if(low)shiftTo(w,up,up.x+low.x-before.get(low)![0],up.y);
-  }
-  // ランナー同士の衝突（頭に乗れる）
-  for (let i = 0; i < w.runners.length; i++) {
-    for (let j = i + 1; j < w.runners.length; j++) {
-      const a = w.runners[i], b = w.runners[j];
-      if(a.ghostBody||b.ghostBody||!ddInteracts(a,b)||a.dd?.noCollision||b.dd?.noCollision) continue;
-      const up=a.y<b.y?a:b,low=up===a?b:a;
-      const oldUp=before.get(up)!,oldLow=before.get(low)!;
-      if(Math.abs(up.x-low.x)<22.4&&oldUp[1]+28<=oldLow[1]+3&&up.y+28>=low.y&&(fall.get(up)??0)>=(fall.get(low)??0)){
-        const target=low.y-28;
-        if(!testBox(w,up.x,target)){shiftTo(w,up,up.x,target);up.vy=low.vy;up.grounded=true;continue;}
-      }
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const d = Math.hypot(dx, dy);
-      if (d >= TEE_SIZE || d === 0) continue;
-      const overlap = TEE_SIZE - d;
-      if (Math.abs(dy) > Math.abs(dx)) {
-        const up = dy < 0 ? b : a, low = dy < 0 ? a : b;
-        shiftTo(w, up, up.x, up.y - overlap);
-        if (up.vy > low.vy) up.vy = low.vy;
-      } else {
-        const s = Math.sign(dx) || 1;
-        shiftTo(w, a, a.x - (s * overlap) / 2, a.y);
-        shiftTo(w, b, b.x + (s * overlap) / 2, b.y);
-      }
-    }
-  }
 
   for(const t of w.runners)if(t.hammerBrace){const origin=before.get(t)!;t.x=origin[0];if(braceGrounded.has(t)){t.y=origin[1];t.vy=0;}t.vx=0;}
   // Fixed length preserves tangential movement. Use normal collision sweeps so
@@ -778,7 +764,6 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vx=vx-radial*dx/d;t.vy=vy-radial*dy/d;
     if(Math.abs(Math.hypot(t.x-t.wireX,t.y-t.wireY)-t.hookLengthLock)>2)releaseWire(t);
   }
-  carryHeadMinis(w,before,collision);
   moveHeld(w,collision);
   for(const t of w.runners)if(t.wireState===WIRE_ATTACHED&&t.wireWord>=0){
     const b=w.words.find(b=>b.id===t.wireWord&&b.kind==='mini'&&b.solid);
