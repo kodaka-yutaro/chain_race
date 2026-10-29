@@ -139,7 +139,7 @@ export const emptyInput = (): Input => ({
 export const WIRE_IDLE = 0, WIRE_FLYING = 1, WIRE_ATTACHED = 2;
 
 export interface Runner {
-  subDown:boolean; hammerBrace:boolean; bikePower:number; wheelieTick:number; gesture:number; gestureTick:number;
+  hookLengthLock:number; subDown:boolean; hammerBrace:boolean; bikePower:number; wheelieTick:number; gesture:number; gestureTick:number;
   ability: Ability; actionDown: boolean; wireBall: number; shotTick:number;
   held: {kind:'ball'|'word'|'runner';id:number}|null;
   id: number;
@@ -306,7 +306,7 @@ function saturatedAdd(min: number, max: number, cur: number, mod: number): numbe
 export function newRunner(id: number, map: MapDef): Runner {
   const s = findSpawn(map);
   return {
-    subDown:false,hammerBrace:false,bikePower:1,wheelieTick:-100,gesture:0,gestureTick:-100,
+    hookLengthLock:-1,subDown:false,hammerBrace:false,bikePower:1,wheelieTick:-100,gesture:0,gestureTick:-100,
     ability:'hand',actionDown:false,wireBall:-1,shotTick:-100,held:null,
     id, x: s.x, y: s.y, vx: 0, vy: 0, grounded: false, jumped: 0,
     prevJump: false, prevWire: false, prevFire: false,
@@ -388,6 +388,7 @@ function closestPointOnSegment(ax: number, ay: number, bx: number, by: number, p
 }
 
 function releaseWire(t: Runner) {
+  t.hookLengthLock=-1;
   t.wireState = WIRE_IDLE;
   t.wireRunner = -1;
   t.wireWord=-1;t.wireBall=-1;
@@ -585,11 +586,13 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       if(!block)releaseWire(t);
       else {t.wireX=block.x+t.wireLocalX;t.wireY=block.y+t.wireLocalY;}
     }
+    const lockHook=!!w.map.abilityMode&&t.ability==='hook'&&t.subDown;
+    if(!lockHook)t.hookLengthLock=-1;
     if (t.wireState === WIRE_ATTACHED) {
-      t.wireTick++;
+      if(!lockHook)t.wireTick++;
       if(t.wireBall>=0){
         const b=w.balls.find(b=>b.id===t.wireBall);
-        if(!b)releaseWire(t);else{t.wireX=b.x;t.wireY=b.y;const dx=t.x-b.x,dy=t.y-b.y,d=Math.hypot(dx,dy);if(d>PHYS.hookLength+32)releaseWire(t);else if(d>35){b.vx+=dx/d*.8;b.vy+=dy/d*.8;}}
+        if(!b)releaseWire(t);else{t.wireX=b.x;t.wireY=b.y;const dx=t.x-b.x,dy=t.y-b.y,d=Math.hypot(dx,dy);if(d>PHYS.hookLength+32)releaseWire(t);else if(!lockHook&&d>35){b.vx+=dx/d*.8;b.vy+=dy/d*.8;}}
       } else if (t.wireRunner >= 0) {
         const o = byId(w, t.wireRunner);
         // 仲間をつかめるのは少しの間だけ
@@ -599,7 +602,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         const block=w.words.find(b=>b.id===t.wireWord)!;
         const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
         if(d>PHYS.hookLength+32)releaseWire(t);
-        else if(d>38){
+        else if(!lockHook&&d>38){
           // A taut chain cancels separating radial velocity in every direction.
           // The box has four times the runner's effective mass; both receive the
           // same opposite impulse. There is no launch state or hammer trigger here.
@@ -613,7 +616,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
           block.vx=saturatedAdd(-6,6,block.vx,dx/d*.95);
           block.vy=saturatedAdd(-6,10,block.vy,dy/d*.95);
         }
-      } else if (Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
+      } else if (!lockHook&&Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
         // 掛かった所へ引き寄せられる
         const d = Math.hypot(t.wireX - t.x, t.wireY - t.y);
         let hx = ((t.wireX - t.x) / d) * PHYS.hookDragAccel;
@@ -627,11 +630,13 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       }
     }
 
+    if(lockHook&&t.wireState===WIRE_ATTACHED&&t.hookLengthLock<0)t.hookLengthLock=Math.hypot(t.wireX-t.x,t.wireY-t.y);
+
     // ハンマー：すぐ前の仲間を叩いて飛ばし、しびれを解く
     const weaponFired = !w.map.abilityMode && ddFire(w,t,inp);
     if (t.hammerCd > 0) t.hammerCd--;
-    if (!weaponFired && !stunned && inp.fire && !t.prevFire && t.hammerCd === 0) {
-      t.hammerCd = PHYS.hammerCooldown;
+    if (!weaponFired && !stunned && inp.fire && (w.map.abilityMode || !t.prevFire) && t.hammerCd === 0) {
+      t.hammerCd = w.map.abilityMode?Math.round(.6*TICK_RATE):PHYS.hammerCooldown;
       t.hammerTick = w.tick;
       const hx = t.x + t.aimX * R * 1.5, hy = t.y + t.aimY * R * 1.5;
       hammerMinis(w,t,hx,hy);
@@ -655,7 +660,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
 
   // 仲間を掛けたフック：相手を強く、自分を少し引き寄せる
   for (const t of w.runners) {
-    if (t.wireState !== WIRE_ATTACHED || t.wireRunner < 0) continue;
+    if (t.wireState !== WIRE_ATTACHED || t.wireRunner < 0 || t.hookLengthLock>=0) continue;
     const o = byId(w, t.wireRunner);
     if (!o || !ddInteracts(t,o)) continue;
     const d = Math.hypot(t.x - o.x, t.y - o.y);
@@ -714,6 +719,21 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   }
 
   for(const t of w.runners)if(t.hammerBrace){const origin=before.get(t)!;t.x=origin[0];if(braceGrounded.has(t)){t.y=origin[1];t.vy=0;}t.vx=0;}
+  // Fixed length preserves tangential movement. Use normal collision sweeps so
+  // correction cannot teleport through walls; release if geometry prevents it.
+  for(const t of w.runners){
+    if(t.hookLengthLock<0||t.wireState!==WIRE_ATTACHED)continue;
+    const anchor=t.wireRunner>=0?byId(w,t.wireRunner):t.wireBall>=0?w.balls.find(b=>b.id===t.wireBall):undefined;
+    if(anchor){t.wireX=anchor.x;t.wireY=anchor.y;}
+    if(t.wireWord>=0){const b=w.words.find(b=>b.id===t.wireWord&&b.solid);if(!b){releaseWire(t);continue;}t.wireX=b.x+t.wireLocalX;t.wireY=b.y+t.wireLocalY;}
+    const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
+    if(d<.001)continue;
+    const vx=t.vx,vy=t.vy;t.vx=dx/d*(t.hookLengthLock-d);t.vy=dy/d*(t.hookLengthLock-d);
+    moveBox(w,t,collision);
+    const avx=anchor?.vx??0,avy=anchor?.vy??0,radial=(vx-avx)*dx/d+(vy-avy)*dy/d;
+    t.vx=vx-radial*dx/d;t.vy=vy-radial*dy/d;
+    if(Math.abs(Math.hypot(t.x-t.wireX,t.y-t.wireY)-t.hookLengthLock)>2)releaseWire(t);
+  }
   moveHeld(w,collision);
 
   // タイル効果

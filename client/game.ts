@@ -186,7 +186,7 @@ export class ClientGame {
     const inputs = new Map<number, Input>([[this.me.id, input]]);
     // 他プレイヤーの入力は分からないので、フックだけは握ったままとみなす
     for (const r of this.world.runners) {
-      if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire:this.map.abilityMode?r.hammerBrace:r.wireState!==0,fire:!!this.map.abilityMode&&r.ability==='hook'&&r.wireState!==0, aimX: r.aimX, aimY: r.aimY });
+      if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire:this.map.abilityMode?(r.hammerBrace||(r.ability==='hook'&&r.subDown)):r.wireState!==0,fire:!!this.map.abilityMode&&r.ability==='hook'&&r.wireState!==0, aimX: r.aimX, aimY: r.aimY });
     }
     stepWorld(this.world, inputs);
   }
@@ -208,8 +208,8 @@ export class ClientGame {
     i.wire = this.mouse.right || clicked.right || k.has('KeyE') || k.has('ShiftLeft');
     i.fire = this.mouse.left || clicked.left || k.has('KeyQ');
     i.kill = this.killQueued;
-    i.spit=this.spitQueued;this.spitQueued=false;
-    i.miniSpit=this.miniQueued;this.miniQueued=false;
+    i.spit=this.spitQueued||!!(this.map.abilityMode&&k.has('KeyR'));this.spitQueued=false;
+    i.miniSpit=this.miniQueued||!!(this.map.abilityMode&&k.has('KeyT'));this.miniQueued=false;
     i.clearWord=this.clearWordQueued;this.clearWordQueued=false;
     for(let n=0;n<6;n++)if(k.has(`Digit${n+1}`))this.weaponQueued=n;
     i.weapon=this.weaponQueued;this.weaponQueued=undefined;
@@ -261,7 +261,7 @@ export class ClientGame {
     this.smoothX *= 0.85;
     this.smoothY *= 0.85;
     this.render(now);
-    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='bicycle'?` ／ 威力 ${this.me.bikePower}/3 ／ ${this.me.held?'ボール所持':'ボールなし'}`:'');
+    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='hook'&&this.me.hookLengthLock>=0?' ／ フック長さ固定':'')+(this.me.ability==='bicycle'?` ／ 威力 ${this.me.bikePower}/3 ／ ${this.me.held?'ボール所持':'ボールなし'}`:'');
     if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
@@ -577,7 +577,7 @@ export class ClientGame {
 
 function viewToRunner(v: RunnerView, map: MapDef): Runner {
   const r = newRunner(v.id, map);
-  r.hammerBrace=v.hammerBrace??false;r.bikePower=v.bikePower??1;r.wheelieTick=v.wheelieTick??-100;r.gesture=v.gesture??0;r.gestureTick=v.gestureTick??-100;
+  r.hookLengthLock=v.hookLengthLock??-1;r.subDown=v.subDown??false;r.hammerBrace=v.hammerBrace??false;r.bikePower=v.bikePower??1;r.wheelieTick=v.wheelieTick??-100;r.gesture=v.gesture??0;r.gestureTick=v.gestureTick??-100;
   r.ability=v.ability??'hand';r.held=v.held??null;r.wireBall=v.wireBall??-1;r.shotTick=v.shotTick??-100;
   r.x = v.x; r.y = v.y; r.vx = v.vx; r.vy = v.vy;
   r.wireState = v.ws; r.wireX = v.wx; r.wireY = v.wy; r.wireRunner = v.wr;

@@ -69,7 +69,7 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
       if(b){b.vx=t.aimX*power+t.vx*.4;b.vy=t.aimY*power-3;t.shotTick=w.tick;}t.held=null;
     }
   }
-  return {...raw,left:raw.left&&!t.hammerBrace,right:raw.right&&!t.hammerBrace,jump:raw.jump&&!t.hammerBrace,wire:t.ability==='hook'&&raw.fire,fire:t.ability==='hammer'&&raw.fire&&!t.hammerBrace,
+  return {...raw,left:raw.left&&!t.hammerBrace,right:raw.right&&!t.hammerBrace,jump:raw.jump&&!t.hammerBrace,wire:t.ability==='hook'&&(raw.fire||(raw.wire&&t.wireState===2)),fire:t.ability==='hammer'&&raw.fire&&!t.hammerBrace,
     spit:t.ability==='bun'&&(raw.fire||raw.spit),miniSpit:t.ability==='bun'&&(raw.wire||raw.miniSpit),clearWord:t.ability==='bun'&&raw.clearWord,weapon:undefined};
 }
 export function stepBalls(w:World,collision:WordCollision){

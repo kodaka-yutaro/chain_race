@@ -1,4 +1,4 @@
-import type { Input, Runner, World } from './physics';
+import { TICK_RATE, type Input, type Runner, type World } from './physics';
 
 export const WORD_CELL = 7;
 export const WORD_WIDTH = 35 * WORD_CELL;
@@ -224,7 +224,7 @@ export function stepWords(w:World,collision:WordCollision) {
   }
 }
 export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
-  const s=t.spit;
+  const s=t.spit,repeat=!!w.map.abilityMode,interval=Math.round(.6*TICK_RATE);
   if(s.cooldown>0)s.cooldown--;
   if(s.miniCooldown>0)s.miniCooldown--;
   if(input.clearWord){
@@ -232,9 +232,9 @@ export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
     s.charge=0;
   }
   if(!w.map.wordBlocks||t.stun>0){s.charge=0;s.prev=!!input.spit;s.prevMini=!!input.miniSpit;return;}
-  if(input.miniSpit&&!s.prevMini&&!s.miniCooldown){
+  if(input.miniSpit&&(repeat||!s.prevMini)&&!s.miniCooldown){
     const len=Math.hypot(t.aimX,t.aimY)||1,ax=t.aimX/len,ay=t.aimY/len;
-    s.miniCooldown=MINI_COOLDOWN;
+    s.miniCooldown=repeat?interval:MINI_COOLDOWN;
     if(emitMini(w,t,ax,ay,collision))s.blockedUntil=0;
     else s.blockedUntil=w.tick+60;
   }
@@ -246,11 +246,14 @@ export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
         y:vertical?(s.ay<0?t.y-30-WORD_HEIGHT:t.y+30):t.y+14-WORD_HEIGHT,
         vx:vertical?s.ax*1.15:(s.ax>=0?1.15:-1.15),vy:s.ay*1.15,
         born:w.tick,expires:-1,solid:false,mouthX:t.x+s.ax*18,mouthY:t.y+s.ay*12};
+      const previous=w.words;
+      if(repeat)w.words=w.words.filter(o=>o.owner!==t.id||o.kind==='mini');
       if(fits(w,b,collision,true)){w.wordSeq++;w.words.push(b);}
-      else{s.blockedUntil=w.tick+60;s.cooldown=40;}
+      else {w.words=previous;s.blockedUntil=w.tick+60;if(!repeat)s.cooldown=40;}
+
     }
-  } else if(input.spit&&!input.clearWord&&!s.prev&&s.cooldown===0&&w.words.filter(b=>b.owner===t.id&&b.kind!=='mini').length<WORD_LIMIT){
-    s.charge=WORD_CHARGE;s.cooldown=WORD_COOLDOWN;s.started=w.tick;
+  } else if(input.spit&&!input.clearWord&&(repeat||!s.prev)&&s.cooldown===0&&(repeat||w.words.filter(b=>b.owner===t.id&&b.kind!=='mini').length<WORD_LIMIT)){
+    s.charge=WORD_CHARGE;s.cooldown=repeat?interval:WORD_COOLDOWN;s.started=w.tick;
     const len=Math.hypot(t.aimX,t.aimY)||1;s.ax=t.aimX/len;s.ay=t.aimY/len;
   }
   s.prev=!!input.spit;

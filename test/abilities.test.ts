@@ -75,3 +75,32 @@ test('所持ボールは二重取得されず、フックで奪ったボール�
  stepWorld(w,new Map([[2,{...emptyInput(),fire:true,aimX:-1,aimY:0}]]));assert.equal(other.wireBall,0);assert.equal(r.held,null);
  stepWorld(w,new Map([[2,{...emptyInput(),fire:true,aimX:-1,aimY:0}]]));assert.equal(r.held,null);
 });
+
+test('ハンマーの長押しは30tickごとで、連打でも間隔を短縮しない',()=>{
+ const {w,r}=setup();r.ability='hammer';const hits:number[]=[];
+ for(let i=0;i<95;i++){tick(w,1,{fire:true});if(r.hammerTick===w.tick)hits.push(w.tick);}
+ assert.deepEqual(hits,[1,31,61,91]);tick(w,1,{fire:false});tick(w,1,{fire:true});assert.equal(r.hammerTick,91);
+ tick(w,40);assert.equal(r.hammerTick,91);
+});
+test('大小中華を長押しすると30tickごとに繰り返し、大中華は1個を置き換える',()=>{
+ const {w,r}=setup();r.ability='bun';const starts:number[]=[],born:number[]=[];let last=0;
+ for(let i=0;i<95;i++){
+  tick(w,1,{fire:true});if(r.spit.started===w.tick)starts.push(w.tick);
+  const b=w.words.find(b=>b.kind!=='mini');if(b&&b.id!==last){last=b.id;born.push(b.born);}assert.ok(w.words.filter(b=>b.kind!=='mini').length<=1);
+ }
+ assert.deepEqual(starts,[1,31,61,91]);assert.deepEqual(born,[19,49,79]);
+ const mini=setup();mini.r.ability='bun';const times:number[]=[];let seq=0;
+ for(let i=0;i<95;i++){tick(mini.w,1,{wire:true});if(mini.w.wordSeq>seq){times.push(mini.w.tick);seq=mini.w.wordSeq;}}
+ assert.deepEqual(times,[1,31,61,91]);
+});
+test('フックのサブで長さを固定して揺れ、メインを離してもサブの間は保持する',()=>{
+ const {w,r}=setup();r.ability='hook';r.x=300;r.y=350;r.wireState=2;r.wireX=300;r.wireY=200;r.prevWire=true;
+ tick(w,1,{fire:true,wire:true});const length=r.hookLengthLock;assert.ok(length>0);
+ tick(w,15,{wire:true,right:true});assert.equal(r.wireState,2);assert.ok(r.x>300);assert.ok(Math.abs(Math.hypot(r.x-r.wireX,r.y-r.wireY)-length)<.01);
+ tick(w);assert.equal(r.wireState,0);assert.equal(r.hookLengthLock,-1);
+});
+test('サブを離すとフックの引き寄せが戻り、復活や能力交換で固定を解除する',()=>{
+ const {w,r}=setup();r.ability='hook';r.x=300;r.y=350;r.wireState=2;r.wireX=300;r.wireY=200;r.prevWire=true;
+ tick(w,5,{fire:true,wire:true});const distance=Math.hypot(r.x-r.wireX,r.y-r.wireY);tick(w,10,{fire:true});assert.equal(r.hookLengthLock,-1);assert.ok(Math.hypot(r.x-r.wireX,r.y-r.wireY)<distance);
+ tick(w,1,{fire:true,wire:true});assert.ok(r.hookLengthLock>=0);tick(w,1,{kill:true});assert.equal(r.hookLengthLock,-1);
+});
