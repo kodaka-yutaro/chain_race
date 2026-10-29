@@ -1,3 +1,4 @@
+import {renderPosition,correctionDecay,type Point} from './motion';
 import {
   wordCollision, CHANNELS, createWorld, emptyInput, inZone, newRunner, stepWorld, TICK_RATE, TILE, WIRE_ATTACHED,
   WIRE_FLYING, type Input, type MapDef, type Runner, type World,
@@ -39,6 +40,7 @@ export class ClientGame {
   private acc = 0;
   private last = performance.now();
   private raf = 0;
+  private previousPosition:Point={x:0,y:0};
   private smoothX = 0;
   private smoothY = 0;
   private cam = { x: 0, y: 0, zoom: 1 };
@@ -72,6 +74,7 @@ export class ClientGame {
     this.world = createWorld(this.map);
     this.me = newRunner(youId, this.map);
     this.world.runners.push(this.me);
+    this.previousPosition={x:this.me.x,y:this.me.y};
     this.names = names;
     this.ctx = canvas.getContext('2d')!;
     this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
@@ -94,7 +97,7 @@ export class ClientGame {
   }
 
   switchControl(r:Runner){
-    this.youId=r.id;this.me=structuredClone(r);this.world.runners=[this.me];this.pending=[];this.others.clear();this.keys.clear();this.tapped.clear();this.mouse.left=this.mouse.right=false;this.clicked={left:false,right:false};this.killQueued=false;this.spitQueued=this.miniQueued=this.clearWordQueued=false;this.smoothX=this.smoothY=0;
+    this.youId=r.id;this.me=structuredClone(r);this.world.runners=[this.me];this.pending=[];this.others.clear();this.keys.clear();this.tapped.clear();this.mouse.left=this.mouse.right=false;this.clicked={left:false,right:false};this.killQueued=false;this.spitQueued=this.miniQueued=this.clearWordQueued=false;this.smoothX=this.smoothY=0;this.previousPosition={x:r.x,y:r.y};
   }
   queueKill() { this.killQueued = true; }
   queueSpit() { if(this.map.wordBlocks)this.spitQueued=true; }
@@ -166,9 +169,13 @@ export class ClientGame {
     if (!s.me) return;
 
     // サーバーの状態から未確認の入力をやり直す（クライアント予測の補正）
-    const beforeX = this.me.x + this.smoothX, beforeY = this.me.y + this.smoothY;
+    const displayed=this.displayPosition();
+    const beforeX=displayed.x,beforeY=displayed.y;
+    const dx=this.me.x-this.previousPosition.x,dy=this.me.y-this.previousPosition.y;
+    const oldX=this.me.x,oldY=this.me.y;
     this.pending = this.pending.filter((p) => p.seq > s.lastSeq);
     this.me = structuredClone(s.me);
+    this.previousPosition={x:this.me.x-dx,y:this.me.y-dy};
     this.world = createWorld(this.map);
     this.world.tick = s.tick;
     this.world.doorsOpen = [...s.doors];
@@ -180,9 +187,10 @@ export class ClientGame {
     this.world.blasts=structuredClone(s.blasts??[]);this.world.balls=structuredClone(s.balls??[]);this.world.pickups={...s.pickups};
     this.world.runners = [this.me, ...s.others.map((v) => viewToRunner(v, this.map))];
     for (const p of this.pending) this.predictStep(p.input);
-    this.smoothX = beforeX - this.me.x;
-    this.smoothY = beforeY - this.me.y;
-    if (Math.hypot(this.smoothX, this.smoothY) > TILE * 4) { this.smoothX = 0; this.smoothY = 0; }
+    const corrected=renderPosition(this.previousPosition,this.me,this.acc/(1000/TICK_RATE));
+    this.smoothX = beforeX - corrected.x;
+    this.smoothY = beforeY - corrected.y;
+    if (Math.hypot(this.me.x-oldX,this.me.y-oldY)>TILE*4 || Math.hypot(this.smoothX, this.smoothY) > TILE * 4) { this.smoothX = 0; this.smoothY = 0;this.previousPosition={x:this.me.x,y:this.me.y}; }
   }
 
   private predictStep(input: Input) {
@@ -192,6 +200,7 @@ export class ClientGame {
     for (const r of this.world.runners) {
       if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire:this.map.abilityMode?(r.hammerBrace||(['hook','basic','ghost'].includes(r.ability)&&r.subDown)):r.wireState!==0,fire:!!this.map.abilityMode&&r.ability==='hook'&&r.wireState!==0, aimX: r.aimX, aimY: r.aimY });
     }
+    this.previousPosition={x:this.me.x,y:this.me.y};
     stepWorld(this.world, inputs);
   }
 
@@ -220,8 +229,9 @@ export class ClientGame {
     this.killQueued = false;
     const wx = this.mouse.x / this.cam.zoom + this.cam.x;
     const wy = this.mouse.y / this.cam.zoom + this.cam.y;
-    i.aimX = wx - (this.me.x + this.smoothX);
-    i.aimY = wy - (this.me.y + this.smoothY);
+    const displayed=this.displayPosition();
+    i.aimX = wx - displayed.x;
+    i.aimY = wy - displayed.y;
     if(!this.mouseAimed){i.aimX=this.me.aimX;i.aimY=this.me.aimY;}
     if (Math.hypot(i.aimX, i.aimY) < 1) { i.aimX = 1; i.aimY = 0; }
     if (touch.active) {
@@ -237,7 +247,7 @@ export class ClientGame {
         const r = this.canvas.getBoundingClientRect();
         const tx = (touch.aimClientX - r.left) * (this.canvas.width / r.width) / this.cam.zoom + this.cam.x;
         const ty = (touch.aimClientY - r.top) * (this.canvas.height / r.height) / this.cam.zoom + this.cam.y;
-        const ax = tx - (this.me.x + this.smoothX), ay = ty - (this.me.y + this.smoothY);
+        const ax = tx - displayed.x, ay = ty - displayed.y;
         if (Math.hypot(ax, ay) >= 1) this.touchAim = { x: ax, y: ay };
       }
       i.aimX = this.touchAim.x;
@@ -262,8 +272,9 @@ export class ClientGame {
       this.send({ seq, input });
       this.predictStep(input);
     }
-    this.smoothX *= 0.85;
-    this.smoothY *= 0.85;
+    const decay=correctionDecay(dt);
+    this.smoothX *= decay;
+    this.smoothY *= decay;
     this.render(now);
     const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='ghost'?(this.me.ghostBody?' ／ 霊体：WASDで飛行・長押しで帰還':' ／ 長押しで幽体離脱'):'')+(this.me.ability==='hook'&&this.me.hookLengthLock>=0?' ／ フック長さ固定':'')+(this.me.ability==='bicycle'?` ／ ボール ${ballCount(this.world,this.me.id)}個 ／ マウスで軌道調整`:'');
     if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
@@ -381,11 +392,16 @@ export class ClientGame {
     return out;
   }
 
+  private displayPosition():Point{
+    const p=renderPosition(this.previousPosition,this.me,this.acc/(1000/TICK_RATE));
+    return {x:p.x+this.smoothX,y:p.y+this.smoothY};
+  }
+
   private render(now: number) {
     const g = this.ctx;
     const W = this.canvas.width, H = this.canvas.height;
     const z = this.cam.zoom;
-    const meX = this.me.x + this.smoothX, meY = this.me.y + this.smoothY;
+    const displayed=this.displayPosition(),meX=displayed.x,meY=displayed.y;
     const vw = W / z, vh = H / z;
     const mw = this.map.width * TILE, mh = this.map.height * TILE;
     this.cam.x = Math.max(0, Math.min(mw - vw, meX - vw / 2));
