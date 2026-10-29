@@ -1,6 +1,6 @@
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
 import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
-import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
+import { carryHeadMinis, hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
 import { abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
 
@@ -360,9 +360,9 @@ function checkGrounded(w: World, t: Runner): boolean {
   if (wordBoxSolid(w,t.x-R+1,t.y+R-.01,TEE_SIZE-2,3.01)) return true;
   if (isSolid(w, t.x - R + 1, t.y + R + 3) || isSolid(w, t.x + R - 1, t.y + R + 3)) return true;
   for (const o of w.runners) {
-    if (o === t || !ddInteracts(t,o)||t.dd?.noHook||o.dd?.noHook) continue;
+    if (o === t || t.ghostBody || o.ghostBody || !ddInteracts(t,o)||t.dd?.noCollision||o.dd?.noCollision) continue;
     const dy = o.y - t.y;
-    if (Math.abs(o.x - t.x) < TEE_SIZE * 0.8 && dy > 0 && dy <= TEE_SIZE + 3) return true;
+    if (Math.abs(o.x - t.x) < TEE_SIZE * 0.8 && dy >= TEE_SIZE - 3 && dy <= TEE_SIZE + 3) return true;
   }
   return false;
 }
@@ -600,7 +600,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         if (hit.stick) {
           t.wireState = WIRE_ATTACHED;
           t.wireX = hit.x; t.wireY = hit.y;
-          if(hit.word){t.wireWord=hit.word.id;t.wireLocalX=hit.x-hit.word.x;t.wireLocalY=hit.y-hit.word.y;}
+          if(hit.word){t.wireWord=hit.word.id;t.wireLocalX=hit.word.kind==='mini'?16:hit.x-hit.word.x;t.wireLocalY=hit.word.kind==='mini'?16:hit.y-hit.word.y;}
         } else releaseWire(t);
       } else if (Math.hypot(nx - (t.dd?.hookTeleported ? t.dd.hookBaseX : t.x), ny - (t.dd?.hookTeleported ? t.dd.hookBaseY : t.y)) > PHYS.hookLength) {
         releaseWire(t);
@@ -612,7 +612,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     if(t.wireState===WIRE_ATTACHED&&t.wireWord>=0){
       const block=w.words.find(b=>b.id===t.wireWord&&b.solid);
       if(!block)releaseWire(t);
-      else {t.wireX=block.x+t.wireLocalX;t.wireY=block.y+t.wireLocalY;}
+      else {if(block.kind==='mini')t.wireLocalX=t.wireLocalY=16;t.wireX=block.x+t.wireLocalX;t.wireY=block.y+t.wireLocalY;}
     }
     const lockHook=!!w.map.abilityMode&&t.ability==='hook'&&t.subDown;
     if(!lockHook)t.hookLengthLock=-1;
@@ -722,11 +722,25 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   }
   kickSaws(w, fall);
 
+  // Flat head support: retain the support's horizontal motion while leaving
+  // walking/jumping free. Collision-aware shifts never carry through terrain.
+  for(const up of w.runners){
+    if(up.ghostBody||(fall.get(up)??0)<0)continue;
+    const old=before.get(up)!;
+    const low=w.runners.find(o=>o!==up&&!o.ghostBody&&!up.dd?.noCollision&&!o.dd?.noCollision&&ddInteracts(up,o)&&Math.abs(old[0]-before.get(o)![0])<22.4&&Math.abs(old[1]+28-before.get(o)![1])<=3);
+    if(low)shiftTo(w,up,up.x+low.x-before.get(low)![0],up.y);
+  }
   // ランナー同士の衝突（頭に乗れる）
   for (let i = 0; i < w.runners.length; i++) {
     for (let j = i + 1; j < w.runners.length; j++) {
       const a = w.runners[i], b = w.runners[j];
       if(a.ghostBody||b.ghostBody||!ddInteracts(a,b)||a.dd?.noCollision||b.dd?.noCollision) continue;
+      const up=a.y<b.y?a:b,low=up===a?b:a;
+      const oldUp=before.get(up)!,oldLow=before.get(low)!;
+      if(Math.abs(up.x-low.x)<22.4&&oldUp[1]+28<=oldLow[1]+3&&up.y+28>=low.y&&(fall.get(up)??0)>=(fall.get(low)??0)){
+        const target=low.y-28;
+        if(!testBox(w,up.x,target)){shiftTo(w,up,up.x,target);up.vy=low.vy;up.grounded=true;continue;}
+      }
       const dx = b.x - a.x, dy = b.y - a.y;
       const d = Math.hypot(dx, dy);
       if (d >= TEE_SIZE || d === 0) continue;
@@ -759,7 +773,12 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vx=vx-radial*dx/d;t.vy=vy-radial*dy/d;
     if(Math.abs(Math.hypot(t.x-t.wireX,t.y-t.wireY)-t.hookLengthLock)>2)releaseWire(t);
   }
+  carryHeadMinis(w,before,collision);
   moveHeld(w,collision);
+  for(const t of w.runners)if(t.wireState===WIRE_ATTACHED&&t.wireWord>=0){
+    const b=w.words.find(b=>b.id===t.wireWord&&b.kind==='mini'&&b.solid);
+    if(b){t.wireLocalX=t.wireLocalY=16;t.wireX=b.x+16;t.wireY=b.y+16;}
+  }
 
   // タイル効果
   for (const t of w.runners) {
