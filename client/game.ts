@@ -10,6 +10,7 @@ import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles,
 import { WEAPON_NAMES } from '../shared/ddrace';
 import { drawDD } from './dd-render';
 import { drawWords } from './word-render';
+import { ABILITY_NAMES, ITEM_ABILITIES } from '../shared/abilities';
 import { MINI_LIMIT } from '../shared/word-blocks';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
@@ -22,6 +23,8 @@ export class ClientGame {
   private seq = 0;
   private others = new Map<number, { prev: RunnerView; cur: RunnerView; at: number }>();
   private names: Record<number, string> = {};
+  private faces:Record<number,string>={};
+  setFaces(f:Record<number,string>){this.faces=f;}
   private doors = Array<boolean>(CHANNELS).fill(false);
   private ctx: CanvasRenderingContext2D;
   private staticLayer: HTMLCanvasElement | null;
@@ -65,7 +68,7 @@ export class ClientGame {
     private onInteract: () => void = () => {},
   ) {
     this.map = stageOrLobby(stageId)!;
-    this.waitingForParty = stageId.startsWith('user-');
+    this.waitingForParty = false;
     this.world = createWorld(this.map);
     this.me = newRunner(youId, this.map);
     this.world.runners.push(this.me);
@@ -73,7 +76,7 @@ export class ClientGame {
     this.ctx = canvas.getContext('2d')!;
     this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
     this.bindInput();
-    if(this.map.dd) this.mountWeapons();
+    if(this.map.dd&&!this.map.abilityMode) this.mountWeapons();
     this.canvas.parentElement?.classList.toggle('word-enabled',!!this.map.wordBlocks);
     if(this.map.wordBlocks)this.mountWordControls();
     this.resize();
@@ -170,6 +173,7 @@ export class ClientGame {
     this.world.saws = [...s.saws];
     if(s.dd) this.world.dd=structuredClone(s.dd);
     this.world.words=structuredClone(s.words??[]);this.world.wordSeq=s.wordSeq??0;
+    this.world.balls=structuredClone(s.balls??[]);this.world.pickups={...s.pickups};
     this.world.runners = [this.me, ...s.others.map((v) => viewToRunner(v, this.map))];
     for (const p of this.pending) this.predictStep(p.input);
     this.smoothX = beforeX - this.me.x;
@@ -257,6 +261,8 @@ export class ClientGame {
     this.smoothX *= 0.85;
     this.smoothY *= 0.85;
     this.render(now);
+    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability];
+    if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
       this.wordPanel.querySelector<HTMLButtonElement>('.word-spit')!.disabled=!!s.charge||!!s.cooldown||big||this.waitingForParty;
@@ -409,6 +415,17 @@ export class ClientGame {
       Math.ceil((this.cam.x + vw) / TILE) + 1, Math.ceil((this.cam.y + vh) / TILE) + 1, now);
     drawDD(g,this.world,Math.floor(this.cam.x/TILE)-1,Math.floor(this.cam.y/TILE)-1,Math.ceil((this.cam.x+vw)/TILE)+1,Math.ceil((this.cam.y+vh)/TILE)+1);
     drawWords(g,this.world);
+    if(this.map.abilityMode){
+      const labels:Record<string,string>={G:'手',H:'鉤',M:'槌',V:'輪',N:'包'};
+      for(let y=Math.max(0,Math.floor(this.cam.y/32));y<Math.min(this.map.height,Math.ceil((this.cam.y+vh)/32));y++)for(let x=Math.max(0,Math.floor(this.cam.x/32));x<Math.min(this.map.width,Math.ceil((this.cam.x+vw)/32));x++){
+        const c=this.map.tiles[y][x];if(!ITEM_ABILITIES[c])continue;
+        g.save();g.globalAlpha=(this.world.pickups[y*this.map.width+x]??0)>this.world.tick?.18:1;
+        g.fillStyle='#ffd26c';g.beginPath();g.roundRect(x*32+3,y*32+3,26,26,7);g.fill();g.fillStyle='#7b1830';g.font='bold 18px sans-serif';g.textAlign='center';g.fillText(labels[c],x*32+16,y*32+23);g.restore();
+      }
+    }
+    for(const b of this.world.balls){g.fillStyle='#ef334a';g.strokeStyle='#79152b';g.lineWidth=2;g.beginPath();g.arc(b.x,b.y,9,0,Math.PI*2);g.fill();g.stroke();g.fillStyle='#ffb2ab';g.beginPath();g.arc(b.x-3,b.y-3,3,0,Math.PI*2);g.fill();}
+    for(const r of this.world.runners)if(r.held){g.strokeStyle='#b1f6ed';g.lineWidth=3;g.beginPath();g.moveTo(r.x,r.y);g.lineTo(r.x+r.aimX*48,r.y+r.aimY*48);g.stroke();}
+
     this.drawZones(g);
 
     const views = this.othersInterpolated(now);
@@ -439,7 +456,7 @@ export class ClientGame {
     }
 
     for (const r of all) {
-      drawRunner(g, { ...r, name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
+      drawRunner(g, { ...r, ability:r.id===this.youId?this.me.ability:views.find(v=>v.id===r.id)?.ability, face:this.faces[r.id], shotAge:this.world.tick-(r.id===this.youId?this.me.shotTick:views.find(v=>v.id===r.id)?.shotTick??-100), name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
       drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);
     }
     if (touch.active) {
@@ -559,6 +576,7 @@ export class ClientGame {
 
 function viewToRunner(v: RunnerView, map: MapDef): Runner {
   const r = newRunner(v.id, map);
+  r.ability=v.ability??'hand';r.held=v.held??null;r.wireBall=v.wireBall??-1;r.shotTick=v.shotTick??-100;
   r.x = v.x; r.y = v.y; r.vx = v.vx; r.vy = v.vy;
   r.wireState = v.ws; r.wireX = v.wx; r.wireY = v.wy; r.wireRunner = v.wr;
   r.stun = v.st; r.aimX = v.ax; r.aimY = v.ay; r.hammerTick = v.ct;

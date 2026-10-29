@@ -1,5 +1,5 @@
 import { mapById } from '../../shared/maps';
-import { createWorld, emptyInput, newRunner, stepWorld, TILE, type Input, type World } from '../../shared/physics';
+import { createWorld, emptyInput, newRunner, stepWorld, TILE, type Input, type World, type MapDef } from '../../shared/physics';
 import { toView, type GameMode, type ServerMsg, type ZoneState } from '../../shared/protocol';
 import type { Client } from './hub';
 
@@ -31,8 +31,9 @@ export class Game {
     readonly mode: GameMode,
     private onEmpty: (g: Game) => void,
     private hooks: { afterTick?: () => void; zones?: () => ZoneState[] } = {},
+    mapOverride?: MapDef,
   ) {
-    const map = mapById(stageId);
+    const map = mapOverride ?? mapById(stageId);
     if (!map) throw new Error(`unknown stage ${stageId}`);
     this.world = createWorld(map);
   }
@@ -44,6 +45,8 @@ export class Game {
     for (const [id, s] of this.slots) out[id] = s.client.name;
     return out;
   }
+
+  faces(): Record<number,string> { return Object.fromEntries([...this.slots].map(([id,s]) => [id,s.client.face ?? ''])); }
 
   broadcast(msg: ServerMsg) {
     for (const s of this.slots.values()) s.client.send(msg);
@@ -58,8 +61,8 @@ export class Game {
     this.starters.add(c.id);
     this.slots.set(c.id, { client: c, queue: [], last: emptyInput(), lastSeq: 0, queuedSeq: 0 });
     c.game = this;
-    c.send({ t: 'gameStart', gameId: this.id, stageId: this.stageId, mode: this.mode, youId: c.id, names: this.names(), map: this.stageId.startsWith('user-') ? this.world.map : undefined });
-    this.broadcast({ t: 'names', names: this.names() });
+    c.send({ t: 'gameStart', gameId: this.id, stageId: this.stageId, mode: this.mode, youId: c.id, names: this.names(), faces: this.faces(), map: this.world.map });
+    this.broadcast({ t: 'names', names: this.names(), faces: this.faces() });
   }
 
   remove(c: Client) {
@@ -69,7 +72,7 @@ export class Game {
     for (const r of this.world.runners) if (r.wireRunner === c.id) { r.wireState = 0; r.wireRunner = -1; }
     c.game = null;
     if (this.slots.size === 0) this.onEmpty(this);
-    else this.broadcast({ t: 'names', names: this.names() });
+    else this.broadcast({ t: 'names', names: this.names(), faces: this.faces() });
   }
 
   pushInput(c: Client, seq: number, input: Input) {
@@ -98,8 +101,8 @@ export class Game {
       // kill は1回だけ効かせる
       if (s.last.kill || s.last.clearWord) s.last = { ...s.last, kill: false, clearWord: false };
     }
-    if (this.stageId.startsWith('user-') && this.size < 2) inputs.forEach((_, id) => inputs.set(id, emptyInput()));
-    const ev = this.stageId.startsWith('user-') && this.size < 2 ? { finished: [], killed: [] } : stepWorld(this.world, inputs);
+    if (this.size < this.world.map.minPlayers) inputs.forEach((_, id) => inputs.set(id, emptyInput()));
+    const ev = this.size < this.world.map.minPlayers ? { finished: [], killed: [] } : stepWorld(this.world, inputs);
 
     for (const f of ev.finished) {
       const s = this.slots.get(f.runnerId);
@@ -128,9 +131,9 @@ export class Game {
         t: 'snap', gameId: this.id, tick: this.world.tick, me, lastSeq: s.lastSeq,
         others: views.filter((v) => v.id !== id), doors: this.world.doorsOpen,
         timers: this.world.timers, lifts: this.world.lifts, saws: this.world.saws, zones,
-        waiting: this.stageId.startsWith('user-') && this.size < this.world.map.minPlayers,
+        waiting: this.size < this.world.map.minPlayers,
         dd: this.world.dd,
-        ...(this.world.map.wordBlocks?{words:this.world.words,wordSeq:this.world.wordSeq}:{}),
+        words:this.world.words,wordSeq:this.world.wordSeq, balls:this.world.balls, pickups:this.world.pickups,
       });
     }
   }

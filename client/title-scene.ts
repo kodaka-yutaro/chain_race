@@ -51,7 +51,7 @@ document.querySelector('#copy-invite')?.addEventListener('click', async () => {
   const button = document.querySelector<HTMLButtonElement>('#copy-invite')!;
   const url = new URL(location.pathname, location.origin).href;
   try {
-    if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ title: 'KDレース 中華街 パルクール大会', url });
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ title: '中華街パルクール大会', url });
     else await navigator.clipboard.writeText(url);
     button.textContent = 'リンクをコピーしました';
   } catch (err) { if ((err as Error).name !== 'AbortError') { button.textContent = 'URLを選んでコピー'; const input = document.querySelector<HTMLInputElement>('#invite-fallback')!; input.value = url; input.hidden = false; input.select(); } }

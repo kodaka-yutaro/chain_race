@@ -2,6 +2,8 @@
 import { ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
 import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
+import { abilityInput, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball } from './abilities';
+
 export const TILE = 32;
 export const TICK_RATE = 50;
 export const TEE_SIZE = 28;
@@ -74,6 +76,7 @@ export interface MapDef {
   saws?: Saw[];
   dd?: DDMapData;
   wordBlocks?: boolean;
+  abilityMode?: boolean;
   /** A private run for one player; no other player can join the same world. */
   solo?: boolean;
 }
@@ -136,6 +139,8 @@ export const emptyInput = (): Input => ({
 export const WIRE_IDLE = 0, WIRE_FLYING = 1, WIRE_ATTACHED = 2;
 
 export interface Runner {
+  ability: Ability; actionDown: boolean; wireBall: number; shotTick:number;
+  held: {kind:'ball'|'word'|'runner';id:number}|null;
   id: number;
   x: number; y: number;
   vx: number; vy: number;
@@ -178,6 +183,7 @@ export interface World {
   dd?: DDWorld;
   words: WordBlock[];
   wordSeq: number;
+  balls: Ball[]; pickups: Record<number,number>;
 }
 
 export interface StepEvents {
@@ -255,6 +261,7 @@ function wordCollision(w:World):WordCollision {
 }
 
 function moveBox(w: World, t: Runner, collision:WordCollision) {
+  const blocked=(x:number,y:number)=>w.map.abilityMode&&t.ability==='bicycle'?bicycleBlocked(w,x,y)||testBox(w,x,y+26):testBox(w,x,y);
   const dist = Math.max(Math.abs(t.vx), Math.abs(t.vy));
   const steps = Math.max(1, Math.ceil(dist));
   const f = 1 / steps;
@@ -262,12 +269,16 @@ function moveBox(w: World, t: Runner, collision:WordCollision) {
     ddClamp(w, t);
     let nx = t.x + t.vx * f;
     let ny = t.y + t.vy * f;
-    if(t.vx&&testBox(w,nx,t.y))pushMinis(w,t,nx,t.y,collision);
-    if(t.vy<0&&testBox(w,t.x,ny))pushMinis(w,t,t.x,ny,collision);
-    if (testBox(w, nx, ny)) {
+    if(t.vx&&blocked(nx,t.y))pushMinis(w,t,nx,t.y,collision);
+    if(t.vy<0&&blocked(t.x,ny))pushMinis(w,t,t.x,ny,collision);
+    if(w.map.abilityMode&&t.ability==='bicycle'&&t.vy>=0){
+      const oldBottom=t.y+40,nextBottom=ny+40;
+      for(const x of [nx-29,nx,nx+29]){const row=Math.floor(nextBottom/32);if(oldBottom<=row*32+.01&&bicycleFloor(w,x,nextBottom)){ny=row*32-40;t.vy=0;break;}}
+    }
+    if (blocked(nx,ny)) {
       let hits = 0;
-      if (testBox(w, t.x, ny)) { ny = t.y; t.vy = 0; hits++; }
-      if (testBox(w, nx, t.y)) { nx = t.x; t.vx = 0; hits++; }
+      if (blocked(t.x,ny)) { ny = t.y; t.vy = 0; hits++; }
+      if (blocked(nx,t.y)) { nx = t.x; t.vx = 0; hits++; }
       if (hits === 0) { nx = t.x; ny = t.y; t.vx = 0; t.vy = 0; }
     }
     t.x = nx; t.y = ny;
@@ -276,6 +287,7 @@ function moveBox(w: World, t: Runner, collision:WordCollision) {
 
 /** 位置をずらす（壁にめり込むならできるところまで） */
 function shiftTo(w: World, t: Runner, nx: number, ny: number) {
+  if(w.map.abilityMode&&t.ability==='bicycle'){if(!bicycleBlocked(w,nx,ny)){t.x=nx;t.y=ny;}return;}
   if (!testBox(w, nx, ny)) { t.x = nx; t.y = ny; return; }
   if (!testBox(w, nx, t.y)) { t.x = nx; return; }
   if (!testBox(w, t.x, ny)) { t.y = ny; }
@@ -293,6 +305,7 @@ function saturatedAdd(min: number, max: number, cur: number, mod: number): numbe
 export function newRunner(id: number, map: MapDef): Runner {
   const s = findSpawn(map);
   return {
+    ability:'hand',actionDown:false,wireBall:-1,shotTick:-100,held:null,
     id, x: s.x, y: s.y, vx: 0, vy: 0, grounded: false, jumped: 0,
     prevJump: false, prevWire: false, prevFire: false,
     wireState: WIRE_IDLE, wireX: 0, wireY: 0, wireDX: 0, wireDY: 0, wireRunner: -1, wireTick: 0,
@@ -304,14 +317,15 @@ export function newRunner(id: number, map: MapDef): Runner {
 
 export function createWorld(map: MapDef): World {
   const off = () => Array<number>(CHANNELS).fill(0);
-  return {
+  const world:World = {
     map, tick: 0, runners: [], doorsOpen: Array<boolean>(CHANNELS).fill(false), timers: off(), plates: off(),
     // リフトは下にいる状態から始まる
     lifts: (map.lifts ?? []).map((l) => (l.bottom - l.top) * TILE),
     saws: (map.saws ?? []).map(() => -1),
-    words:[],wordSeq:0,
+    words:[],wordSeq:0,balls:[],pickups:{},
     ...(map.dd ? {dd: newDDWorld()} : {}),
   };
+  initBalls(world);return world;
 }
 
 export function respawn(w: World, t: Runner) {
@@ -321,7 +335,7 @@ export function respawn(w: World, t: Runner) {
   t.stun = 0; t.jumped = 0;
   t.raceStart = -1;
   t.finishedTime = -1;
-  t.spit.charge=0;
+  t.spit.charge=0;t.held=null;t.ability='hand';t.wireBall=-1;
   if (w.map.dd) t.dd = newDDRunner();
   for (const o of w.runners) if (o.wireRunner === t.id) releaseWire(o);
 }
@@ -334,6 +348,7 @@ function touchedTiles(w: World, t: Runner): string[] {
 }
 
 function checkGrounded(w: World, t: Runner): boolean {
+  if(w.map.abilityMode&&t.ability==='bicycle')return [t.x-29,t.x,t.x+29].some(x=>isSolid(w,x,t.y+41)||bicycleFloor(w,x,t.y+41));
   if (ddRestrictions(w,t.x,t.y) & 2) return true;
   if (wordBoxSolid(w,t.x-R+1,t.y+R-.01,TEE_SIZE-2,3.01)) return true;
   if (isSolid(w, t.x - R + 1, t.y + R + 3) || isSolid(w, t.x + R - 1, t.y + R + 3)) return true;
@@ -373,7 +388,7 @@ function closestPointOnSegment(ax: number, ay: number, bx: number, by: number, p
 function releaseWire(t: Runner) {
   t.wireState = WIRE_IDLE;
   t.wireRunner = -1;
-  t.wireWord=-1;
+  t.wireWord=-1;t.wireBall=-1;
 }
 
 const byId = (w: World, id: number) => w.runners.find((e) => e.id === id);
@@ -467,7 +482,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
 
   const dirs = new Map<number, number>();
   for (const t of w.runners) {
-    const inp = inputs.get(t.id) ?? emptyInput();
+    const inp = abilityInput(w,t,inputs.get(t.id) ?? emptyInput(),collision);
     if (inp.kill) {
       respawn(w, t);
       ev.killed.push(t.id);
@@ -476,7 +491,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     const al = Math.hypot(inp.aimX, inp.aimY);
     if (al > 0.0001) { t.aimX = inp.aimX / al; t.aimY = inp.aimY / al; }
     stepSpit(w,t,inp,collision);
-    ddPrepare(w,t,inp);
+    if(!w.map.abilityMode)ddPrepare(w,t,inp);
 
     const stunned = t.stun > 0;
     const dir = stunned ? 0 : (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
@@ -490,7 +505,10 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vy += PHYS.gravity;
 
     // ジャンプ（押しっぱなしでは連続しない）と二段ジャンプ
-    if (t.dd) {
+    if (t.ability==='bicycle'&&w.map.abilityMode) {
+      if(!stunned&&inp.jump&&!(t.jumped&1)&&t.grounded){t.vy=-PHYS.jump;t.jumped|=1;}
+      if(!inp.jump)t.jumped&=~1;
+    } else if (t.dd) {
       const d=t.dd;
       if(t.grounded) d.usedJumps=0;
       if(!stunned && inp.jump && !(t.jumped&1)) {
@@ -538,7 +556,9 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
           if (d < bestD) { bestD = d; best = o.id; }
         }
       }
-      if (hit.teleport && t.dd) {
+      const ball=w.balls.find(b=>{const c=closestPointOnSegment(t.wireX,t.wireY,hit.x,hit.y,b.x,b.y);return Math.hypot(c.x-b.x,c.y-b.y)<11;});
+      if(ball){t.wireState=WIRE_ATTACHED;t.wireBall=ball.id;t.wireX=ball.x;t.wireY=ball.y;}
+      else if (hit.teleport && t.dd) {
         t.wireX=hit.teleport.x;t.wireY=hit.teleport.y;
         t.dd.hookBaseX=t.wireX;t.dd.hookBaseY=t.wireY;
         t.dd.hookTeleported=true;
@@ -565,7 +585,10 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
     if (t.wireState === WIRE_ATTACHED) {
       t.wireTick++;
-      if (t.wireRunner >= 0) {
+      if(t.wireBall>=0){
+        const b=w.balls.find(b=>b.id===t.wireBall);
+        if(!b)releaseWire(t);else{t.wireX=b.x;t.wireY=b.y;const dx=t.x-b.x,dy=t.y-b.y,d=Math.hypot(dx,dy);if(d>PHYS.hookLength+32)releaseWire(t);else if(d>35){b.vx+=dx/d*.8;b.vy+=dy/d*.8;}}
+      } else if (t.wireRunner >= 0) {
         const o = byId(w, t.wireRunner);
         // 仲間をつかめるのは少しの間だけ
         if (!o || !ddInteracts(t,o) || (!t.dd?.endlessHook && t.wireTick > PHYS.hookPlayerTicks)) releaseWire(t);
@@ -603,7 +626,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
 
     // ハンマー：すぐ前の仲間を叩いて飛ばし、しびれを解く
-    const weaponFired = ddFire(w,t,inp);
+    const weaponFired = !w.map.abilityMode && ddFire(w,t,inp);
     if (t.hammerCd > 0) t.hammerCd--;
     if (!weaponFired && !stunned && inp.fire && !t.prevFire && t.hammerCd === 0) {
       t.hammerCd = PHYS.hammerCooldown;
@@ -644,7 +667,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     t.vy = saturatedAdd(-sp, sp, t.vy, -a * dy * 0.25);
   }
 
-  ddProjectiles(w);
+  if(!w.map.abilityMode)ddProjectiles(w);
+  stepBalls(w,collision);
   const fall = new Map<Runner, number>();
   const before = new Map<Runner, [number,number]>();
   for (const t of w.runners) {
@@ -665,6 +689,12 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       if(!ddInteracts(a,b)) continue;
       const dx = b.x - a.x, dy = b.y - a.y;
       const d = Math.hypot(dx, dy);
+      if(w.map.abilityMode&&(a.ability==='bicycle'||b.ability==='bicycle')){
+        const aw=a.ability==='bicycle'?30:14,bw=b.ability==='bicycle'?30:14,ab=a.ability==='bicycle'?40:14,bb=b.ability==='bicycle'?40:14;
+        const ox=aw+bw-Math.abs(dx),oy=Math.min(a.y+ab,b.y+bb)-Math.max(a.y-14,b.y-14);
+        if(ox>0&&oy>0){if(ox<oy){const sign=Math.sign(dx)||1;shiftTo(w,a,a.x-sign*ox/2,a.y);shiftTo(w,b,b.x+sign*ox/2,b.y);}else{const top=a.y<b.y?a:b;shiftTo(w,top,top.x,top.y-oy);if(top.vy>0)top.vy=0;}}
+        continue;
+      }
       if (d >= TEE_SIZE || d === 0) continue;
       const overlap = TEE_SIZE - d;
       if (Math.abs(dy) > Math.abs(dx)) {
@@ -678,6 +708,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       }
     }
   }
+
+  moveHeld(w,collision);
 
   // タイル効果
   for (const t of w.runners) {
@@ -699,7 +731,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       t.jumped &= ~2;
     }
     const [fromX,fromY]=before.get(t)!;
-    ddTiles(w,t,fromX,fromY);
+    if(!w.map.abilityMode)ddTiles(w,t,fromX,fromY);
     if (tiles.includes('>') && t.finishedTime < 0) t.raceStart = w.tick;
     if (tiles.includes('F') && t.raceStart >= 0 && t.finishedTime < 0) {
       t.finishedTime = Math.round(((w.tick - t.raceStart) / TICK_RATE) * 1000) / 1000;

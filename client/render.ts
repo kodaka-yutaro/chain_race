@@ -1,5 +1,7 @@
 // 見た目の描画（背景・タイル・キャラ・フック）。ゲームの進行とは切り離してある。
 import { CHANNELS, isSolidChar, LIFT_THICK, liftTop, SAW_THICK, TEE_SIZE, TILE, type MapDef } from '../shared/physics';
+import { drawFace } from './face-editor';
+import type { Ability } from '../shared/abilities';
 import { drawChinatown } from './chinatown';
 
 const R = TEE_SIZE / 2;
@@ -585,6 +587,7 @@ function drawLifts(g: CanvasRenderingContext2D, m: MapDef, st: LiveState, now: n
 // ---------- キャラとフック ----------
 
 export interface RunnerLook {
+  ability?:Ability;face?:string;shotAge?:number;
   id: number; x: number; y: number; vx: number; grounded: boolean;
   stun: number; aimX: number; aimY: number; hammerAge: number;
   name: string; me: boolean;
@@ -630,7 +633,12 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   const color = colorOf(r.id);
   const stunned = r.stun > 0;
   const face = r.aimX >= 0 ? 1 : -1;
-  const body = stunned ? '#a9b4c2' : color;
+  const body = stunned ? '#a9b4c2' : '#f5c9a5';
+  if(r.ability==='bicycle'){
+    g.strokeStyle='#23304b';g.lineWidth=4;for(const dx of [-19,19]){g.beginPath();g.arc(r.x+dx,r.y+28,11,0,Math.PI*2);g.stroke();}
+    g.strokeStyle='#e94a5e';g.lineWidth=3;g.beginPath();g.moveTo(r.x-19,r.y+28);g.lineTo(r.x-5,r.y+10);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x-19,r.y+28);g.lineTo(r.x+6,r.y+14);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x+14,r.y+5);g.stroke();
+    g.save();g.translate(r.x+14,r.y+5);g.rotate((r.shotAge??100)<12?Math.sin((r.shotAge??0)/12*Math.PI)*1.2:0);g.strokeStyle='#ffd578';g.beginPath();g.moveTo(-4,0);g.lineTo(10,-3);g.stroke();g.restore();
+  }
   const puff=r.spitCharge?Math.sin((1-r.spitCharge/19)*Math.PI/2):0;
 
   // 足（歩くと交互に動く、空中では縮める）
@@ -646,6 +654,7 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   }
 
   // ハンマー（ねらう方向に持つ。振った直後は大きく振り下ろす）
+  if(r.ability==='hammer'){
   const swing = r.hammerAge >= 0 && r.hammerAge < 8 ? Math.sin((r.hammerAge / 8) * Math.PI) * 1.4 : 0;
   const ha = Math.atan2(r.aimY, r.aimX) - face * (0.9 - swing);
   g.save();
@@ -659,34 +668,9 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   g.fillRect(22, -8, 9, 3);
   g.restore();
 
-  // 体
-  const grd = g.createRadialGradient(r.x - 5, r.y - 6, 2, r.x, r.y, R + 2);
-  grd.addColorStop(0, shade(body, 0.45));
-  grd.addColorStop(0.6, body);
-  grd.addColorStop(1, shade(body, -0.25));
-  g.fillStyle = grd;
-  g.strokeStyle = shade(body, -0.5);
-  g.lineWidth = 2;
-  g.beginPath();
-  g.ellipse(r.x, r.y, R+puff*4, R-puff*2,0, 0, Math.PI * 2);
-  g.fill();
-  g.stroke();
-
-  // はちまき（後ろになびく）
-  g.fillStyle = '#ffffff';
-  g.beginPath();
-  g.arc(r.x, r.y, R - 0.5, Math.PI * 1.07, Math.PI * 1.93);
-  g.arc(r.x, r.y, R - 5, Math.PI * 1.9, Math.PI * 1.1, true);
-  g.closePath();
-  g.fill();
-  const tail = -face;
-  const wav = Math.sin(now / 120 + r.id) * 3;
-  g.beginPath();
-  g.moveTo(r.x + tail * (R - 3), r.y - 9);
-  g.quadraticCurveTo(r.x + tail * (R + 6), r.y - 12 + wav, r.x + tail * (R + 12), r.y - 6 + wav);
-  g.lineTo(r.x + tail * (R + 10), r.y - 3 + wav);
-  g.quadraticCurveTo(r.x + tail * (R + 4), r.y - 7, r.x + tail * (R - 3), r.y - 5);
-  g.fill();
+  }
+  if(r.ability==='hand'){g.strokeStyle='#82eee0';g.lineWidth=3;g.beginPath();g.moveTo(r.x+r.aimX*12,r.y+r.aimY*12);g.lineTo(r.x+r.aimX*27,r.y+r.aimY*27);g.stroke();g.fillStyle='#e1ffef';g.fillRect(r.x+r.aimX*27-4,r.y+r.aimY*27-4,8,8);}
+  drawFace(g,r.face??'',r.x,r.y,34+puff*2);
 
   // 目
   const ex = r.x + r.aimX * 3, ey = r.y - 1 + r.aimY * 2;

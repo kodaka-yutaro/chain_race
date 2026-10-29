@@ -54,23 +54,24 @@ export function localBackend(): Backend {
 
     async listHubs() {
       const now = Date.now();
-      return mergeHubs(Object.values(hubs()).filter((h) => h.updatedAt > now - HUB_STALE_MS), HUB_CAPACITY);
+      return mergeHubs(Object.values(hubs()).filter((h) => h.updatedAt > now - HUB_STALE_MS && h.visibility === 'public'), HUB_CAPACITY);
     },
-    async claimHub(id, name, hostId) {
+    async claimHub(id, name, hostId, visibility = 'public') {
       const all = hubs();
       const key = id ?? randomId();
       const d = all[key];
-      if (d && d.updatedAt > Date.now() - HUB_STALE_MS && d.hostId !== hostId) {
+      if (id) {
+        if (!d || d.updatedAt <= Date.now() - HUB_STALE_MS) throw new Error('この部屋は終了しました');
         if (d.count >= d.capacity) throw new Error('この大部屋は満員です');
         return { id: key, name: d.name, role: 'join' };
       }
-      all[key] = { id: key, name, hostId, count: 1, capacity: HUB_CAPACITY, updatedAt: Date.now() };
+      all[key] = { id: key, name, hostId, visibility, members: [], count: 1, capacity: HUB_CAPACITY, updatedAt: Date.now() };
       write('cr.hubs', all);
       return { id: key, name, role: 'host' };
     },
-    async heartbeat(id, count) {
+    async heartbeat(id, count, members = []) {
       const all = hubs();
-      if (all[id]) { all[id].count = count; all[id].updatedAt = Date.now(); write('cr.hubs', all); }
+      if (all[id]) { all[id].count = count; all[id].members = members; all[id].updatedAt = Date.now(); write('cr.hubs', all); }
     },
     async releaseHub(id) {
       const all = hubs();

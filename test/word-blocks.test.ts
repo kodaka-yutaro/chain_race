@@ -114,17 +114,18 @@ test('フックの支点は動く文字に追従し、文字が消えると外�
 
 test('コース保存に技の設定が残り、二人に同一の文字と溜め状態が配信される',()=>{
   const m=validateCourseMap({...newCourseMap(40,24),wordBlocks:true});assert.equal(m.wordBlocks,true);
-  assert.equal(validateCourseMap({...m,wordBlocks:'false'}).wordBlocks,undefined);
+  assert.equal(validateCourseMap({...m,wordBlocks:'false'}).wordBlocks,true);
   const hub=new HostHub('words-test','文字の部屋');
   function peer(name:string){
     const messages:ServerMsg[]=[];
     const link:Link={send:m=>messages.push(structuredClone(m)),close:()=>{},onMessage:()=>{},onClose:()=>{}};
-    hub.connect(link);link.onMessage({t:'hello',name,guest:true});
+    hub.connect(link,hub.members.size===0);link.onMessage({t:'hello',name,guest:true});
     link.onMessage({t:'stageJoin',stageId:'word-practice'});
     return {messages,link};
   }
-  const a=peer('赤'),b=peer('青');
+  const a=peer('赤'),b=peer('青');a.link.onMessage({t:'roomStart'});
   const game=[...hub.games].find(g=>g.stageId==='word-practice')!;
+  game.world.runners[0].ability='bun';
   // Move the partner clear of the emitted silhouette; both remain on the ground.
   game.world.runners[1].x=650;
   for(let i=0;i<30;i++)hub.tick();

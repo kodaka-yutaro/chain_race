@@ -2,20 +2,21 @@ import { newCourseMap, TILE_TOOLS, validateCourseMap } from '../shared/courses';
 import type { MapDef } from '../shared/physics';
 
 const KEY = 'tsunagu.course-draft.v1';
-const colors: Record<string, string> = { '.': '#11172b', '#': '#81b780', X: '#748397', '~': '#63b9ef', '^': '#f97583', J: '#e89d4b', S: '#ffdb79', '>': '#90dc9a', F: '#f6a1cf' };
-export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<void>) {
+const colors: Record<string, string> = { '.': '#11172b', '#': '#81b780', X: '#748397', '~': '#63b9ef', G:'#a6eee5', H:'#f5d582', M:'#c2cad6', V:'#84bece', N:'#ffd0b0', o:'#ef334a', '^': '#f97583', J: '#e89d4b', S: '#ffdb79', '>': '#90dc9a', F: '#f6a1cf' };
+export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<void>, test?: (m:MapDef)=>void) {
   let map = newCourseMap(), tool = '#', mode = 'paint', history: string[][] = [], future: string[][] = [];
   try { const raw = localStorage.getItem(KEY); if (raw) { const draft = JSON.parse(raw); map = { ...validateCourseMap(draft, false), name: draft.name }; } } catch { /* 初期コース */ }
   root.innerHTML = `
     <div class="bar"><h2>コースをつくる</h2><button data-close>戻る</button></div>
-    <p class="note">ひとりで作って、テストなしでプレリリース。2人以上で全員ゴールすると正式公開になります。</p>
+    <p class="note">地形・能力アイテム・赤いボールを配置して、自分のコースを作ろう。テストは1人で動作確認できます。</p>
     <div class="editor-meta"><label>コース名<input data-name maxlength="40"></label><label>説明<input data-desc maxlength="280"></label></div>
-    <label class="editor-ability"><input type="checkbox" data-word-blocks>「中華」を吐き出す技を使えるようにする</label>
-    <p class="note">大中華は R で1人1つ、X で消去。T のミニは1人5個で、6個目は古い箱と入れ替わります。押す・引く・叩くといった動きは「中華吐息の稽古場」「点心横丁・ひとり旅」で試せます。</p>
+    <div class="buttons"><label>幅<input data-width type="number" min="20" max="240"></label><label>高さ<input data-height type="number" min="16" max="100"></label><button data-resize>サイズを変更</button><label>開始に必要な人数<select data-players><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option></select></label><button data-test class="primary">今のコースをテスト</button></div>
+    <label class="editor-ability" hidden><input type="checkbox" data-word-blocks>「中華」を吐き出す技を使えるようにする</label>
+    <p class="note">初期能力はマジックハンド。H フック・M ハンマー・V 自転車・N 中華まん・G マジックハンドを配置できます。取得で持ち替えます。赤いボールは o。</p>
     <div class="buttons"><button data-mode="paint" aria-pressed="true">描く</button><button data-mode="pan" aria-pressed="false">移動</button><button data-undo>元に戻す</button><button data-redo>やり直す</button><label>表示倍率<select data-zoom><option value="12">小</option><option value="24" selected>中</option><option value="36">大</option></select></label></div>
     <div class="tile-tools" role="group" aria-label="置くタイル"></div>
     <div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><canvas aria-label="タイルを選んで描く"></canvas></div>
-    <p class="note">スマホでは「移動」で画面をスクロール、「描く」で指を滑らせて配置。出現地点は1つです。下書きはこの端末に自動保存されます。</p>
+    <p class="note">マウスをドラッグして配置。スクロールで移動、倍率で拡大縮小。出現地点は1つです。下書きはこの端末に自動保存されます。</p>
     <details><summary>スイッチの設定</summary><div class="channels"></div></details>
     <div class="buttons"><button data-export>ファイルに保存</button><label class="file-button">ファイルを開く<input data-import type="file" accept="application/json,.json"></label><button data-new>新しいコース</button><button class="primary" data-publish>プレリリースする</button></div>
     <p data-status role="status"></p>`;
@@ -25,7 +26,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   let size = 24;
   const save = () => {
     map.name = name.value; map.description = desc.value;
-    map.wordBlocks=q<HTMLInputElement>('[data-word-blocks]').checked;
+    map.wordBlocks=true;map.abilityMode=true;map.minPlayers=+q<HTMLSelectElement>('[data-players]').value;
     try { localStorage.setItem(KEY, JSON.stringify(map)); status('下書きを保存しました'); } catch { status('端末に保存できません。ファイルに保存してください'); }
   };
   function draw() {
@@ -39,6 +40,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   }
   function load() {
     name.value = map.name; desc.value = map.description;
+    q<HTMLInputElement>('[data-width]').value=String(map.width);q<HTMLInputElement>('[data-height]').value=String(map.height);q<HTMLSelectElement>('[data-players]').value=String(map.minPlayers);
     q<HTMLInputElement>('[data-word-blocks]').checked=!!map.wordBlocks;
     q('.channels').replaceChildren(...Array.from({ length: 5 }, (_, i) => {
       const row = document.createElement('div'); row.className = 'buttons';
@@ -58,6 +60,10 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     mode = b.dataset.mode!; viewport.style.touchAction = mode === 'pan' ? 'pan-x pan-y' : 'none';
     root.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
   });
+  let panPoint:{x:number;y:number;left:number;top:number}|null=null;
+  viewport.addEventListener('pointerdown',e=>{if(mode!=='pan')return;panPoint={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);e.preventDefault();});
+  viewport.addEventListener('pointermove',e=>{if(!panPoint)return;viewport.scrollLeft=panPoint.left-e.clientX+panPoint.x;viewport.scrollTop=panPoint.top-e.clientY+panPoint.y;});
+  viewport.addEventListener('pointerup',()=>panPoint=null);viewport.addEventListener('pointercancel',()=>panPoint=null);
   let pointer: number | null = null, lastCell: { x: number; y: number } | null = null;
   const paint = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect();
@@ -88,8 +94,14 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   };
   q('[data-publish]').onclick = async () => {
     const b = q<HTMLButtonElement>('[data-publish]'); b.disabled = true;
-    try { save(); await publish(validateCourseMap(map)); status('プレリリースしました！同じ大部屋の友だちとコース一覧から参加できます。'); }
+    try { save(); await publish(validateCourseMap(map)); status('プレリリースしました！部屋のホストがコース一覧から選べます。'); }
     catch (e) { status((e as Error).message); } finally { b.disabled = false; }
   };
+  q('[data-test]').onclick=()=>{try{save();test?.(validateCourseMap(map));}catch(e){status((e as Error).message);}};
+  q('[data-players]').onchange=save;
+  q('[data-resize]').onclick=()=>{const w=+q<HTMLInputElement>('[data-width]').value,h=+q<HTMLInputElement>('[data-height]').value;
+    if(!Number.isInteger(w)||!Number.isInteger(h)||w<20||w>240||h<16||h>100){status('幅20〜240、高さ16〜100の整数にしてください');return;}
+    if((w<map.width||h<map.height)&&!confirm('外側のタイルが切り取られます。サイズを変更しますか？'))return;
+    map.tiles=Array.from({length:h},(_,y)=>Array.from({length:w},(_,x)=>map.tiles[y]?.[x]??'.').join(''));map.width=w;map.height=h;history=[];future=[];load();save();};
   load();
 }

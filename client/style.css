@@ -376,3 +376,17 @@ body.touch #screen-hubs .panel { overflow-y: auto; min-height: 0; -webkit-overfl
   body.touch #screen-title .festival-tags, body.touch #screen-title .play-note { display: none; }
   body.touch #screen-title .festival-play { min-height: 46px; font-size: 17px; }
 }
+
+[hidden]{display:none!important}
+/* PC host rooms and authoring tools */
+#screen-hub {background:radial-gradient(ellipse at 30% 35%,#543947,#151a2c 70%);}
+.room-card {position:absolute;top:24%;left:5%;width:58%;padding:32px;border:1px solid #e9ba6c55;border-radius:20px;background:#1e243ae8;}
+.room-card h2 {font-size:30px;color:#ffe3ab}.room-card input{width:100%}.room-card p{line-height:1.8}
+.eyebrow{letter-spacing:.2em;color:#e9ba6c}.room-card .buttons{flex-wrap:wrap}
+.face-editor{max-width:700px;background:#20283b;color:#fff;border:1px solid #d4ad68;border-radius:18px;padding:28px}
+.face-work{display:flex;gap:28px;align-items:center}.face-work canvas{background:#161c2d;image-rendering:pixelated;touch-action:none}
+.face-palette{display:flex;gap:6px;margin:18px 0}.face-palette button{width:30px;height:30px;padding:0;border:2px solid transparent}
+.face-palette button[aria-pressed=true]{outline:3px solid white}.face-editor::backdrop{background:#080d19bb}
+#screen-editor{overflow:auto;padding:28px}.editor-meta{display:flex;gap:16px}.editor-viewport{max-height:55vh}
+.course-dialog{max-width:720px}.course-dialog>button{margin:8px}.word-controls[hidden]{display:none!important}
+#hud-ability{color:#ffdc92;font-size:14px}.game-actions{max-width:calc(100% - 280px)}

@@ -8,13 +8,13 @@ import type { ClientMsg, ServerMsg } from '../shared/protocol';
 function peer(hub: HostHub, name: string) {
   const messages: ServerMsg[] = [];
   const link: Link = { send: m => messages.push(m), close: () => link.onClose(), onMessage: () => {}, onClose: () => {} };
-  hub.connect(link);
+  hub.connect(link, hub.members.size===0);
   const send = (m: ClientMsg) => link.onMessage(m);
   send({ t: 'hello', name, guest: true });
   return { messages, send, drop: () => link.onClose() };
 }
 const latest = (messages: ServerMsg[]) => messages.filter(m => m.t === 'gameStart').at(-1)!;
-const map = () => ({ ...validateCourseMap(newCourseMap(24, 16)), id: 'user-0123456789abcdef01' });
+const map = () => ({ ...validateCourseMap(newCourseMap(24, 16)), minPlayers:2, id: 'user-0123456789abcdef01' });
 
 test('公開時は未完成のマップを拒否し、下書きでは保持できる', () => {
   const m = newCourseMap(); m.tiles = m.tiles.map(r => r.replaceAll('F', '.'));
@@ -33,43 +33,24 @@ test('人数、ID、有限タイムを確認し、ひとりや重複IDで正式�
   assert.equal(canRelease([a, { id: 2, name: 'い', time: 15 }]), true);
 });
 
-test('同じコースを配信し、2人揃うまで進まず、全員ゴール後に一度だけ通知する', () => {
-  const hub = new HostHub('h', '工房'), a = peer(hub, 'あ'), b = peer(hub, 'い'), m = map();
-  a.send({ t: 'courseJoin', map: m });
-  const game = [...hub.games].find(g => g.stageId === m.id)!;
-  const before = structuredClone(game.world.runners[0]);
-  for (let i = 0; i < 15; i++) hub.tick();
-  assert.deepEqual(game.world.runners[0], before);
-  b.send({ t: 'courseJoin', map: m });
-  assert.equal(latest(a.messages).gameId, latest(b.messages).gameId);
-  assert.deepEqual(latest(b.messages).map, m);
-  assert.equal(game.size, 2);
-  game.world.runners[0].finishedTime = 10; hub.tick();
-  assert.equal(a.messages.some(m => m.t === 'partyClear'), false);
-  game.world.runners[1].finishedTime = 12; hub.tick(); hub.tick();
-  const clears = a.messages.filter(m => m.t === 'partyClear');
-  assert.equal(clears.length, 1);
-  assert.equal(clears[0].stageId, m.id);
-  assert.equal(clears[0].results.length, 2);
+test('選択だけでは開始せず、開始後に全員ゴールすると一度だけ通知する',()=>{
+ const h=new HostHub('h','部屋'),a=peer(h,'あ'),b=peer(h,'い'),m=map();a.send({t:'courseJoin',map:m});assert.equal(h.games.size,0);a.send({t:'roomStart'});
+ const g=[...h.games][0];assert.equal(latest(a.messages).gameId,latest(b.messages).gameId);assert.deepEqual(latest(b.messages).map,m);
+ g.world.runners[0].finishedTime=10;h.tick();assert.equal(a.messages.some(m=>m.t==='partyClear'),false);g.world.runners[1].finishedTime=12;h.tick();h.tick();assert.equal(a.messages.filter(m=>m.t==='partyClear').length,1);
 });
 
 test('途中離脱して残りの人がゴールしても正式公開しない', () => {
   const hub = new HostHub('h', '工房'), a = peer(hub, 'あ'), b = peer(hub, 'い'), m = map();
-  a.send({ t: 'courseJoin', map: m }); b.send({ t: 'courseJoin', map: m });
+  a.send({ t: 'courseJoin', map: m }); a.send({t:'roomStart'});
   const game = [...hub.games].find(g => g.stageId === m.id)!;
   game.world.runners[0].finishedTime = 10; b.drop(); hub.tick();
   assert.equal(a.messages.some(m => m.t === 'partyClear'), false);
 });
 
-test('出発後の途中参加、違う版のコース、不正なタイルを拒否する', () => {
-  const hub = new HostHub('h', '工房'), a = peer(hub, 'あ'), b = peer(hub, 'い'), m = map();
-  a.send({ t: 'courseJoin', map: m });
-  b.send({ t: 'courseJoin', map: { ...m, name: '別の版' } });
-  assert.equal(latest(b.messages).mode, 'lobby');
-  const game = [...hub.games].find(g => g.stageId === m.id)!;
-  game.world.runners[0].raceStart = 0;
-  b.send({ t: 'courseJoin', map: m });
-  assert.equal(latest(b.messages).mode, 'lobby');
+test('参加者のコース変更とプレイ中の差し替え、不正なタイルを拒否する',()=>{
+ const h=new HostHub('h','部屋'),a=peer(h,'あ'),b=peer(h,'い'),m=map();a.send({t:'courseJoin',map:m});b.send({t:'courseJoin',map:{...m,name:'改変'}});a.send({t:'roomStart'});assert.equal([...h.games][0].world.map.name,m.name);
+ a.send({t:'courseJoin',map:{...m,name:'変更'}});assert.equal([...h.games][0].world.map.name,m.name);
+ assert.throws(()=>validateCourseMap({...m,tiles:m.tiles.map(r=>r.replace('S','?'))}));
 });
 
 test('DDNetのしびれ解除タイルで即座に動けるようになる', () => {
@@ -81,10 +62,7 @@ test('DDNetのしびれ解除タイルで即座に動けるようになる', () 
 test('実際の移動入力で2人がスタート線とゴール線を通過すると正式公開判定が出る', () => {
   const hub = new HostHub('run-proof', '実走検証'), a = peer(hub, '赤'), b = peer(hub, '青'), m = map();
   a.send({ t: 'courseJoin', map: m });
-  for (let i = 0; i < 4; i++) hub.tick();
-  const wait = a.messages.filter(msg => msg.t === 'snap').at(-1)!;
-  assert.equal(wait.waiting, true);
-  b.send({ t: 'courseJoin', map: m });
+  a.send({t:'roomStart'});
   const gameId = latest(a.messages).gameId;
   for (let seq = 1; seq <= 220; seq++) {
     for (const p of [a, b]) p.send({ t: 'input', gameId, list: [{ seq, input: { ...emptyInput(), right: true } }] });
@@ -100,7 +78,7 @@ test('DDNetの透過壁はプレイヤーを止め、フックだけを奥の岩
   const m = newCourseMap(24, 16), rows = m.tiles.map(row => [...row]);
   for (let y = 2; y < 13; y++) { rows[y][8] = 'O'; rows[y][12] = '#'; }
   m.tiles = rows.map(row => row.join(''));
-  const world = createWorld(m), r = newRunner(1, m); r.x = 5.5 * TILE; r.y = 6.5 * TILE; world.runners.push(r);
+  const world = createWorld(m), r = newRunner(1, m); r.ability='hook'; r.x = 5.5 * TILE; r.y = 6.5 * TILE; world.runners.push(r);
   for (let i = 0; i < 24; i++) stepWorld(world, new Map([[1, { ...emptyInput(), wire: true, right: true, aimX: 1, aimY: 0 }]]));
   assert.equal(r.wireState, 2);
   assert.ok(r.wireX > 11 * TILE);

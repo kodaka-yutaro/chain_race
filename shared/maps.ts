@@ -287,7 +287,7 @@ export const LOBBY_MAP = lobby();
 
 /** 遊べるステージだけを探す */
 const custom = new Map<string, MapDef>();
-export function registerCourse(map: MapDef) { if (map.id.startsWith('user-')) custom.set(map.id, structuredClone(map)); }
-export const stageById = (id: string) => MAPS.find((m) => m.id === id) ?? custom.get(id);
+export function registerCourse(map: MapDef) { custom.set(map.id, structuredClone(map)); }
+export const stageById = (id: string) => custom.get(id) ?? MAPS.find((m) => m.id === id);
 /** 大部屋を含むすべてのマップから探す */
 export const mapById = (id: string) => (id === LOBBY_MAP.id ? LOBBY_MAP : stageById(id));

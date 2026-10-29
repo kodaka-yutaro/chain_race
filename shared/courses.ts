@@ -11,6 +11,7 @@ export interface Course {
 }
 export const TILE_TOOLS = [
   ['.', '消す'], ['#', '岩壁'], ['X', '金属'], ['~', 'しびれ'], ['^', 'トゲ'],
+  ['G','マジックハンド'],['H','フック'],['M','ハンマー'],['V','自転車'],['N','中華まん'],['o','赤いボール'],
   ['J', 'バネ'], ['S', '出現'], ['>', 'スタート'], ['F', 'ゴール'],
   ...Array.from({ length: 5 }, (_, i) => [String(i + 1), `スイッチ${i + 1}`]),
   ...Array.from({ length: 5 }, (_, i) => [String.fromCharCode(97 + i), `扉${i + 1}`]),
@@ -21,7 +22,7 @@ export function validateCourseMap(value: unknown, playable = true): MapDef {
   if (!m || !Number.isInteger(m.width) || !Number.isInteger(m.height)
     || m.width < 20 || m.width > 240 || m.height < 16 || m.height > 100
     || !Array.isArray(m.tiles) || m.tiles.length !== m.height
-    || m.tiles.some(r => typeof r !== 'string' || r.length !== m.width || /[^.#X~^JS>F1-5a-eA-E]/.test(r))) throw new Error('コースのサイズかタイルが正しくありません');
+    || m.tiles.some(r => typeof r !== 'string' || r.length !== m.width || /[^.#X~^JS>F1-5a-eA-EGHMVNo]/.test(r))) throw new Error('コースのサイズかタイルが正しくありません');
   if (typeof m.name !== 'string' || (playable && !m.name.trim()) || m.name.length > 40) throw new Error('コース名を1〜40文字で入力してください');
   if (typeof m.description !== 'string' || m.description.length > 280) throw new Error('説明は280文字までです');
   const all = m.tiles.join('');
@@ -31,7 +32,8 @@ export function validateCourseMap(value: unknown, playable = true): MapDef {
     const c = m.channels?.[i] ?? {};
     return { need: c.need === 2 ? 2 : 1, hold: Math.max(0, Math.min(500, Math.floor(Number(c.hold) || 0))) };
   });
-  return { id: '', name: m.name.trim(), description: m.description, minPlayers: 2,
+  return { id: '', name: m.name.trim(), description: m.description, minPlayers: Number.isInteger(m.minPlayers)&&m.minPlayers>=1&&m.minPlayers<=8?m.minPlayers:2,
+    abilityMode:true,wordBlocks:true,
     width: m.width, height: m.height, tiles: [...m.tiles], hints: [], channels,
     ...(m.wordBlocks===true?{wordBlocks:true}:{}) };
 }
@@ -39,7 +41,7 @@ export function newCourseMap(width = 80, height = 30): MapDef {
   const rows: string[][] = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) =>
     y === 0 || x === 0 || x === width - 1 ? 'X' : y >= height - 3 ? '#' : '.'));
   rows[height - 4][3] = 'S'; rows[height - 4][7] = '>'; rows[height - 4][width - 5] = 'F';
-  return { id: '', name: 'ふたりのコース', description: '', minPlayers: 2, width, height, tiles: rows.map(r => r.join('')), hints: [] };
+  return { id: '', name: 'わたしのコース', description: '', minPlayers: 1, abilityMode:true,wordBlocks:true, width, height, tiles: rows.map(r => r.join('')), hints: [] };
 }
 export function canRelease(results: { id: number; name: string; time: number }[]): boolean {
   return results.length >= 2 && results.length <= 8 && new Set(results.map(r => r.id)).size === results.length

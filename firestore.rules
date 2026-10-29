@@ -4,23 +4,25 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function isAccount() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
-    function stale(d) { return d.updatedAt < request.time.toMillis() - 75000; }
 
-    // 大部屋の一覧。主（作った人）だけが更新でき、主が消えたものは誰でも引き継げる
+    // 公開部屋だけを一覧に出す。招待リンクのIDを知る認証済みユーザーは個別取得できる
     match /hubs/{hubId} {
-      allow read: if true;
+      allow get: if signedIn();
+      allow list: if resource.data.visibility == 'public';
       allow create: if signedIn()
         && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.visibility in ['public', 'invite']
         && request.resource.data.name is string && request.resource.data.name.size() <= 40;
       allow update: if signedIn()
-        && (resource.data.hostUid == request.auth.uid || stale(resource.data))
+        && resource.data.hostUid == request.auth.uid
         && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.visibility in ['public', 'invite']
         && request.resource.data.name is string && request.resource.data.name.size() <= 40;
-      allow delete: if signedIn() && (resource.data.hostUid == request.auth.uid || stale(resource.data));
+      allow delete: if signedIn() && resource.data.hostUid == request.auth.uid;
 
       // 参加したい人と主のあいだの接続の仲介
       match /joins/{joinId} {
-        allow read: if signedIn();
+        allow read: if signedIn() && (resource.data.uid == request.auth.uid || get(/databases/$(database)/documents/hubs/$(hubId)).data.hostUid == request.auth.uid);
         allow create: if signedIn() && request.resource.data.uid == request.auth.uid
           && request.resource.data.offer is string && request.resource.data.offer.size() < 20000;
         allow update: if signedIn()
@@ -44,7 +46,7 @@ service cloud.firestore {
         && request.resource.data.map.id == courseId
         && request.resource.data.map.name is string && request.resource.data.map.name.size() > 0 && request.resource.data.map.name.size() <= 40
         && request.resource.data.map.description is string && request.resource.data.map.description.size() <= 280
-        && request.resource.data.map.minPlayers == 2
+        && request.resource.data.map.minPlayers in [1, 2, 3, 4, 5, 6, 7, 8]
         && request.resource.data.map.width is int && request.resource.data.map.width >= 20 && request.resource.data.map.width <= 240
         && request.resource.data.map.height is int && request.resource.data.map.height >= 16 && request.resource.data.map.height <= 100
         && request.resource.data.map.tiles is list && request.resource.data.map.tiles.size() == request.resource.data.map.height;
