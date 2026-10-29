@@ -186,7 +186,7 @@ export class ClientGame {
     const inputs = new Map<number, Input>([[this.me.id, input]]);
     // 他プレイヤーの入力は分からないので、フックだけは握ったままとみなす
     for (const r of this.world.runners) {
-      if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire: r.wireState !== 0, aimX: r.aimX, aimY: r.aimY });
+      if (r !== this.me) inputs.set(r.id, { ...emptyInput(), wire:this.map.abilityMode?r.hammerBrace:r.wireState!==0,fire:!!this.map.abilityMode&&r.ability==='hook'&&r.wireState!==0, aimX: r.aimX, aimY: r.aimY });
     }
     stepWorld(this.world, inputs);
   }
@@ -261,7 +261,7 @@ export class ClientGame {
     this.smoothX *= 0.85;
     this.smoothY *= 0.85;
     this.render(now);
-    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability];
+    const abilityHud=document.querySelector('#hud-ability');if(abilityHud)abilityHud.textContent='能力：'+ABILITY_NAMES[this.me.ability]+(this.me.ability==='bicycle'?` ／ 威力 ${this.me.bikePower}/3 ／ ${this.me.held?'ボール所持':'ボールなし'}`:'');
     if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
@@ -424,7 +424,7 @@ export class ClientGame {
       }
     }
     for(const b of this.world.balls){g.fillStyle='#ef334a';g.strokeStyle='#79152b';g.lineWidth=2;g.beginPath();g.arc(b.x,b.y,9,0,Math.PI*2);g.fill();g.stroke();g.fillStyle='#ffb2ab';g.beginPath();g.arc(b.x-3,b.y-3,3,0,Math.PI*2);g.fill();}
-    for(const r of this.world.runners)if(r.held){g.strokeStyle='#b1f6ed';g.lineWidth=3;g.beginPath();g.moveTo(r.x,r.y);g.lineTo(r.x+r.aimX*48,r.y+r.aimY*48);g.stroke();}
+    for(const r of this.world.runners)if(r.held&&r.ability==='hand'){g.strokeStyle='#b1f6ed';g.lineWidth=3;g.beginPath();g.moveTo(r.x,r.y);g.lineTo(r.x+r.aimX*48,r.y+r.aimY*48);g.stroke();}
 
     this.drawZones(g);
 
@@ -456,7 +456,8 @@ export class ClientGame {
     }
 
     for (const r of all) {
-      drawRunner(g, { ...r, ability:r.id===this.youId?this.me.ability:views.find(v=>v.id===r.id)?.ability, face:this.faces[r.id], shotAge:this.world.tick-(r.id===this.youId?this.me.shotTick:views.find(v=>v.id===r.id)?.shotTick??-100), name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
+      const state=r.id===this.youId?this.me:views.find(v=>v.id===r.id);
+      drawRunner(g, { ...r, hammerBrace:state?.hammerBrace,bikePower:state?.bikePower,wheelieAge:this.world.tick-(state?.wheelieTick??-100),gesture:state?.gesture,gestureAge:this.world.tick-(state?.gestureTick??-100), ability:r.id===this.youId?this.me.ability:views.find(v=>v.id===r.id)?.ability, face:this.faces[r.id], shotAge:this.world.tick-(r.id===this.youId?this.me.shotTick:views.find(v=>v.id===r.id)?.shotTick??-100), name: this.names[r.id] ?? '', me: r.id === this.youId }, now);
       drawHammerHit(g, r.x, r.y, r.aimX, r.aimY, r.hammerAge);
     }
     if (touch.active) {
@@ -576,6 +577,7 @@ export class ClientGame {
 
 function viewToRunner(v: RunnerView, map: MapDef): Runner {
   const r = newRunner(v.id, map);
+  r.hammerBrace=v.hammerBrace??false;r.bikePower=v.bikePower??1;r.wheelieTick=v.wheelieTick??-100;r.gesture=v.gesture??0;r.gestureTick=v.gestureTick??-100;
   r.ability=v.ability??'hand';r.held=v.held??null;r.wireBall=v.wireBall??-1;r.shotTick=v.shotTick??-100;
   r.x = v.x; r.y = v.y; r.vx = v.vx; r.vy = v.vy;
   r.wireState = v.ws; r.wireX = v.wx; r.wireY = v.wy; r.wireRunner = v.wr;
@@ -586,3 +588,4 @@ function viewToRunner(v: RunnerView, map: MapDef): Runner {
   if(v.spit)r.spit={...v.spit};r.wireWord=v.wg??-1;r.wireLocalX=v.wlx??0;r.wireLocalY=v.wly??0;
   return r;
 }
+

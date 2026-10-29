@@ -40,7 +40,12 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
     t.y=ny;t.ability=a;t.held=null;t.wireState=0;t.wireRunner=-1;t.wireWord=-1;t.wireBall=-1;t.spit.charge=0;
     w.pickups[key]=w.tick+150;
   }
-  const pressed=raw.fire&&!t.actionDown;t.actionDown=raw.fire;
+  const pressed=raw.fire&&!t.actionDown,subPressed=raw.wire&&!t.subDown;t.actionDown=raw.fire;t.subDown=raw.wire;
+  t.hammerBrace=t.ability==='hammer'&&raw.wire&&t.stun===0;
+  if(subPressed&&t.stun===0){
+    if(t.ability==='hand'){t.gesture=(Math.imul(w.tick+1,1103515245)^(t.id*12345))>>>0;t.gesture%=3;t.gestureTick=w.tick;}
+    if(t.ability==='bicycle'){t.bikePower=t.bikePower%3+1;t.wheelieTick=w.tick;}
+  }
   if(t.stun>0)t.held=null;
   if(pressed&&t.stun===0&&t.ability==='hand'){
     if(t.held)t.held=null;
@@ -54,16 +59,22 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
       if(candidates[0])t.held={kind:candidates[0].kind,id:candidates[0].id};
     }
   }
-  if(pressed&&t.stun===0&&t.ability==='bicycle'){
-    const b=w.balls.filter(b=>Math.hypot(b.x-t.x,b.y-(t.y+25))<85&&!blockedLine(w,t.x,t.y,b.x,b.y))
-      .sort((a,b)=>Math.hypot(a.x-t.x,a.y-t.y)-Math.hypot(b.x-t.x,b.y-t.y))[0];
-    if(b){b.vx=t.aimX*22+t.vx*.4;b.vy=t.aimY*22-3;t.shotTick=w.tick;}
+  if(t.stun===0&&t.ability==='bicycle'){
+    if(!t.held&&w.tick-t.shotTick>15){
+      const b=w.balls.find(b=>!w.runners.some(r=>(r.held?.kind==='ball'&&r.held.id===b.id)||(r.wireState===2&&r.wireBall===b.id))&&Math.hypot(b.x-t.x,b.y-(t.y+24))<48&&!blockedLine(w,t.x,t.y,b.x,b.y));
+      if(b)t.held={kind:'ball',id:b.id};
+    }
+    if(pressed&&t.held?.kind==='ball'){
+      const b=w.balls.find(b=>b.id===t.held!.id),power=[0,14,22,30][t.bikePower];
+      if(b){b.vx=t.aimX*power+t.vx*.4;b.vy=t.aimY*power-3;t.shotTick=w.tick;}t.held=null;
+    }
   }
-  return {...raw,wire:t.ability==='hook'&&raw.wire,fire:t.ability==='hammer'&&raw.fire,
-    spit:t.ability==='bun'&&raw.spit,miniSpit:t.ability==='bun'&&raw.miniSpit,clearWord:t.ability==='bun'&&raw.clearWord,weapon:undefined};
+  return {...raw,left:raw.left&&!t.hammerBrace,right:raw.right&&!t.hammerBrace,jump:raw.jump&&!t.hammerBrace,wire:t.ability==='hook'&&raw.fire,fire:t.ability==='hammer'&&raw.fire&&!t.hammerBrace,
+    spit:t.ability==='bun'&&(raw.fire||raw.spit),miniSpit:t.ability==='bun'&&(raw.wire||raw.miniSpit),clearWord:t.ability==='bun'&&raw.clearWord,weapon:undefined};
 }
 export function stepBalls(w:World,collision:WordCollision){
   for(const b of w.balls){
+    if(w.runners.some(r=>r.held?.kind==='ball'&&r.held.id===b.id))continue;
     b.vy=Math.min(24,b.vy+.4);b.vx*=.994;
     const n=Math.max(1,Math.ceil(Math.max(Math.abs(b.vx),Math.abs(b.vy))));
     for(let i=0;i<n;i++){
@@ -81,10 +92,10 @@ export function stepBalls(w:World,collision:WordCollision){
 }
 export function moveHeld(w:World,collision:WordCollision){
   for(const t of w.runners){
-    if(!t.held||t.ability!=='hand'||t.stun){t.held=null;continue;}
+    if(!t.held||!['hand','bicycle'].includes(t.ability)||t.stun){t.held=null;continue;}
     const h=t.held,o=h.kind==='ball'?w.balls.find(o=>o.id===h.id):h.kind==='word'?w.words.find(o=>o.id===h.id):w.runners.find(o=>o.id===h.id);
     if(!o){t.held=null;continue;}
-    const x=t.x+t.aimX*48,y=t.y+t.aimY*48,rad=h.kind==='ball'?9:16,offset=h.kind==='word'?16:0;
+    const bike=t.ability==='bicycle',x=bike?t.x+(t.aimX>=0?24:-24):t.x+t.aimX*48,y=bike?t.y+12+Math.abs(Math.sin(w.tick*.32))*16:t.y+t.aimY*48,rad=h.kind==='ball'?9:16,offset=h.kind==='word'?16:0;
     if(blockedLine(w,t.x,t.y,x,y)||collision.staticRect(x-rad,y-rad,rad*2,rad*2)||wordBoxSolid(w,x-rad,y-rad,rad*2,rad*2,h.kind==='word'?h.id:-1)
       ||(h.kind==='runner'&&(o as Runner).ability==='bicycle'&&bicycleBlocked(w,x,y))){t.held=null;continue;}
     // Move in small steps so held objects cannot pass through walls when the aim turns.

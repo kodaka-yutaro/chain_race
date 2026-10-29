@@ -587,6 +587,7 @@ function drawLifts(g: CanvasRenderingContext2D, m: MapDef, st: LiveState, now: n
 // ---------- キャラとフック ----------
 
 export interface RunnerLook {
+  hammerBrace?:boolean;bikePower?:number;wheelieAge?:number;gesture?:number;gestureAge?:number;
   ability?:Ability;face?:string;shotAge?:number;
   id: number; x: number; y: number; vx: number; grounded: boolean;
   stun: number; aimX: number; aimY: number; hammerAge: number;
@@ -635,10 +636,13 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   const face = r.aimX >= 0 ? 1 : -1;
   const body = stunned ? '#a9b4c2' : '#f5c9a5';
   if(r.ability==='bicycle'){
+    g.save();g.translate(r.x-19*face,r.y+28);g.rotate((r.wheelieAge??100)<30?-face*Math.sin((r.wheelieAge??0)/30*Math.PI)*(.15+(r.bikePower??1)*.12):0);g.translate(-(r.x-19*face),-(r.y+28));
     g.strokeStyle='#23304b';g.lineWidth=4;for(const dx of [-19,19]){g.beginPath();g.arc(r.x+dx,r.y+28,11,0,Math.PI*2);g.stroke();}
     g.strokeStyle='#e94a5e';g.lineWidth=3;g.beginPath();g.moveTo(r.x-19,r.y+28);g.lineTo(r.x-5,r.y+10);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x-19,r.y+28);g.lineTo(r.x+6,r.y+14);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x+14,r.y+5);g.stroke();
     g.save();g.translate(r.x+14,r.y+5);g.rotate((r.shotAge??100)<12?Math.sin((r.shotAge??0)/12*Math.PI)*1.2:0);g.strokeStyle='#ffd578';g.beginPath();g.moveTo(-4,0);g.lineTo(10,-3);g.stroke();g.restore();
   }
+  if(r.ability==='bicycle')g.restore();
+  if(r.ability==='hand'&&(r.gestureAge??100)<65){g.save();g.font='24px sans-serif';g.textAlign='center';g.fillText(['✊','✌','✋'][r.gesture??0],r.x,r.y-32);g.restore();}
   const puff=r.spitCharge?Math.sin((1-r.spitCharge/19)*Math.PI/2):0;
 
   // 足（歩くと交互に動く、空中では縮める）
@@ -656,7 +660,7 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   // ハンマー（ねらう方向に持つ。振った直後は大きく振り下ろす）
   if(r.ability==='hammer'){
   const swing = r.hammerAge >= 0 && r.hammerAge < 8 ? Math.sin((r.hammerAge / 8) * Math.PI) * 1.4 : 0;
-  const ha = Math.atan2(r.aimY, r.aimX) - face * (0.9 - swing);
+  const ha = r.hammerBrace?Math.PI/2:Math.atan2(r.aimY, r.aimX) - face * (0.9 - swing);
   g.save();
   g.translate(r.x, r.y);
   g.rotate(ha);

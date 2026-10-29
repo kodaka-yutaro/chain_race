@@ -79,7 +79,7 @@ test('DDNetの透過壁はプレイヤーを止め、フックだけを奥の岩
   for (let y = 2; y < 13; y++) { rows[y][8] = 'O'; rows[y][12] = '#'; }
   m.tiles = rows.map(row => row.join(''));
   const world = createWorld(m), r = newRunner(1, m); r.ability='hook'; r.x = 5.5 * TILE; r.y = 6.5 * TILE; world.runners.push(r);
-  for (let i = 0; i < 24; i++) stepWorld(world, new Map([[1, { ...emptyInput(), wire: true, right: true, aimX: 1, aimY: 0 }]]));
+  for (let i = 0; i < 24; i++) stepWorld(world, new Map([[1, { ...emptyInput(), fire: true, right: true, aimX: 1, aimY: 0 }]]));
   assert.equal(r.wireState, 2);
   assert.ok(r.wireX > 11 * TILE);
   assert.ok(r.x < 8 * TILE - 13);

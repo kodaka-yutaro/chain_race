@@ -139,6 +139,7 @@ export const emptyInput = (): Input => ({
 export const WIRE_IDLE = 0, WIRE_FLYING = 1, WIRE_ATTACHED = 2;
 
 export interface Runner {
+  subDown:boolean; hammerBrace:boolean; bikePower:number; wheelieTick:number; gesture:number; gestureTick:number;
   ability: Ability; actionDown: boolean; wireBall: number; shotTick:number;
   held: {kind:'ball'|'word'|'runner';id:number}|null;
   id: number;
@@ -305,6 +306,7 @@ function saturatedAdd(min: number, max: number, cur: number, mod: number): numbe
 export function newRunner(id: number, map: MapDef): Runner {
   const s = findSpawn(map);
   return {
+    subDown:false,hammerBrace:false,bikePower:1,wheelieTick:-100,gesture:0,gestureTick:-100,
     ability:'hand',actionDown:false,wireBall:-1,shotTick:-100,held:null,
     id, x: s.x, y: s.y, vx: 0, vy: 0, grounded: false, jumped: 0,
     prevJump: false, prevWire: false, prevFire: false,
@@ -335,7 +337,7 @@ export function respawn(w: World, t: Runner) {
   t.stun = 0; t.jumped = 0;
   t.raceStart = -1;
   t.finishedTime = -1;
-  t.spit.charge=0;t.held=null;t.ability='hand';t.wireBall=-1;
+  t.spit.charge=0;t.hammerBrace=false;t.subDown=false;t.bikePower=1;t.gestureTick=-100;t.wheelieTick=-100;t.held=null;t.ability='hand';t.wireBall=-1;
   if (w.map.dd) t.dd = newDDRunner();
   for (const o of w.runners) if (o.wireRunner === t.id) releaseWire(o);
 }
@@ -557,7 +559,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         }
       }
       const ball=w.balls.find(b=>{const c=closestPointOnSegment(t.wireX,t.wireY,hit.x,hit.y,b.x,b.y);return Math.hypot(c.x-b.x,c.y-b.y)<11;});
-      if(ball){t.wireState=WIRE_ATTACHED;t.wireBall=ball.id;t.wireX=ball.x;t.wireY=ball.y;}
+      if(ball){for(const holder of w.runners)if(holder.held?.kind==='ball'&&holder.held.id===ball.id)holder.held=null;t.wireState=WIRE_ATTACHED;t.wireBall=ball.id;t.wireX=ball.x;t.wireY=ball.y;}
       else if (hit.teleport && t.dd) {
         t.wireX=hit.teleport.x;t.wireY=hit.teleport.y;
         t.dd.hookBaseX=t.wireX;t.dd.hookBaseY=t.wireY;
@@ -671,11 +673,13 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   stepBalls(w,collision);
   const fall = new Map<Runner, number>();
   const before = new Map<Runner, [number,number]>();
+  const braceGrounded=new Set(w.runners.filter(t=>t.hammerBrace&&checkGrounded(w,t)));
   for (const t of w.runners) {
     before.set(t,[t.x,t.y]);
     const m = PHYS.maxSpeed;
     t.vx = Math.max(-m, Math.min(m, t.vx));
     t.vy = Math.max(-m, Math.min(m, t.vy));
+    if(t.hammerBrace){t.vx=0;t.vy=checkGrounded(w,t)?0:Math.max(PHYS.gravity,t.vy);}
     ddMove(w,t);
     fall.set(t, t.vy);
     moveBox(w, t, collision);
@@ -709,6 +713,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
   }
 
+  for(const t of w.runners)if(t.hammerBrace){const origin=before.get(t)!;t.x=origin[0];if(braceGrounded.has(t)){t.y=origin[1];t.vy=0;}t.vx=0;}
   moveHeld(w,collision);
 
   // タイル効果
