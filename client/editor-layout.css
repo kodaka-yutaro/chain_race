@@ -47,3 +47,6 @@ body:has(#screen-editor:not(.hidden)) .music-dock{display:none}
 
 .ed-map-space{position:relative}
 #screen-editor .ed-map-space canvas{position:sticky;left:0;top:0;display:block;max-width:none;max-height:none}
+
+#screen-editor [data-brush-preview]{position:fixed;z-index:50;display:flex;align-items:center;gap:6px;pointer-events:none;background:#101c2df2;border:1px solid #9dcbd6;border-radius:6px;padding:4px 8px;color:#fff;font-size:12px;box-shadow:0 3px 12px #0007;max-width:170px}
+#screen-editor [data-brush-preview] canvas{width:28px;height:28px;flex:none}

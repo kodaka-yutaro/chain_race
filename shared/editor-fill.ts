@@ -16,3 +16,24 @@ export function enclosedCells(map:MapDef,x:number,y:number):number[]{
  }
  return cells;
 }
+
+/** Copy the selected cell through empty cells, stopping before any occupied layer or map edge. */
+export function extendCell(map:MapDef,x:number,y:number,dx:number,dy:number):number{
+ if(Math.abs(dx)+Math.abs(dy)!==1||x<0||y<0||x>=map.width||y>=map.height)return 0;
+ const keys=['game','front','tele','speed','switches','entities'] as const;
+ const idx=y*map.width+x,tile=map.tiles[y][x],parts=keys.flatMap(key=>(map.dd?.[key]??[]).filter(r=>r[0]===idx).map(row=>({key,row})));
+ const doors=(map.dd?.doors??[]).filter(r=>Math.floor(r[0]/32)===x&&Math.floor(r[1]/32)===y);
+ if(tile==='S'||tile==='.'&&!parts.length&&!doors.length)return 0;
+ const occupied=new Set<number>();
+ for(const key of keys)for(const row of map.dd?.[key]??[])occupied.add(row[0]);
+ for(const row of map.dd?.doors??[])occupied.add(Math.floor(row[1]/32)*map.width+Math.floor(row[0]/32));
+ let count=0;
+ for(let cx=x+dx,cy=y+dy;cx>=0&&cy>=0&&cx<map.width&&cy<map.height;cx+=dx,cy+=dy){
+  const to=cy*map.width+cx;if(map.tiles[cy][cx]!=='.'||occupied.has(to))break;
+  map.tiles[cy]=map.tiles[cy].slice(0,cx)+tile+map.tiles[cy].slice(cx+1);
+  for(const {key,row} of parts)(map.dd![key]??=[]).push([to,...row.slice(1)]);
+  for(const row of doors)map.dd!.doors.push([row[0]+(cx-x)*32,row[1]+(cy-y)*32,...row.slice(2)]);
+  count++;
+ }
+ return count;
+}

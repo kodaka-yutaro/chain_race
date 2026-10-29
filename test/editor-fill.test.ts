@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {enclosedCells} from '../shared/editor-fill';
+import {enclosedCells,extendCell} from '../shared/editor-fill';
 import {newCourseMap} from '../shared/courses';
 import {createWorld,newRunner,stepWorld,emptyInput,findSpawn,tileAt} from '../shared/physics';
 import {ddTiles} from '../shared/ddrace';
@@ -28,4 +28,15 @@ test('転送番号1と2の入口はそれぞれ同番号の出口へ移動する
  const m=newCourseMap(30,20);m.dd!.tele=[[5*30+4,26,1],[5*30+8,26,2],[10*30+15,27,1],[12*30+22,27,2]];
  const w=createWorld(m),r=newRunner(1,m);w.runners.push(r);
  for(const [x,ex,ey] of [[4,15,10],[8,22,12]]){r.x=x*32+16;r.y=5*32+16;ddTiles(w,r);assert.equal(r.x,ex*32+16);assert.equal(r.y,ey*32+16);}
+});
+
+test('矢印延長は障害物の手前で止まり、番号付き転送パーツも複製する',()=>{
+ const m=newCourseMap(20,16);m.tiles=Array.from({length:16},()=>'.'.repeat(20));
+ m.tiles[4]='..#....X............';
+ assert.equal(extendCell(m,2,4,1,0),4);assert.equal(m.tiles[4],'..#####X............');
+ assert.equal(extendCell(m,2,4,-1,0),2);assert.equal(extendCell(m,2,4,1,0),0);
+ m.dd!.tele=[[8*20+5,27,9]];m.dd!.game=[[8*20+8,1,0]];
+ assert.equal(extendCell(m,5,8,1,0),2);assert.deepEqual(m.dd!.tele,[[165,27,9],[166,27,9],[167,27,9]]);
+ assert.equal(extendCell(m,3,9,0,1),0);
+ m.tiles[9]='...S................';assert.equal(extendCell(m,3,9,0,1),0);
 });
