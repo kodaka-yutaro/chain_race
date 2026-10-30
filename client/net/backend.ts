@@ -3,7 +3,7 @@ import type { MapDef } from '../../shared/physics';
 /** アカウント・大部屋の一覧・接続の仲介・記録を受け持つ外部サービス */
 export interface Account { uid: string; name: string }
 
-export interface HubInfo { id: string; name: string; count: number; capacity: number }
+export interface HubInfo { id: string; name: string; count: number; capacity: number; visibility?: 'public' | 'invite'; members?: string[] }
 
 export interface Backend {
   /** Firebase の設定がなく、同じブラウザの中だけで試す動作のとき true */
@@ -11,7 +11,7 @@ export interface Backend {
 
   listCourses(): Promise<Course[]>;
   publishCourse(map: MapDef, authorName: string): Promise<Course>;
-  releaseCourse(id: string, results: { id: number; name: string; time: number }[]): Promise<void>;
+  releaseCourse(id: string, results: { id: number; name: string; time: number }[]): Promise<string | null>;
   account(): Promise<Account | null>;
   register(name: string, password: string): Promise<Account>;
   login(name: string, password: string): Promise<Account>;
@@ -21,8 +21,8 @@ export interface Backend {
 
   listHubs(): Promise<HubInfo[]>;
   /** 主のいない大部屋なら自分が主になる。id が null なら新しく作る */
-  claimHub(id: string | null, name: string, hostId: string): Promise<{ id: string; name: string; role: 'host' | 'join' }>;
-  heartbeat(id: string, count: number): Promise<void>;
+  claimHub(id: string | null, name: string, hostId: string, visibility?: 'public' | 'invite'): Promise<{ id: string; name: string; role: 'host' | 'join' }>;
+  heartbeat(id: string, count: number, members?: string[]): Promise<void>;
   releaseHub(id: string): Promise<void>;
 
   /** 主: 参加したい人からの接続要求を受け取る */
@@ -37,11 +37,7 @@ export interface Backend {
 }
 
 /** いつも一覧に出す大部屋。誰もいなければ、最初に入った人が主になる */
-export const PERMANENT_HUBS = [
-  { id: 'hub1', name: '大部屋 1' },
-  { id: 'hub2', name: '大部屋 2' },
-  { id: 'hub3', name: '大部屋 3' },
-];
+export const PERMANENT_HUBS: {id:string;name:string}[] = [];
 
 /** 主からの更新がこれより古い大部屋は、主がいないものとみなす */
 export const HUB_STALE_MS = 75_000;

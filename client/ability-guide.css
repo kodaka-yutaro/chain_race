@@ -1,0 +1,5 @@
+#ability-guide{margin-top:24px;border-top:1px solid #ffffff26;padding-top:20px;min-width:0}
+.guide-heading,.guide-controls{display:flex;justify-content:space-between;align-items:center;gap:12px}.guide-heading{font-weight:700}.guide-count{font-size:12px;opacity:.65}
+.guide-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.guide-tabs button{flex:1;padding:8px 10px;font-size:13px;white-space:nowrap}.guide-tabs button[aria-selected=true]{background:#e9ba76;color:#19263a;border-color:#e9ba76}
+.guide-image{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:10px;background:#172438}.guide-details{min-height:234px}.guide-details h4{font-size:20px;margin:14px 0 10px}.guide-details p{margin:10px 0!important;font-size:13px;line-height:1.65}.guide-details strong,.guide-details span{display:block}.guide-details strong{color:#f1cc96;margin-bottom:3px}.guide-controls{margin-top:16px}.guide-controls button{padding:8px 16px}
+@media(max-width:600px){.guide-details{min-height:260px}}

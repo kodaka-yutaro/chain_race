@@ -1,7 +1,8 @@
+import {registerCourse} from '../shared/maps';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorld, newRunner, emptyInput, stepWorld, isSolid, WIRE_ATTACHED, WIRE_IDLE, type World, type Input } from '../shared/physics';
-import { mapById } from '../shared/maps';
+import { mapById } from '../shared/legacy-maps';
 import { newCourseMap, validateCourseMap } from '../shared/courses';
 import { WORD_CELL, WORD_CHARGE, WORD_FORM, WORD_COOLDOWN, MINI_SIZE, MINI_LIMIT, wordBoxHit, type WordBlock } from '../shared/word-blocks';
 import { HostHub, type Link } from '../client/host/hub';
@@ -16,6 +17,24 @@ function tick(w:World,n:number,input:Partial<Input>={}) {
   for(let i=0;i<n;i++)stepWorld(w,new Map([[1,{...emptyInput(),...input}]]));
 }
 const block=(owner=1):WordBlock=>({id:1,owner,x:300,y:400,vx:1.15,vy:0,born:0,expires:10000,solid:true,mouthX:250,mouthY:400});
+
+test('自転車は車輪で大中華に乗り、車体ごと運ばれ、めり込まない',()=>{
+  const w=createWorld(newCourseMap(40,30)),r=newRunner(1,w.map),b=block(2);
+  const owner=newRunner(2,w.map);owner.ability='bun';owner.x=100;w.runners.push(owner);
+  w.runners.push(r);w.words=[b];r.ability='bicycle';r.x=b.x+60;r.y=b.y-40;r.vx=r.vy=0;
+  const x=r.x;tick(w,40);
+  assert.ok(r.x>x+40);assert.ok(Math.abs(r.y+40-b.y)<1);
+  assert.equal(wordBoxHit(b,r.x-29.99,r.y-13.99,59.98,53.98),false);
+});
+
+test('上昇する大中華は天井との間の自転車を潰さず止まる',()=>{
+  const m=newCourseMap(40,30);m.tiles[10]='#'.repeat(40);
+  const w=createWorld(m),r=newRunner(1,m),b={...block(2),y:430,vx:0,vy:-1};
+  const owner=newRunner(2,m);owner.ability='bun';owner.x=100;w.runners.push(owner);
+  w.runners.push(r);w.words=[b];r.ability='bicycle';r.x=b.x+60;r.y=b.y-40;r.vx=r.vy=0;
+  tick(w,80);assert.ok(r.y-14>=352);assert.ok(b.y>=406);assert.equal(b.vy,-1);
+  assert.equal(wordBoxHit(b,r.x-29.99,r.y-13.99,59.98,53.98),false);
+});
 
 test('文字の線にだけ当たり判定があり、中の穴と文字間は空洞',()=>{
   const {w}=setup(),b=block();w.words=[b];
@@ -114,22 +133,24 @@ test('フックの支点は動く文字に追従し、文字が消えると外�
 
 test('コース保存に技の設定が残り、二人に同一の文字と溜め状態が配信される',()=>{
   const m=validateCourseMap({...newCourseMap(40,24),wordBlocks:true});assert.equal(m.wordBlocks,true);
-  assert.equal(validateCourseMap({...m,wordBlocks:'false'}).wordBlocks,undefined);
+  assert.equal(validateCourseMap({...m,wordBlocks:'false'}).wordBlocks,true);
+  registerCourse(mapById('word-practice')!);
   const hub=new HostHub('words-test','文字の部屋');
   function peer(name:string){
     const messages:ServerMsg[]=[];
     const link:Link={send:m=>messages.push(structuredClone(m)),close:()=>{},onMessage:()=>{},onClose:()=>{}};
-    hub.connect(link);link.onMessage({t:'hello',name,guest:true});
+    hub.connect(link,hub.members.size===0);link.onMessage({t:'hello',name,guest:true});
     link.onMessage({t:'stageJoin',stageId:'word-practice'});
     return {messages,link};
   }
-  const a=peer('赤'),b=peer('青');
+  const a=peer('赤'),b=peer('青');a.link.onMessage({t:'roomStart'});
   const game=[...hub.games].find(g=>g.stageId==='word-practice')!;
+  game.world.runners[0].ability='bun';
   // Move the partner clear of the emitted silhouette; both remain on the ground.
   game.world.runners[1].x=650;
   for(let i=0;i<30;i++)hub.tick();
   a.link.onMessage({t:'input',gameId:game.id,list:[{seq:1,input:{...emptyInput(),spit:true}}]});
-  for(let seq=2;seq<=14;seq++)a.link.onMessage({t:'input',gameId:game.id,list:[{seq,input:emptyInput()}]});
+  for(let seq=2;seq<=14;seq++)a.link.onMessage({t:'input',gameId:game.id,list:[{seq,input:{...emptyInput(),spit:true}}]});
   for(let i=0;i<3;i++)hub.tick();
   const charging=b.messages.filter(m=>m.t==='snap').filter(m=>m.gameId===game.id).at(-1)!;
   assert.ok(charging.others[0].spit!.charge>0);
