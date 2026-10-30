@@ -111,7 +111,7 @@ test('ミニは積める実体の箱になり、フックで箱を手元へ引�
   tick(w,25,{wire:true,aimX:1,aimY:0});
   assert.equal(r.wireWord,bottom.id);assert.equal(r.wireState,WIRE_ATTACHED);
   assert.ok(bottom.x<325,`mini x=${bottom.x}`);
-  assert.ok(Math.abs(r.x-200)<1,`runner x=${r.x}`);
+  assert.ok(r.x>220&&r.x<bottom.x,`runner follows moving anchor: x=${r.x}`);
   tick(w,70);assert.equal(r.wireState,WIRE_IDLE);assert.equal(bottom.vy,0);
 });
 

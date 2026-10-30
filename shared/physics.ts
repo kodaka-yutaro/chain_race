@@ -666,20 +666,14 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
         const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
         if(d>PHYS.hookLength+32)releaseWire(t);
         else if(!lockHook&&d>38){
-          // A taut chain cancels separating radial velocity in every direction.
-          // The box has four times the runner's effective mass; both receive the
-          // same opposite impulse. There is no launch state or hammer trigger here.
-          const outward=((t.vx-block.vx)*dx+(t.vy-block.vy)*dy)/d;
-          if(outward>0){
-            const impulse=Math.min(40,outward)/(1+.25);
-            t.vx-=dx/d*impulse;t.vy-=dy/d*impulse;
-            block.vx+=dx/d*impulse*.25;block.vy+=dy/d*impulse*.25;
-          }
           // Pull gently without clipping the much faster velocity of a hammer hit.
           block.vx=saturatedAdd(-6,6,block.vx,dx/d*.95);
           block.vy=saturatedAdd(-6,10,block.vy,dy/d*.95);
         }
-      } else if (!lockHook&&Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
+      }
+      // Movable anchors pull the runner with the same acceleration and speed
+      // rule as terrain. Their own gravity, velocity and collision stay active.
+      if (t.wireState===WIRE_ATTACHED && t.wireRunner<0 && !lockHook&&Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
         // 掛かった所へ引き寄せられる
         const d = Math.hypot(t.wireX - t.x, t.wireY - t.y);
         let hx = ((t.wireX - t.x) / d) * PHYS.hookDragAccel;
