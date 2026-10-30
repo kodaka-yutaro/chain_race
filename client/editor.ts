@@ -1,3 +1,4 @@
+import {drawCourseSigns} from './course-signs';
 import {MUSIC,musicId} from '../shared/music';
 import {courseMusic} from './music';
 import {BACKGROUNDS,backgroundId} from '../shared/backgrounds';
@@ -112,6 +113,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     }
     for(const [x,y,dx,dy,length,number] of map.dd?.doors??[]){g.strokeStyle='#ffd48b';g.lineWidth=3;g.beginPath();g.moveTo(x/32*size,y/32*size);g.lineTo((x+dx*length)/32*size,(y+dy*length)/32*size);g.stroke();drawPart(g,'dd:doors:49:0',Math.floor(x/32)*size,Math.floor(y/32)*size,size,String(number));}
     }
+    g.save();g.scale(size/32,size/32);drawCourseSigns(g,map);g.restore();
     if(selected){g.strokeStyle='#ffe277';g.lineWidth=2;g.strokeRect(selected.x*size+1,selected.y*size+1,Math.max(1,size-2),Math.max(1,size-2));}
     q<HTMLButtonElement>('[data-undo]').disabled = !history.length; q<HTMLButtonElement>('[data-redo]').disabled = !future.length;
   }

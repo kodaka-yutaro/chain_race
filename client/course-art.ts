@@ -14,7 +14,7 @@ export function drawCourseArea(g:CanvasRenderingContext2D,id:string,x:number,y:n
   if(kind==='stop'){
     const flags=Number(id.split(':')[3])&11;
     const angle=({0:Math.PI/2,1:Math.PI/2,8:Math.PI,9:Math.PI,3:-Math.PI/2,2:-Math.PI/2,11:0,10:0} as Record<number,number>)[flags]??0;
-    g.translate(16,16);g.rotate(angle);g.strokeStyle='rgba(210,235,245,.75)';g.lineWidth=2;g.lineCap='round';g.lineJoin='round';g.beginPath();
+    g.translate(16,16);g.rotate(angle);g.strokeStyle='rgba(115,153,174,.95)';g.lineWidth=2;g.lineCap='round';g.lineJoin='round';g.beginPath();
     for(const dx of [-7,7]){g.moveTo(dx+3,-8);g.lineTo(dx-3,0);g.lineTo(dx+3,8);}g.stroke();
   }else if(kind==='freeze'||kind==='thaw'){
 

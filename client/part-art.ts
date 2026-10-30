@@ -33,7 +33,7 @@ export function drawPart(g: CanvasRenderingContext2D, id: string, x: number, y: 
     const defs: Record<string, string[]> = {
       '#':['rock','#91b58a'], X:['metal','#aebdce'], '.':['erase','#94a3b8'], '~':['ice','#68d6f1'], U:['ice','#f5c575','✓'], '^':['spike','#ff8c9b'],
       G:['symbol','#f6d28b','⚒'], P:['ghost','#d2bbff'], V:['bike','#82d9df'], N:['bun','#ffe0a7'], o:['ball','#ff6579'],
-      O:['metal','#88e4da','↔'], J:['spring','#a6df84'], S:['spawn','#ffd27d'], '>':['speed','#8be5ad'], F:['flag','#f3a6dc'],
+      O:['metal','#88e4da','↔'], J:['spring','#a6df84'], S:['spawn','#ffd27d'], '>':['speed','#8be5ad'], F:['flag','#fff'],
     };
     if (defs[id]) [kind,color,mark=''] = defs[id];
     if (/^[1-5]$/.test(id)) { kind='switch'; color='#ffc175'; badge=id; }
@@ -56,7 +56,7 @@ export function drawPart(g: CanvasRenderingContext2D, id: string, x: number, y: 
   else if(kind==='door'){g.strokeRect(5,3,22,26);line([12,4,12,28]);line([20,4,20,28]);}
   else if(kind==='switch'){g.strokeRect(3,22,26,6);g.fillRect(8,16,16,6);if(mark)text(mark,16,9,13);}
   else if(kind==='bridge'){line([2,21,30,21]);for(let a=5;a<30;a+=7)line([a,15,a,26]);}
-  else if(kind==='flag'){line([7,28,7,3]);for(let a=0;a<4;a++)for(let b=0;b<3;b++){g.fillStyle=(a+b)%2?'#f3a6dc':'#fff';g.fillRect(8+a*5,4+b*5,5,5);}}
+  else if(kind==='flag'){line([7,28,7,3]);for(let a=0;a<4;a++)for(let b=0;b<3;b++){g.fillStyle=(a+b)%2?'#16191f':'#fff';g.fillRect(8+a*5,4+b*5,5,5);}}
   else if(kind==='spawn'){circle(16,10,5);line([7,27,7,23,12,18,20,18,25,23,25,27]);}
   else if(kind==='ghost'){g.beginPath();g.arc(16,13,10,Math.PI,0);g.lineTo(26,28);g.lineTo(20,24);g.lineTo(16,28);g.lineTo(11,24);g.lineTo(6,28);g.closePath();g.fill();g.fillStyle='#253047';circle(12,13,2,true);circle(20,13,2,true);}
   else if(kind==='bike'){circle(8,23,6);circle(25,23,5);line([8,23,13,12,20,23,8,23,19,14,25,23]);line([10,11,16,11]);line([19,14,19,8,24,8]);}
