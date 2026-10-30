@@ -88,7 +88,7 @@ test('頭上の箱を打ち上げても天井へ埋まらず、鎖を離すと�
   assert.equal(free.r.wireState,WIRE_IDLE);assert.ok(Math.abs(free.r.y-y)<1);assert.ok(free.w.words[0].y<y-170);
 });
 
-test('左右どちらも弱めたミニの反動で鎖に引かれ、以前の高速発射にはならない',()=>{
+test('左右どちらも壁フックの速度範囲でミニを追い、以前の高速発射にはならない',()=>{
   for(const dir of [-1,1]){
     const {w,r}=arena();r.x=700;const start=r.x;
     tick(w,1,{miniSpit:true,wire:true,fire:true,aimX:dir,aimY:0});
@@ -97,18 +97,33 @@ test('左右どちらも弱めたミニの反動で鎖に引かれ、以前の�
       tick(w,1,{wire:true,aimX:dir,aimY:0,right:dir===1,left:dir===-1});
       speed=Math.max(speed,r.vx*dir);
     }
-    assert.ok(speed>5&&speed<12,`speed=${speed}`);assert.ok((r.x-start)*dir>60&&(r.x-start)*dir<150,`distance=${(r.x-start)*dir}`);separate(w);
+    assert.ok(speed>5&&speed<15,`speed=${speed}`);assert.ok((r.x-start)*dir>60&&(r.x-start)*dir<15*13,`distance=${(r.x-start)*dir}`);separate(w);
   }
 });
 
-test('鎖はハンマーを条件にせず、離れて飛んでいく箱の速度をどの方向にも伝える',()=>{
-  for(const [dx,dy] of [[1,0],[-1,0],[0,-1],[.707,-.707]]){
-    const {w,r}=arena();r.x=700;r.y=500;
-    const b=mini(w,r.x+dx*55-16,r.y+dy*55-16);b.vx=dx*20;b.vy=dy*20;
-    tick(w,1,{wire:true,aimX:dx,aimY:dy});
-    assert.equal(r.wireState,WIRE_ATTACHED);assert.equal(b.hitTick,undefined);
-    assert.ok(r.vx*dx+r.vy*dy>12);assert.ok(b.vx*dx+b.vy*dy<20,'箱にも反作用がある');
+test('mini and ball anchors apply exactly the terrain hook pull without pinning the objects',()=>{
+ for(const [dx,dy] of [[1,0],[-1,0],[0,-1],[0,1],[.6,-.8]])for(const distance of [40,100])for(const velocity of [0,20])for(const direction of [-1,0,1]){
+  for(const kind of ['mini','ball']){
+   const {w,r}=arena();r.x=700;r.y=500;r.vx=velocity;r.vy=-velocity/2;
+   const x=r.x+dx*distance,y=r.y+dy*distance;
+   r.wireState=WIRE_ATTACHED;r.prevWire=true;r.wireX=x;r.wireY=y;
+   let object:{x:number;y:number;vx:number;vy:number}|undefined;
+   if(kind==='mini'){const b=mini(w,x-16,y-16);b.vx=dx*20;b.vy=dy*20;r.wireWord=b.id;r.wireLocalX=r.wireLocalY=16;object=b;}
+   if(kind==='ball'){const b={id:0,x,y,vx:dx*20,vy:dy*20,homeX:x,homeY:y};w.balls.push(b);r.wireBall=b.id;object=b;}
+   const before=object&&{x:object.x,y:object.y};
+   tick(w,1,{wire:true,left:direction<0,right:direction>0});
+   // At 40px an object may touch the player. Compare pull only when separated.
+   if(distance===100){
+    // Minis advance before player controls; compare terrain at that updated anchor.
+    const fixed=arena();fixed.r.x=700;fixed.r.y=500;fixed.r.vx=velocity;fixed.r.vy=-velocity/2;
+    fixed.r.wireState=WIRE_ATTACHED;fixed.r.prevWire=true;fixed.r.wireX=r.wireX;fixed.r.wireY=r.wireY;
+    tick(fixed.w,1,{wire:true,left:direction<0,right:direction>0});
+    assert.deepEqual([r.vx,r.vy,r.x,r.y],[fixed.r.vx,fixed.r.vy,fixed.r.x,fixed.r.y]);
+   }
+   assert.equal(r.wireState,WIRE_ATTACHED);
+   if(object)assert.ok(Math.hypot(object.x-before!.x,object.y-before!.y)>1,'anchor remains a moving physical body');
   }
+ }
 });
 
 test('ミニは持ち主ごとに5個。6個目は古い箱と交換し、生成失敗では既存の5個を残す',()=>{
