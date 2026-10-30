@@ -15,7 +15,7 @@ export function drawDD(g:CanvasRenderingContext2D,w:World,x0:number,y0:number,x1
     for(const row of [c.game.get(idx),c.front.get(idx)]) {
       if(!row)continue;
       const [,type,flags]=row;const part=DD_PARTS.find(p=>p.type===type&&p.layer==='game');if(part)text=part.name.slice(0,4);
-      if(type===60){text=({0:'↓',8:'←',3:'↑',11:'→',2:'↑',10:'→',1:'↓',9:'←'} as Record<number,string>)[flags&11]??'止';col='#f1c56b';}
+      if(type===60||type===240){text=({0:'↓',8:'←',3:'↑',11:'→',2:'↑',10:'→',1:'↓',9:'←'} as Record<number,string>)[flags&11]??'止';col='#f1c56b';}
       if(type===62){text='止';col='#b3a8d1';}
       if(type===21)text='SOLO';if(type===22)text='DUO';
       if(type===17)text='鉤∞';if(type===18)text='鉤';
@@ -41,7 +41,7 @@ export function drawDD(g:CanvasRenderingContext2D,w:World,x0:number,y0:number,x1
         const front=c.front.get(idx),game=c.game.get(idx);
         const row=front??game??tele;
         const layer=front?'front':game?'game':'tele';
-        if(row){const id=`dd:${layer}:${row[1]}:${layer==='tele'?0:row[2]}`;if(areaKind(id))spriteDrawn=drawCourseArea(g,id,px,py,32);}
+        if(row){const id=`dd:${layer}:${row[1]}:${layer==='tele'?0:row[2]}`;if(areaKind(id))spriteDrawn=drawCourseArea(g,id,px,py,32,undefined,layer==='tele'?(row[3]??0):0);}
       }
     }
     if(text&&!spriteDrawn){g.fillStyle='#101d32e8';g.fillRect(px+1,py+1,30,30);g.strokeStyle=col;g.lineWidth=1;g.strokeRect(px+2,py+2,28,28);g.fillStyle=col;g.fillText(text,px+16,py+16,28);}

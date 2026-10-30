@@ -36,7 +36,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     <div class="ed-workspace">
       <aside class="ed-palette" aria-label="パーツを選ぶ"><input data-search type="search" placeholder="パーツを検索" aria-label="パーツを検索"><div data-categories class="ed-categories"></div><section class="ed-recent"><h3>最近使ったパーツ</h3><div data-recent role="group" aria-label="最近使ったパーツ"></div></section><div class="tile-tools" role="group" aria-label="置くタイル"></div><div class="ed-pages"><button data-page-prev aria-label="前のパーツ">←</button><span data-page-info></span><button data-page-next aria-label="次のパーツ">→</button></div></aside>
       <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><div class="ed-map-space"><canvas aria-label="タイルを選んで描く"></canvas></div></div><div class="ed-canvas-hint">右クリックでパーツを拾う · 矢印で延長 · Rで元に戻す · Pで塗る · Eで消す · Shift+Eで5×5消去 · ＋／−で倍率 · Spaceで移動<span data-cursor></span></div></main>
-      <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">配置済みパーツは「マス選択」か右クリックで選ぶと設定を変更できます。</p></aside>
+      <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="tele-color">テレポートの色<select data-tele-color><option value="0">黒</option><option value="1">明るい灰色</option></select></label><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">配置済みパーツは「マス選択」か右クリックで選ぶと設定を変更できます。</p></aside>
     </div>
     <footer class="ed-footer"><span data-status role="status">下書きはこの端末に自動保存</span><button data-export>ファイルに保存</button><label class="file-button">開く<input data-import type="file" accept="application/json,.json"></label><button data-publish>プレリリース</button></footer>
     <dialog class="ed-dialog" data-settings-dialog><div class="ed-dialog-head"><h2>コース設定</h2><button data-dismiss>閉じる</button></div><button data-backgrounds>背景を選ぶ</button><section class="ed-music"><h3>コースのBGM</h3><label>曲を選ぶ<select data-music>${MUSIC.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label><p data-music-description class="note"></p><button data-music-preview type="button">試聴</button><label>音量（この端末）<input data-music-volume type="range" min="0" max="100" step="1" value="${Math.round(courseMusic.volume*100)}"></label><p class="note">選んだ曲はコースと一緒に保存されます。「ともに走れ」は現在、歌声なしの伴奏版です。</p></section><label>説明<input data-desc maxlength="280"></label><div class="ed-size"><label>幅（マス）<input data-width type="number" min="20" max="${COURSE_MAX_WIDTH}"></label><label>高さ（マス）<input data-height type="number" min="16" max="${COURSE_MAX_HEIGHT}"></label><button data-resize>サイズ変更</button></div><label>開始に必要な人数<select data-players>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}人</option>`).join('')}</select></label><p class="note">テストプレイは設定人数にかかわらず1人で試せます。</p><button data-new>新しいコース</button><label hidden><input type="checkbox" data-word-blocks>中華</label></dialog>
@@ -109,7 +109,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       const x=row[0]%map.width,y=Math.floor(row[0]/map.width);if(x<x0||x>=x1||y<y0||y>=y1)continue;
       const p=DD_PARTS.find(p=>p.layer===key&&(p.type===row[1]||key==='speed')&&(!['game','front'].includes(key)||(p.flags??0)===(row[2]??0)));
       const badge=['tele','switches','entities'].includes(key)?String(row[2]):undefined;
-      drawPart(g,p?.id??String(row[1]),x*size,y*size,size,badge,key==='speed'?row[3]:0);
+      drawPart(g,p?.id??String(row[1]),x*size,y*size,size,badge,key==='speed'?row[3]:0,key==='tele'?(row[3]??0):0);
     }
     for(const [x,y,dx,dy,length,number] of map.dd?.doors??[]){g.strokeStyle='#ffd48b';g.lineWidth=3;g.beginPath();g.moveTo(x/32*size,y/32*size);g.lineTo((x+dx*length)/32*size,(y+dy*length)/32*size);g.stroke();drawPart(g,'dd:doors:49:0',Math.floor(x/32)*size,Math.floor(y/32)*size,size,String(number));}
     }
@@ -154,13 +154,13 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     b.dataset.part=c;b.onclick = () => choosePart(c);
     b.dataset.label=label;b.dataset.category=partCategory(c);q('.tile-tools').append(b);
   }
-  const descriptions:Record<string,string>={'.':'選択位置の地形とDDパーツを消去','#':'フックが掛かる岩壁',X:'フックが掛からない金属',S:'プレイヤーの出現位置（1つ）','>':'計測開始',F:'ゴール',V:'赤ボールを保持し、左で発射・右で自分の弾を爆破して回収',N:'毎回溜めて大中華を1発、単押しで操舵、右で小中華',P:'左長押しで幽体離脱・帰還。本体はフックで引ける。単押しハンマー、右フック',G:'ハンマーとフックの基本装備',o:'直径2マスの赤ボール','~':'触れている間は凍結し、離れて3秒で回復。ハンマーでも解除','^':'触れると出現位置に戻る',U:'凍結解除',O:'プレイヤーは通れずフックが通る',J:'上向きに跳ねる'};
+  const descriptions:Record<string,string>={'.':'選択位置の地形とDDパーツを消去','#':'フックが掛かる岩壁',X:'フックが掛からない金属',S:'プレイヤーの出現位置（1つ）','>':'計測開始',F:'ゴール',V:'赤ボールを保持し、左で発射・右で自分の弾を爆破して回収',N:'毎回溜めて大中華を1発、単押しで操舵、右で小中華',P:'左長押しで幽体離脱・帰還。本体はフックで引ける。単押しハンマー、右フック',G:'能力をハンマー＋フックへリセット。待ち時間なしで何人でも利用できます',o:'直径2マスの赤ボール','~':'触れている間は凍結し、離れて3秒で回復。ハンマーでも解除','^':'触れると出現位置に戻る',U:'凍結解除',O:'プレイヤーは通れずフックが通る',J:'上向きに跳ねる'};
   for(const [name,desc] of [...TILE_TOOLS.map(([c,n])=>[n,descriptions[c]??'同じ番号のスイッチ・扉・橋を接続']),...DD_PARTS.filter(p=>!['dd:game:9:0','dd:game:11:0'].includes(p.id)).map(p=>[p.name,p.description])]){const row=document.createElement('p');row.textContent=`${name}：${desc}`;q('[data-parts-list]').append(row);}
   function partCategory(c:string){
     if(!c.startsWith('dd:'))return 'GHMPVNo'.includes(c)?'能力・物体':/^[1-5a-eA-E]$/.test(c)?'スイッチ':'地形';
     const p=DD_PARTS.find(p=>p.id===c)!;
     if(p.layer==='tele')return '転送';if(['switches','doors'].includes(p.layer))return 'スイッチ';
-    if(p.layer==='entities')return '装置';if(p.layer==='speed'||[16,32,105,89,17,18,60,61,62].includes(p.type))return '移動';
+    if(p.layer==='entities')return '装置';if(p.layer==='speed'||[16,32,105,89,17,18,60,61,62,240].includes(p.type))return '移動';
     if([197,199,200,201,202,106,90].includes(p.type))return '能力・物体';return '状態';
   }
   const categories=['地形','能力・物体','移動','転送','スイッチ','状態','装置','すべて'];
@@ -180,7 +180,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   function selectPart(c:string,label:string){
     const p=DD_PARTS.find(p=>p.id===c);q('[data-selected-name]').textContent=label;q('[data-part-help]').textContent=(p?.layer==='tele'?`${p.description}。入口と出口の接続番号を揃えます。別の組には別番号（1〜255）を指定できます。`:p?.description)??descriptions[c]??'同じ番号のスイッチ・扉・橋を接続します。';
     const fields:string[]=[];
-    if(p){if(['tele','switches','doors','entities'].includes(p.layer))fields.push('number');if(['speed','entities','doors'].includes(p.layer))fields.push('angle');if(['speed','entities'].includes(p.layer)||p.type===7)fields.push('force');if(p.layer==='switches'&&[22,23].includes(p.type))fields.push('delay');}
+    if(p){if(p.layer==='tele')fields.push('tele-color');if(['tele','switches','doors','entities'].includes(p.layer))fields.push('number');if(['speed','entities','doors'].includes(p.layer))fields.push('angle');if(['speed','entities'].includes(p.layer)||p.type===7)fields.push('force');if(p.layer==='switches'&&[22,23].includes(p.type))fields.push('delay');}
     root.querySelectorAll<HTMLElement>('[data-field]').forEach(e=>e.hidden=!fields.includes(e.dataset.field!));q('[data-no-settings]').hidden=fields.length>0;
     q('.ed-channel').hidden=!/^[1-5a-eA-E]$/.test(c);
     if(/^[1-5a-eA-E]$/.test(c)){const n=/[1-5]/.test(c)?+c-1:c.toLowerCase().charCodeAt(0)-97;q<HTMLSelectElement>('[data-channel-select]').value=String(n);q('[data-channel-select]').dispatchEvent(new Event('change'));}
@@ -197,7 +197,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     }
     const part=DD_PARTS.find(p=>p.id===tool);if(!part)return;
     const number=Math.max(1,Math.min(255,+q<HTMLInputElement>('[data-number]').value||1)),angle=+q<HTMLInputElement>('[data-angle]').value||0,force=Math.max(0,Math.min(255,+q<HTMLInputElement>('[data-force]').value||0)),delay=Math.max(0,Math.min(60,+q<HTMLInputElement>('[data-delay]').value||0));
-    const row=part.layer==='tele'?[idx,part.type,number]:part.layer==='speed'?[idx,force,50,angle]:part.layer==='switches'?[idx,part.type,number,0,part.type===7?force:delay]:part.layer==='doors'?[x*32+16,y*32+16,Math.cos(angle*Math.PI/180),Math.sin(angle*Math.PI/180),32,number]:part.layer==='entities'?[idx,part.type,number,angle,force]:[idx,part.type,part.flags??0];
+    const row=part.layer==='tele'?[idx,part.type,number,+q<HTMLSelectElement>('[data-tele-color]').value]:part.layer==='speed'?[idx,force,50,angle]:part.layer==='switches'?[idx,part.type,number,0,part.type===7?force:delay]:part.layer==='doors'?[x*32+16,y*32+16,Math.cos(angle*Math.PI/180),Math.sin(angle*Math.PI/180),32,number]:part.layer==='entities'?[idx,part.type,number,angle,force]:[idx,part.type,part.flags??0];
     (map.dd[part.layer]??=[]).push(row);
   }
   root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.onclick = () => {
@@ -217,7 +217,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     if(!footprint.hidden){const rect=canvas.getBoundingClientRect(),cx=Math.floor((hover!.x-rect.left+viewport.scrollLeft)/size),cy=Math.floor((hover!.y-rect.top+viewport.scrollTop)/size);const left=Math.max(rect.left,rect.left+Math.max(0,cx-eraseRadius)*size-viewport.scrollLeft),top=Math.max(rect.top,rect.top+Math.max(0,cy-eraseRadius)*size-viewport.scrollTop),right=Math.min(rect.right,rect.left+Math.min(map.width,cx+eraseRadius+1)*size-viewport.scrollLeft),bottom=Math.min(rect.bottom,rect.top+Math.min(map.height,cy+eraseRadius+1)*size-viewport.scrollTop);Object.assign(footprint.style,{left:left+'px',top:top+'px',width:Math.max(0,right-left)+'px',height:Math.max(0,bottom-top)+'px'});}
     const box=q('[data-brush-preview]');box.hidden=!hover||mode!=='paint';if(box.hidden)return;
     box.style.left=`${Math.min(hover!.x+18,window.innerWidth-180)}px`;box.style.top=`${Math.min(hover!.y+18,window.innerHeight-48)}px`;
-    const icon=box.querySelector('canvas')!,g=icon.getContext('2d')!;g.clearRect(0,0,32,32);drawPart(g,tool,0,0,32);box.querySelector('span')!.textContent=PARTS.find(p=>p[0]===tool)?.[1]??tool;
+    const icon=box.querySelector('canvas')!,g=icon.getContext('2d')!;g.clearRect(0,0,32,32);drawPart(g,tool,0,0,32,undefined,0,+q<HTMLSelectElement>('[data-tele-color]').value);box.querySelector('span')!.textContent=PARTS.find(p=>p[0]===tool)?.[1]??tool;
     if(tool==='.'&&eraseRadius)box.querySelector('span')!.textContent='消去 5×5マス';
   }
   function fill(){
@@ -255,6 +255,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     let code=map.tiles[y][x];
     for(const key of ['game','front','tele','speed','switches','entities'] as const){const row=map.dd?.[key]?.find(r=>r[0]===idx);if(!row)continue;const part=DD_PARTS.find(p=>p.layer===key&&(p.type===row[1]||key==='speed')&&(!['game','front'].includes(key)||(p.flags??0)===(row[2]??0)));if(part)code=part.id;
       if(['tele','switches','entities'].includes(key))q<HTMLInputElement>('[data-number]').value=String(row[2]);
+      if(key==='tele')q<HTMLSelectElement>('[data-tele-color]').value=String(row[3]??0);
       if(key==='speed'){q<HTMLInputElement>('[data-angle]').value=String(row[3]);q<HTMLInputElement>('[data-force]').value=String(row[1]);}
       if(key==='entities'){q<HTMLInputElement>('[data-angle]').value=String(row[3]);q<HTMLInputElement>('[data-force]').value=String(row[4]);}
       if(key==='switches')q<HTMLInputElement>(row[1]===7?'[data-force]':'[data-delay]').value=String(row[4]);
@@ -267,9 +268,9 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     status(e.button===2?'パーツを拾いました。左クリックで配置／矢印で延長':`${x}, ${y} を選択。矢印で延長／右の設定で変更`);
   }
   canvas.oncontextmenu=e=>e.preventDefault();
-  for(const field of ['number','angle','force','delay'])q<HTMLInputElement>(`[data-${field}]`).oninput=()=>{
+  for(const field of ['number','angle','force','delay','tele-color'])q<HTMLInputElement>(`[data-${field}]`).oninput=()=>{
     const input=q<HTMLInputElement>(`[data-${field}]`);if(!input.value||!input.checkValidity())return;
-    if(!selected||!tool.startsWith('dd:'))return;
+    updatePreview();if(!selected||!tool.startsWith('dd:'))return;
     history.push(snapshot());if(history.length>60)history.shift();future=[];
     placeDD(selected.x,selected.y);draw();save();
   };

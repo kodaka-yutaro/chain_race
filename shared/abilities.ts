@@ -1,3 +1,4 @@
+import {ballStopperBlocks} from './ddrace';
 import type { Input, Runner, World } from './physics';
 import { isSolidChar, tileAt, TILE } from './physics';
 import { wordBoxSolid, type WordCollision } from './word-blocks';
@@ -6,6 +7,7 @@ export type Ability='basic'|'ghost'|'hand'|'hook'|'hammer'|'bicycle'|'bun';
 export const ABILITY_NAMES:Record<Ability,string>={basic:'ハンマー＋フック',ghost:'幽霊',hand:'マジックハンド',hook:'フック',hammer:'ハンマー',bicycle:'自転車',bun:'中華まん'};
 export const ITEM_ABILITIES:Record<string,Ability>={G:'basic',H:'basic',M:'basic',P:'ghost',V:'bicycle',N:'bun'};
 export const BALL_RADIUS=32, COLLECTION_RADIUS=320, BALL_GRAVITY=.4;
+export const SHOT_MAX_DISTANCE=1200, BLAST_RADIUS=192, BLAST_FORCE=32;
 export interface Blast {x:number;y:number;tick:number;radius:number}
 export interface Ball {respawnAt?:number;owner?:number;carriedBy?:number;id:number;x:number;y:number;vx:number;vy:number;homeX:number;homeY:number}
 export function metalPart(t:Runner){
@@ -17,20 +19,32 @@ export function metalOverlap(w:World,x:number,y:number,width:number,height:numbe
   return w.runners.some(r=>{if(r.id===ignore)return false;const b=metalPart(r);return b&&x<b.x+b.w&&x+width>b.x&&y<b.y+b.h&&y+height>b.y;});
 }
 export function shotLaunch(t:Runner,dx=t.aimX*t.aimDistance,dy=t.aimY*t.aimDistance){
-  const length=Math.hypot(dx,dy)||1,scale=Math.max(96,Math.min(960,length))/length;dx*=scale;dy*=scale;
+  const length=Math.hypot(dx,dy)||1,scale=Math.max(96,Math.min(SHOT_MAX_DISTANCE,length))/length;dx*=scale;dy*=scale;
   const side=dx>=0?1:-1,x=t.x+side*66,y=t.y-10;
   const frames=Math.max(18,Math.sqrt(Math.hypot(dx,dy)/BALL_GRAVITY)*1.6);
   return {x,y,vx:(t.x+dx-x)/frames,vy:(t.y+dy-y)/frames-BALL_GRAVITY*(frames+1)/2,frames};
 }
 export function ballStep(b:{x:number;y:number;vx:number;vy:number}){b.vy+=BALL_GRAVITY;b.x+=b.vx;b.y+=b.vy;}
+/** Sweep the full ball to its muzzle; a shot cannot appear beyond a thin wall or one-way tile. */
+export function clearShotLaunch(w:World,t:Runner,collision:WordCollision):boolean {
+  const target=shotLaunch(t),sx=t.x,sy=t.y-10,n=Math.max(1,Math.ceil(Math.hypot(target.x-sx,target.y-sy)));
+  let x=sx,y=sy;
+  for(let i=0;i<=n;i++){
+    const nx=sx+(target.x-sx)*i/n,ny=sy+(target.y-sy)*i/n;
+    if(ballStopperBlocks(w,x,y,nx,ny,BALL_RADIUS)||collision.staticRect(nx-32,ny-32,64,64)||wordBoxSolid(w,nx-32,ny-32,64,64)||metalOverlap(w,nx-32,ny-32,64,64,t.id))return false;
+    x=nx;y=ny;
+  }
+  return true;
+}
 export function shotPreview(w:World,t:Runner,collision:WordCollision){
   const b=shotLaunch(t),points=[{x:b.x,y:b.y}];
+  if(!clearShotLaunch(w,t,collision))return [{x:t.x,y:t.y-10}];
   for(let frame=0;frame<180;frame++){
     const before={...b};ballStep(b);
     const n=Math.max(1,Math.ceil(Math.max(Math.abs(b.vx),Math.abs(b.vy))));
     for(let i=1;i<=n;i++){
       const x=before.x+(b.x-before.x)*i/n,y=before.y+(b.y-before.y)*i/n;
-      if(collision.staticRect(x-32,y-32,64,64)||wordBoxSolid(w,x-32,y-32,64,64)||metalOverlap(w,x-32,y-32,64,64,t.id)){points.push({x,y});return points;}
+      if(ballStopperBlocks(w,before.x,before.y,x,y,32)||collision.staticRect(x-32,y-32,64,64)||wordBoxSolid(w,x-32,y-32,64,64)||metalOverlap(w,x-32,y-32,64,64,t.id)){points.push({x,y});return points;}
     }
     points.push({x:b.x,y:b.y});
   }
@@ -47,8 +61,8 @@ export function explodeOwned(w:World,owner:number){
   // Range uses ball centers and deliberately ignores intervening walls.
   const bombs=w.balls.filter(b=>b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick)&&Math.hypot(b.x-rider.x,b.y-rider.y)<=COLLECTION_RADIUS);
   for(const b of bombs){
-    w.blasts.push({x:b.x,y:b.y,tick:w.tick,radius:160});
-    const push=(o:{x:number;y:number;vx:number;vy:number},offset=0)=>{const dx=o.x+offset-b.x,dy=o.y+offset-b.y,d=Math.hypot(dx,dy);if(d>=160)return;const force=22*(1-d/160);o.vx+=(d?dx/d:0)*force;o.vy+=(d?dy/d:-1)*force;};
+    w.blasts.push({x:b.x,y:b.y,tick:w.tick,radius:BLAST_RADIUS});
+    const push=(o:{x:number;y:number;vx:number;vy:number},offset=0)=>{const dx=o.x+offset-b.x,dy=o.y+offset-b.y,d=Math.hypot(dx,dy);if(d>=BLAST_RADIUS)return;const force=BLAST_FORCE*(1-d/BLAST_RADIUS);o.vx+=(d?dx/d:0)*force;o.vy+=(d?dy/d:-1)*force;};
     w.runners.forEach(r=>push(r));w.words.filter(o=>o.kind==='mini').forEach(o=>push(o,16));w.balls.filter(o=>o!==b&&o.carriedBy===undefined).forEach(o=>push(o));
     for(const r of w.runners){if(r.wireBall===b.id){r.wireState=0;r.wireBall=-1;}if(r.held?.kind==='ball'&&r.held.id===b.id)r.held=null;}
 
@@ -82,16 +96,17 @@ function blockedLine(w:World,ax:number,ay:number,bx:number,by:number){
 export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision):Input{
   if(t.bodyOwner!==undefined)return {...raw,fire:false,wire:false,spit:false,miniSpit:false};
   if(!w.map.abilityMode)return raw;
-  const aimLength=Math.hypot(raw.aimX,raw.aimY);t.aimDistance=Number.isFinite(aimLength)?Math.min(960,aimLength):160;if(aimLength>.0001){t.aimX=raw.aimX/aimLength;t.aimY=raw.aimY/aimLength;}
+  const aimLength=Math.hypot(raw.aimX,raw.aimY);t.aimDistance=Number.isFinite(aimLength)?Math.min(SHOT_MAX_DISTANCE,aimLength):160;if(aimLength>.0001){t.aimX=raw.aimX/aimLength;t.aimY=raw.aimY/aimLength;}
   for(let y=Math.floor((t.y-13)/32);y<=Math.floor((t.y+13)/32);y++)for(let x=Math.floor((t.x-13)/32);x<=Math.floor((t.x+13)/32);x++){
     const key=y*w.map.width+x,a=ITEM_ABILITIES[tileAt(w.map,x,y)];
     if(t.ghostBody)continue;
-    if(!a||a===t.ability||(w.pickups[key]??0)>w.tick)continue;
+    if(!a||a===t.ability||(a!=='basic'&&(w.pickups[key]??0)>w.tick))continue;
     const ny=t.y+(t.ability==='bicycle'?26:t.hammerBrace?17:0)-(a==='bicycle'?26:0);
+    if(a==='bicycle'&&w.runners.some(o=>o!==t&&!o.ghostBody&&t.x-30<o.x+14&&t.x+30>o.x-14&&ny+14<o.y+14&&ny+40>o.y-14))continue;
     if(a==='bicycle'?bicycleBlocked(w,t.x,ny):collision.runnerBox(t.x,ny,-1))continue;
     w.words=w.words.filter(b=>b.owner!==t.id);
     t.y=ny;t.hammerBrace=false;t.holdTicks=0;t.ability=a;t.held=null;t.wireState=0;t.wireRunner=-1;t.wireWord=-1;t.wireBall=-1;t.spit.charge=0;
-    w.pickups[key]=w.tick+150;
+    if(a==='basic')delete w.pickups[key];else w.pickups[key]=w.tick+150;
   }
   const released=!raw.fire&&t.actionDown,previousHold=t.holdTicks;
   t.holdTicks=raw.fire?t.holdTicks+1:0;
@@ -125,7 +140,7 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
     }
     if(pressed){
       const b=w.balls.find(b=>b.carriedBy===t.id),launch=shotLaunch(t);
-      if(b&&!blockedLine(w,t.x,t.y,launch.x,launch.y)&&!collision.staticRect(launch.x-32,launch.y-32,64,64)&&!wordBoxSolid(w,launch.x-32,launch.y-32,64,64)&&!metalOverlap(w,launch.x-32,launch.y-32,64,64,t.id)){
+      if(b&&clearShotLaunch(w,t,collision)){
         delete b.carriedBy;b.owner=t.id;Object.assign(b,{x:launch.x,y:launch.y,vx:launch.vx,vy:launch.vy});t.shotTick=w.tick;
       }
     }
@@ -152,8 +167,10 @@ export function stepBalls(w:World,collision:WordCollision){
     const n=Math.max(1,Math.ceil(Math.max(Math.abs(b.vx),Math.abs(b.vy))));
     for(let i=0;i<n;i++){
       const nx=b.x+b.vx/n,ny=b.y+b.vy/n;
-      if(!collision.staticRect(nx-32,b.y-32,64,64)&&!wordBoxSolid(w,nx-32,b.y-32,64,64)&&!metalOverlap(w,nx-32,b.y-32,64,64))b.x=nx;else b.vx*=-.65;
-      if(!collision.staticRect(b.x-32,ny-32,64,64)&&!wordBoxSolid(w,b.x-32,ny-32,64,64)&&!metalOverlap(w,b.x-32,ny-32,64,64))b.y=ny;else {b.vy*=-.55;if(Math.abs(b.vy)<.8)b.vy=0;}
+      if(ballStopperBlocks(w,b.x,b.y,nx,b.y,32)){b.vx=0;}
+      else if(!collision.staticRect(nx-32,b.y-32,64,64)&&!wordBoxSolid(w,nx-32,b.y-32,64,64)&&!metalOverlap(w,nx-32,b.y-32,64,64))b.x=nx;else b.vx*=-.65;
+      if(ballStopperBlocks(w,b.x,b.y,b.x,ny,32)){b.vy=0;}
+      else if(!collision.staticRect(b.x-32,ny-32,64,64)&&!wordBoxSolid(w,b.x-32,ny-32,64,64)&&!metalOverlap(w,b.x-32,ny-32,64,64))b.y=ny;else {b.vy*=-.55;if(Math.abs(b.vy)<.8)b.vy=0;}
     }
     if(tileAt(w.map,Math.floor(b.x/32),Math.floor(b.y/32))==='^'){b.x=b.homeX;b.y=b.homeY;b.vx=b.vy=0;}
     for(const r of w.runners){
@@ -173,6 +190,7 @@ export function moveHeld(w:World,collision:WordCollision){
       ||(h.kind==='runner'&&(o as Runner).ability==='bicycle'&&bicycleBlocked(w,x,y))){t.held=null;continue;}
     // Move in small steps so held objects cannot pass through walls when the aim turns.
     if(blockedLine(w,o.x+offset,o.y+offset,x,y)){t.held=null;continue;}
+    if(h.kind==='ball'){let blocked=false;const n=Math.max(1,Math.ceil(Math.hypot(x-o.x,y-o.y)));for(let i=1;i<=n;i++){const px=o.x+(x-o.x)*(i-1)/n,py=o.y+(y-o.y)*(i-1)/n,nx=o.x+(x-o.x)*i/n,ny=o.y+(y-o.y)*i/n;if(ballStopperBlocks(w,px,py,nx,ny,32)||collision.staticRect(nx-32,ny-32,64,64)||wordBoxSolid(w,nx-32,ny-32,64,64)||metalOverlap(w,nx-32,ny-32,64,64,t.id)){blocked=true;break;}}if(blocked){t.held=null;continue;}}
     o.x=x-offset;o.y=y-offset;o.vx=t.vx;o.vy=t.vy;
   }
 }

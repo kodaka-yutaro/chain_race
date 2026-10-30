@@ -64,7 +64,7 @@ export function ddSwitchActive(w: World, n: number) { return w.dd?.switches[n]?.
 function restriction(type: number, flags: number) {
   if (type === 62) return 15;
   if (type === 61) return flags & 8 ? 5 : 10;
-  if (type !== 60) return 0;
+  if (type !== 60 && type !== 240) return 0;
   return ({ 0: 2, 8: 4, 3: 8, 11: 1, 2: 8, 10: 1, 1: 2, 9: 4 } as Record<number, number>)[flags & 11] ?? 0;
 }
 export function ddRestrictions(w: World, x: number, y: number) {
@@ -75,11 +75,23 @@ export function ddRestrictions(w: World, x: number, y: number) {
     for (const row of [c.game.get(idx), c.front.get(idx)]) {
       if (!row) continue;
       const r = restriction(row[1], row[2]);
-      mask |= side === 0 && row[1] === 60 ? r : r & side;
+      mask |= side === 0 && (row[1] === 60 || row[1] === 240) ? r : r & side;
     }
     if (side && c.doorCells.get(idx)?.some(n => ddSwitchActive(w,n))) mask |= side;
   }
   return mask;
+}
+/** ChainRace red one-way tiles affect the whole ball, including its leading edge. */
+export function ballStopperBlocks(w:World,x:number,y:number,nx:number,ny:number,radius:number):boolean {
+  if(!w.map.dd)return false;
+  const c=ddCache(w.map),direction=(nx>x?1:nx<x?4:0)|(ny>y?2:ny<y?8:0);
+  for(let ty=Math.floor((ny-radius+.001)/32);ty<=Math.floor((ny+radius-.001)/32);ty++)
+    for(let tx=Math.floor((nx-radius+.001)/32);tx<=Math.floor((nx+radius-.001)/32);tx++){
+      if(tx<0||ty<0||tx>=w.map.width||ty>=w.map.height)continue;
+      for(const row of [c.game.get(ty*w.map.width+tx),c.front.get(ty*w.map.width+tx)])
+        if(row?.[1]===240&&(restriction(240,row[2])&direction))return true;
+    }
+  return false;
 }
 export function ddClamp(w: World, t: Runner) {
   const r = ddRestrictions(w,t.x,t.y);
