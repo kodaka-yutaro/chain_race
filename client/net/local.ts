@@ -25,6 +25,14 @@ export function localBackend(): Backend {
       const c: Course = { id, author: a.uid, authorName, createdAt: Date.now(), status: 'prerelease', map: { ...validateCourseMap(map), id } };
       write('cr.courses', [c, ...read<Course[]>('cr.courses', [])]); return c;
     },
+    async deleteCourse(id) {
+      const a=me();if(!a)throw Error('コースの削除にはログインしてください');
+      await navigator.locks.request('chainrace-checker',async()=>{
+        const all=read<Course[]>('cr.courses',[]),c=all.find(c=>c.id===id);if(!c)return;
+        if(c.author!==a.uid)throw Error('投稿主だけが削除できます');
+        write('cr.courses',all.filter(c=>c.id!==id));
+      });
+    },
     async releaseCourse(id, results) {
       const a=me();if(!a)throw Error('チェッカー登録にはログインしてください');
       const time=results[0]?.time;if(results.length!==1||!Number.isFinite(time)||time<0)throw Error('クリア記録が正しくありません');

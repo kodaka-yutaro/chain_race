@@ -415,9 +415,20 @@ async function openCourses() {
   const note=el('p',{},conn?.isHost?'ホストが選んだコースで全員が遊びます。':'コースの選択はホストが行います。');catalogue.append(note);
   if(!catalogue.open)catalogue.showModal();
   const grid=el('div',{className:'course-grid'});catalogue.append(grid);
+  const account=await backend.account();
   const add=(c:Course)=>{const map=c.map,b=el('button',{disabled:!conn?.isHost||hub?.playing},'このコースで遊ぶ');
     b.onclick=()=>{send({t:'courseJoin',map});catalogue.close();};
-    grid.append(el('article',{className:'course-card'},courseOverview(map),el('strong',{},map.name),el('p',{},`${map.minPlayers}人〜 · 作者：${c.authorName}`),el('p',{},c.firstClear?`チェッカー：${c.firstClear.names.join('・')}`:'プレリリース · チェッカー募集中'),b));};
+    const card=el('article',{className:'course-card'},courseOverview(map),el('strong',{},map.name),el('p',{},`${map.minPlayers}人〜 · 作者：${c.authorName}`),el('p',{},c.firstClear?`チェッカー：${c.firstClear.names.join('・')}`:'プレリリース · チェッカー募集中'),b);
+    if(account?.uid===c.author){
+      const remove=el('button',{className:'course-delete'},'投稿したコースを削除');
+      remove.onclick=async()=>{
+        if(!confirm(`「${map.name}」を削除しますか？公開一覧から消え、元には戻せません。端末の保存枠や保存したファイルは残ります。`))return;
+        remove.disabled=true;
+        try{await backend.deleteCourse(c.id);courses=courses.filter(item=>item.id!==c.id);card.remove();note.textContent='コースを削除しました。';if(!courses.length)grid.append(el('p',{},'投稿コースはありません。'));}
+        catch(e){note.textContent=(e as Error).message;remove.disabled=false;}
+      };card.append(remove);
+    }
+    grid.append(card);};
   try{courses=await backend.listCourses();for(const c of courses)add(c);if(!courses.length)grid.append(el('p',{},'プレリリースされたコースはまだありません。保存ページからコースを作って公開できます。'));}catch{note.textContent+=' 投稿コースは読み込めませんでした。';}
   const file=el('input',{type:'file',accept:'.json,application/json',disabled:!conn?.isHost||hub?.playing});
   file.onchange=async()=>{try{const f=file.files?.[0];if(!f)return;if(f.size>COURSE_FILE_MAX_BYTES)throw Error('ファイルが大きすぎます');const map=validateCourseMap(JSON.parse(await f.text()));send({t:'courseJoin',map:{...map,id:'user-'+randomId()}});catalogue.close();}catch(e){note.textContent=(e as Error).message;}};

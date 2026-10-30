@@ -60,6 +60,15 @@ export function firebaseBackend(config: FirebaseOptions): Backend {
       if(new TextEncoder().encode(JSON.stringify(c)).length>900000)throw Error('公開できるデータ容量を超えています。コースを分割するか、ファイルで共有してください。');
       await setDoc(doc(db, 'courses', id), {...c,map:{...c.map,dd:JSON.stringify(c.map.dd)}}); return c;
     },
+    async deleteCourse(id) {
+      const a=await this.account();if(!a)throw Error('コースの削除にはログインしてください');
+      await runTransaction(db,async tx=>{
+        const ref=doc(db,'courses',id),snap=await tx.get(ref);
+        if(!snap.exists())return;
+        if(snap.get('author')!==a.uid)throw Error('投稿主だけが削除できます');
+        tx.delete(ref);
+      });
+    },
     async releaseCourse(id, results) {
       const a=await this.account();if(!a)throw Error('チェッカー登録にはログインしてください');
       const time=results[0]?.time;if(results.length!==1||!Number.isFinite(time)||time<0)throw Error('クリア記録が正しくありません');

@@ -17,4 +17,12 @@ test('プレリリースはログイン必須で、初クリア者は後から�
  await b.register('次の人','test-only');assert.equal(await b.releaseCourse(c.id,[{id:2,name:'次の人',time:1}]),'最初の人');
  const saved=(await b.listCourses())[0];assert.deepEqual(saved.firstClear?.names,['最初の人']);assert.equal(saved.firstClear?.time,3);
  await assert.rejects(b.releaseCourse(c.id,[{id:1,name:'次の人',time:NaN}]));
+ await assert.rejects(b.deleteCourse(c.id),/投稿主/);
+ await b.guest();await assert.rejects(b.deleteCourse(c.id),/ログイン/);
+ assert.equal((await b.listCourses()).length,1);
+ await b.login('作者','test-only');await b.deleteCourse(c.id);
+ assert.equal((await b.listCourses()).length,0);
+ assert.equal(await b.releaseCourse(c.id,[{id:1,name:'作者',time:4}]),null);
+ const pending=await b.publishCourse(newCourseMap(),'作者');await b.deleteCourse(pending.id);
+ assert.equal((await b.listCourses()).length,0);
 });

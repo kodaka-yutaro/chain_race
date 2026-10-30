@@ -11,6 +11,7 @@ export interface Backend {
 
   listCourses(): Promise<Course[]>;
   publishCourse(map: MapDef, authorName: string): Promise<Course>;
+  deleteCourse(id: string): Promise<void>;
   releaseCourse(id: string, results: { id: number; name: string; time: number }[]): Promise<string | null>;
   account(): Promise<Account | null>;
   register(name: string, password: string): Promise<Account>;

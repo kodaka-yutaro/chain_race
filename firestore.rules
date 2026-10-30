@@ -35,6 +35,7 @@ service cloud.firestore {
     // 投稿時は未クリア。公開済みのタイルは変更不可（修正は別IDで再投稿）。
     match /courses/{courseId} {
       allow read: if true;
+      allow delete: if isAccount() && resource.data.author == request.auth.uid;
       allow create: if isAccount()
         && request.resource.data.keys().hasOnly(['id', 'author', 'authorName', 'createdAt', 'status', 'map'])
         && request.resource.data.id == courseId
