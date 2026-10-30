@@ -2,7 +2,14 @@ import { validateCourseMap, validateCoursePreview, newCourseMap } from '../../sh
 import { stageById } from '../../shared/maps';
 import { HUB_CAPACITY, validName, type ClientMsg, type HubState, type ServerMsg } from '../../shared/protocol';
 import { validFace } from '../../shared/face';
-import { Game } from './game';
+import { Game, type GameSave } from './game';
+
+export const RECONNECT_GRACE_MS = 120_000;
+export interface HubSave {
+  selected: GameSave['world']['map']; nextId: number;
+  members: {id:number;name:string;guest:boolean;face:string;host:boolean;token:string;playing:boolean}[];
+  game?: GameSave;
+}
 
 export interface Client {
   id: number; name: string; guest: boolean; face: string; game: Game | null; lastChat: number; host: boolean;
@@ -20,18 +27,68 @@ export class HostHub {
   private selected = { ...newCourseMap(), id: '', name: 'コースを選んでください', minPlayers: 1 };
   private nextId = 1;
   private tickCount = 0;
+  private tokens = new Map<Client,string>();
+  private disconnected = new Map<Client,number>();
+  private links = new Map<Client,Link>();
+
+  save(): HubSave {
+    return structuredClone({selected:this.selected,nextId:this.nextId,
+      members:[...this.members].map(c=>({id:c.id,name:c.name,guest:c.guest,face:c.face,host:c.host,
+        token:this.tokens.get(c)??'',playing:!!c.game})),game:[...this.games][0]?.save()});
+  }
+  restore(data: HubSave) {
+    if(!data || !Array.isArray(data.members) || data.members.length>HUB_CAPACITY || !Number.isSafeInteger(data.nextId))throw Error('Invalid room save');
+    this.selected={...validateCourseMap(data.selected),id:data.selected.id};this.nextId=data.nextId;
+    for(const m of data.members){
+      if(!validName(m.name)||!Number.isSafeInteger(m.id)||typeof m.token!=='string')throw Error('Invalid member');
+      const c:Client={...m,game:null,lastChat:0,send:()=>{},close:()=>{}};
+      this.members.add(c);this.tokens.set(c,m.token);this.disconnected.set(c,Date.now()+RECONNECT_GRACE_MS);
+    }
+    if(data.game){
+      validateCourseMap(data.game.world.map);
+      const g=new Game(data.game.stageId,data.game.mode,g=>this.games.delete(g),{},data.game.world.map);
+      g.restore(data.game,[...this.members].filter(c=>data.members.find(m=>m.id===c.id)?.playing));this.games.add(g);
+    }
+  }
+  private forget(c:Client){c.game?.remove(c);this.members.delete(c);this.tokens.delete(c);this.disconnected.delete(c);this.pushState();this.onCount(this.members.size);}
   constructor(readonly id: string, readonly name: string, private onCount: (n:number)=>void = ()=>{}, private editorPreview=false) {
 
   }
   connect(link: Link, host = false) {
-    const c: Client = { id:this.nextId++, name:'', guest:true, face:'', game:null, lastChat:0, host,
+    let c: Client = { id:this.nextId++, name:'', guest:true, face:'', game:null, lastChat:0, host,
       send:m=>link.send(m), close:()=>link.close() };
-    link.onMessage = m => { try { this.handle(c,m); } catch { c.send({t:'error',message:'部屋の操作を実行できませんでした'}); } };
+    link.onMessage = m => { try {
+      if(m?.t==='hello'&&!c.name&&m.resumeToken){
+        const old=[...this.members].find(p=>this.tokens.get(p)===m.resumeToken);
+        if(old){
+          if(old.host!==host){link.send({t:'error',message:'再接続できませんでした'});return;}
+          // Detach the old transport before rebinding (late close events cannot remove the restored player).
+          const oldClose=old.close;this.links.delete(old);old.send=()=>{};old.close=()=>{};oldClose();
+          c=old;c.send=m=>link.send(m);c.close=()=>link.close();this.disconnected.delete(c);
+          this.links.set(c,link);
+          c.send({t:'welcome',you:{id:c.id,name:c.name,guest:c.guest}});c.game?.reconnect(c);this.pushState();this.onCount(this.members.size);return;
+        }
+      }
+      if(c.name&&this.links.get(c)!==link)return;
+      if(m?.t==='suspend'){link.onClose();return;}
+      this.handle(c,m);
+      if(m?.t==='hello'&&this.members.has(c))this.links.set(c,link);
+      if(m?.t==='hello'&&this.members.has(c)&&/^[a-f0-9]{36}$/.test(m.resumeToken??''))this.tokens.set(c,m.resumeToken!);
+    } catch { c.send({t:'error',message:'部屋の操作を実行できませんでした'}); } };
     link.onClose = () => {
-      c.game?.remove(c); this.members.delete(c); this.pushState(); this.onCount(this.members.size);
+      if(!this.members.has(c)||this.links.get(c)!==link)return;
+      this.links.delete(c);
+      if(this.tokens.has(c)){this.disconnected.set(c,Date.now()+RECONNECT_GRACE_MS);c.send=()=>{};
+        c.game?.releaseInputs();
+        for(const p of this.members)if(p!==c)p.send({t:'chat',from:'システム',text:'再接続を待っています（最大2分）。進行を一時停止しました。',system:true});
+      }else this.forget(c);
     };
   }
-  tick() { this.tickCount++; for(const game of this.games) game.tick(this.tickCount%2===0); }
+  tick() {
+    for(const [c,until] of this.disconnected)if(Date.now()>=until)this.forget(c);
+    const paused=[...this.disconnected.keys()].some(c=>c.game);
+    this.tickCount++; for(const game of this.games) game.tick(this.tickCount%2===0,paused);
+  }
   private handle(c: Client, msg: ClientMsg) {
     if (!msg || typeof msg !== 'object') return;
     if(msg.t==='hello') {
@@ -44,6 +101,7 @@ export class HostHub {
       this.pushState();this.onCount(this.members.size);return;
     }
     if(!this.members.has(c))return;
+    if(msg.t==='bye'){this.forget(c);return;}
     if(msg.t==='chat'){
       const text=String(msg.text??'').trim().slice(0,200),now=Date.now();
       if(!text||now-c.lastChat<500)return;c.lastChat=now;
@@ -51,6 +109,7 @@ export class HostHub {
     }
     if(msg.t==='dummy'){if(['add','remove','switch','configure'].includes(msg.action))c.game?.dummy(c,msg.action,msg.face,msg.copy,msg.hammer);return;}
     if(msg.t==='input'){
+      if([...this.disconnected.keys()].some(p=>p.game===c.game))return;
       if(!c.game || msg.gameId!==c.game.id || !Array.isArray(msg.list))return;
       if(msg.controlledId!==undefined&&msg.controlledId!==c.game.controlledId(c))return;
       for(const e of msg.list.slice(-4)){

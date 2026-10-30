@@ -1,3 +1,5 @@
+// ChainRace modified TypeScript adaptation of DDNet/DDRace/Teeworlds.
+// Original authors and zlib terms: THIRD_PARTY_NOTICES.md and client/public/licenses/DDNet-zlib.txt.
 import type {MusicId} from './music';
 import type {BackgroundId} from './backgrounds';
 import {ddFreezeAt} from './ddrace';

@@ -1,3 +1,5 @@
+// ChainRace modified TypeScript adaptation of DDNet/DDRace/Teeworlds.
+// Original authors and zlib terms: THIRD_PARTY_NOTICES.md and client/public/licenses/DDNet-zlib.txt.
 import {validFace} from '../../shared/face';
 import {heldInput} from '../../shared/held-input';
 import { mapById } from '../../shared/maps';
@@ -6,6 +8,12 @@ import { toView, type GameMode, type ServerMsg, type ZoneState } from '../../sha
 import type { Client } from './hub';
 
 const MAX_QUEUE = 6;
+
+export interface GameSave {
+  stageId: string; mode: GameMode; world: World; cleared: boolean; dummyUsed: boolean;
+  starters: number[]; teamBroken: boolean;
+  dummies: [number, {id:number;face:string;active:boolean;copy:boolean;hammer:boolean;held:Input}][];
+}
 
 interface Slot {
   client: Client;
@@ -70,6 +78,36 @@ export class Game {
 
   get size() { return this.slots.size; }
 
+  save(): GameSave {
+    return structuredClone({stageId:this.stageId,mode:this.mode,world:this.world,cleared:this.cleared,
+      dummyUsed:this.dummyUsed,starters:[...this.starters],teamBroken:this.teamBroken,dummies:[...this.dummies]});
+  }
+
+  restore(data: GameSave, clients: Client[]) {
+    Object.assign(this.world,structuredClone(data.world));
+    this.cleared=data.cleared;this.dummyUsed=data.dummyUsed;this.starters=new Set(data.starters);
+    this.teamBroken=data.teamBroken;this.dummies=new Map(structuredClone(data.dummies));
+    for(const c of clients){
+      this.slots.set(c.id,{client:c,queue:[],last:emptyInput(),lastSeq:0,queuedSeq:0});c.game=this;
+    }
+    for(const d of this.dummies.values())d.held=emptyInput();
+  }
+
+  reconnect(c: Client) {
+    const s=this.slots.get(c.id);if(!s)return;
+    s.queue=[];s.last=emptyInput();s.lastSeq=0;s.queuedSeq=0;
+    const d=this.dummies.get(c.id);if(d)d.held=emptyInput();
+    c.send({t:'gameStart',gameId:this.id,stageId:this.stageId,mode:this.mode,youId:c.id,names:this.names(),faces:this.faces(),map:this.world.map});
+    const runner=this.world.runners.find(r=>r.id===this.controlledId(c));
+    if(runner)c.send({t:'control',gameId:this.id,runner:structuredClone(runner),resetInput:true});
+    this.dummyState(c);
+  }
+
+  releaseInputs() {
+    for(const s of this.slots.values()){s.queue=[];s.last=emptyInput();}
+    for(const d of this.dummies.values())d.held=emptyInput();
+  }
+
   names(): Record<number, string> {
     const out: Record<number, string> = {};
     for (const [id, s] of this.slots) out[id] = s.client.name;
@@ -125,7 +163,8 @@ export class Game {
     }
   }
 
-  tick(sendSnapshot: boolean) {
+  tick(sendSnapshot: boolean, paused=false) {
+    if(!paused){
     const inputs = new Map<number, Input>();
     for (const [id, s] of this.slots) {
       const next = s.queue.shift();
@@ -159,6 +198,7 @@ export class Game {
     if (this.cleared && this.world.runners.some((r) => r.finishedTime < 0)) this.cleared = false;
 
     this.hooks.afterTick?.();
+    }
 
     if (!sendSnapshot) return;
     const zones = this.hooks.zones?.();
@@ -169,7 +209,7 @@ export class Game {
         t: 'snap', gameId: this.id, tick: this.world.tick, me, lastSeq: s.lastSeq,
         others: views.filter((v) => v.id !== active), doors: this.world.doorsOpen,
         timers: this.world.timers, lifts: this.world.lifts, saws: this.world.saws, zones,
-        waiting: this.world.runners.length < this.world.map.minPlayers,
+        waiting: paused || this.world.runners.length < this.world.map.minPlayers,
         dd: this.world.dd,
         words:this.world.words,wordSeq:this.world.wordSeq, blasts:this.world.blasts,balls:this.world.balls, pickups:this.world.pickups,
       });

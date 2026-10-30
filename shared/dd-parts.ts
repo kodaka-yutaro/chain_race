@@ -1,3 +1,5 @@
+// ChainRace modified TypeScript adaptation of DDNet/DDRace/Teeworlds.
+// Original authors and zlib terms: THIRD_PARTY_NOTICES.md and client/public/licenses/DDNet-zlib.txt.
 import type {DDMapData} from './ddrace';
 export interface DDPart {id:string;name:string;description:string;layer:keyof DDMapData;type:number;flags?:number}
 export const DD_PARTS:DDPart[]=[];

@@ -32,3 +32,11 @@ Hook launch offset (28 × 1.5), terrain sampling (floor(distance + 1)), coordina
 
 Player-to-player radial velocity response and swept movement collision follow CCharacterCore::TickDeferred and Move from gamecore.cpp (2026-10-30). Custom flat head support, head grounding and horizontal head carrying were removed; mini-block head assistance was also removed.
 
+
+## License and distribution audit (2026-10-30)
+
+DDNet-derived TypeScript adaptations include shared/ddrace.ts, shared/dd-parts.ts, shared/physics.ts, shared/held-input.ts and client/host/game.ts. They are modified adaptations, not the original engine. The zlib notice above applies to the adapted portions. Original authorship is not claimed.
+
+Sunny Side Up: Copyright Ravie. The upstream data/maps/license.txt explicitly names it as CC-BY-SA; the enclosing DDNet license.txt specifies CC BY-SA 3.0 for data not otherwise licensed. The converted collision/game/front layout shared/dd-sunny.json is distributed under CC BY-SA 3.0, with attribution and modifications identified. Source: https://ddnet.org/maps/Sunny-32-Side-32-Up and https://github.com/ddnet/ddnet/blob/master/data/maps/license.txt . License: https://creativecommons.org/licenses/by-sa/3.0/ . The original map includes grass_main artwork noted upstream as Apache 2.0; the original .map is therefore no longer bundled. Original map downloads remain available upstream.
+
+Kobra: author Zerodin, https://ddnet.org/maps/Kobra . The consulted upstream map license file does not name Kobra. No redistribution permission was verified, so its original map and converted layout are excluded from this revision. Do not reintroduce them without verifying the applicable license or obtaining permission.

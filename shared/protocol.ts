@@ -39,7 +39,9 @@ export interface RunnerView {
 
 /** 参加者 → 大部屋の主（ホスト） */
 export type ClientMsg =
-  | { t: 'hello'; name: string; guest: boolean; face?: string }
+  | { t: 'hello'; name: string; guest: boolean; face?: string; resumeToken?: string }
+  | { t: 'bye' }
+  | { t: 'suspend' }
   | { t: 'dummy'; action:'add'|'remove'|'switch'|'configure'; face?:string; copy?:boolean; hammer?:boolean }
   | { t: 'roomStart'; withDummy?:boolean; dummyFace?:string }
   | { t: 'roomStop' }

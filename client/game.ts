@@ -203,7 +203,9 @@ export class ClientGame {
 
   onSnap(s: Snap) {
     if(s.me&&s.me.id!==this.youId)return;
+    const wasWaiting=this.waitingForParty;
     this.waitingForParty = !!s.waiting;
+    if(wasWaiting!==this.waitingForParty){this.pending=[];this.clearCameraInput();}
     // 届く順番が入れ替わることがあるので、古いものは捨てる
     if (s.tick <= this.lastSnapTick) return;
     this.lastSnapTick = s.tick;
@@ -321,7 +323,7 @@ export class ClientGame {
       this.acc -= step;
       const input = this.sampleInput();
       const seq = ++this.seq;
-      this.pending.push({ seq, input });
+      if(!this.waitingForParty)this.pending.push({ seq, input });
       if (this.pending.length > 100) this.pending.shift();
       this.send({ seq, input });
       this.predictStep(input);

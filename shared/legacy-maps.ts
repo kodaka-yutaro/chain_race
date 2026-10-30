@@ -1,5 +1,4 @@
 import sunny from './dd-sunny.json';
-import kobra from './dd-kobra.json';
 import type { Channel, Lift, MapDef, Saw, Zone } from './physics';
 
 // オリジナルのステージと、出典を記載したDDNet移植版。
@@ -251,7 +250,7 @@ function soloChinatown():MapDef {
   return b.build({id:'solo-chinatown',name:'点心横丁・ひとり旅',description:'1人用。点心の屋台から屋根へ、横丁を抜けてゴールへ。ミニを押す・叩く・鎖で引かれる動きをゆっくり試せます。',minPlayers:1,solo:true,wordBlocks:true});
 }
 // The breath is a standard ability in every built-in course, including DD imports.
-export const MAPS: MapDef[] = [wordPractice(),soloChinatown(),stage1(), stage2(), stage3(), stage4(), sunny, kobra]
+export const MAPS: MapDef[] = [wordPractice(),soloChinatown(),stage1(), stage2(), stage3(), stage4(), sunny]
   .map(map => ({ ...map, wordBlocks: true }));
 
 // 大部屋の広場：左にフリー入口、右に協力の台
