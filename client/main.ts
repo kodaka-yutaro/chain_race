@@ -384,6 +384,7 @@ window.addEventListener('keydown', (e) => {
   if (!game || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
   // Esc belongs to an open dialog or text field until it has been dismissed.
   if (document.querySelector('dialog[open]') || (e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')) return;
+  if(game.freeCamera&&e.code!=='Escape')return;
   if(e.code==='Tab'){e.preventDefault();if(dummyState?.dummyId)switchDummy();else send({t:'dummy',action:'add',face:savedFace(true)});return;}
   if(e.code==='Escape'&&gameMode!=='lobby'){e.preventDefault();openGameMenu();return;}
   if (e.code === 'KeyK') {
@@ -472,7 +473,13 @@ if (backend.local) console.info('Firebase 未設定のため、同じブラウ�
 for(const button of $$('[data-fullscreen]'))button.onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{toast('全画面に切り替えられませんでした');}};
 
 const gameMenu=$<HTMLDialogElement>('#game-menu');
-function openGameMenu(){if(!gameMenu.open)gameMenu.showModal();}
+function updateCameraMenu(){ $('#camera-state').textContent=`${game?.freeCamera?'自由カメラ':'自分を追う'} · ${Math.round((game?.cameraScale??1)*100)}%`; }
+function openGameMenu(){updateCameraMenu();if(!gameMenu.open)gameMenu.showModal();}
+$('#camera-free').onclick=()=>{if(!game?.freeCamera)game?.toggleCamera();gameMenu.close();};
+$('#camera-follow').onclick=()=>{game?.followCamera();gameMenu.close();};
+$('#camera-in').onclick=()=>{game?.zoomCamera(1.25);updateCameraMenu();};
+$('#camera-out').onclick=()=>{game?.zoomCamera(.8);updateCameraMenu();};
+$('#camera-reset').onclick=()=>{game?.resetCamera();updateCameraMenu();};
 $('#open-game-menu').onclick=openGameMenu;
 $('#resume-game').onclick=()=>gameMenu.close();
 for(const id of ['btn-respawn','btn-game-lobby'])$('#'+id).addEventListener('click',()=>gameMenu.close());
