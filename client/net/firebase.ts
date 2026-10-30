@@ -1,4 +1,4 @@
-import { canRelease, validateCourseMap, type Course } from '../../shared/courses';
+import { validateCourseMap, type Course } from '../../shared/courses';
 import { initializeApp, type FirebaseOptions } from 'firebase/app';
 import {
   createUserWithEmailAndPassword, getAuth, signInAnonymously, signInWithEmailAndPassword, signOut,
@@ -48,7 +48,7 @@ export function firebaseBackend(config: FirebaseOptions): Backend {
     local: false,
     async listCourses() {
       const snap = await getDocs(query(collection(db, 'courses'), orderBy('createdAt', 'desc'), limit(100)));
-      return snap.docs.map(d => d.data() as Course).filter(c => {
+      return snap.docs.flatMap(d => {try{const c=d.data();if(typeof c.map?.dd==='string')c.map.dd=JSON.parse(c.map.dd);return [c as Course];}catch{return [];}}).filter(c => {
         try { return c.map.id === c.id && !!validateCourseMap(c.map); } catch { return false; }
       });
     },
@@ -57,15 +57,17 @@ export function firebaseBackend(config: FirebaseOptions): Backend {
       if (!a) throw new Error('コースの投稿にはログインしてください');
       const id = 'user-' + randomId();
       const c: Course = { id, author: a.uid, authorName, createdAt: Date.now(), status: 'prerelease', map: { ...validateCourseMap(map), id } };
-      await setDoc(doc(db, 'courses', id), c); return c;
+      if(new TextEncoder().encode(JSON.stringify(c)).length>900000)throw Error('公開できるデータ容量を超えています。コースを分割するか、ファイルで共有してください。');
+      await setDoc(doc(db, 'courses', id), {...c,map:{...c.map,dd:JSON.stringify(c.map.dd)}}); return c;
     },
     async releaseCourse(id, results) {
-      if (!canRelease(results)) throw new Error('2人以上での協力クリアが必要です');
-      await ensureUser();
-      await runTransaction(db, async tx => {
-        const ref = doc(db, 'courses', id), snap = await tx.get(ref);
-        if (!snap.exists() || snap.get('status') !== 'prerelease') return;
-        tx.update(ref, { status: 'released', firstClear: { names: results.map(r => r.name), time: Math.max(...results.map(r => r.time)), at: Date.now() } });
+      const a=await this.account();if(!a)throw Error('チェッカー登録にはログインしてください');
+      const time=results[0]?.time;if(results.length!==1||!Number.isFinite(time)||time<0)throw Error('クリア記録が正しくありません');
+      return runTransaction(db,async tx=>{
+        const ref=doc(db,'courses',id),snap=await tx.get(ref);if(!snap.exists())return null;
+        const previous=snap.get('firstClear') as Course['firstClear'];if(previous)return previous.names.join('・');
+        tx.update(ref,{status:'released',firstClear:{uid:a.uid,names:[a.name],time,at:Date.now()}});
+        return a.name;
       });
     },
 
@@ -104,31 +106,32 @@ export function firebaseBackend(config: FirebaseOptions): Backend {
     },
 
     async listHubs() {
-      const snap = await getDocs(query(collection(db, 'hubs'), where('updatedAt', '>', Date.now() - HUB_STALE_MS)));
-      const live: HubInfo[] = snap.docs.map((d) => ({
-        id: d.id, name: String(d.get('name')), count: Number(d.get('count')) || 0, capacity: Number(d.get('capacity')) || HUB_CAPACITY,
+      const snap = await getDocs(query(collection(db, 'hubs'), where('visibility', '==', 'public'), where('updatedAt', '>', Date.now() - HUB_STALE_MS)));
+      const live: HubInfo[] = snap.docs.filter(d => d.get('updatedAt') > Date.now() - HUB_STALE_MS).map((d) => ({
+        id: d.id, name: String(d.get('name')), members: d.get('members') ?? [], count: Number(d.get('count')) || 0, capacity: Number(d.get('capacity')) || HUB_CAPACITY,
       }));
       return mergeHubs(live, HUB_CAPACITY);
     },
 
-    async claimHub(id, name, hostId) {
+    async claimHub(id, name, hostId, visibility = 'public') {
       const u = await ensureUser();
       const ref = doc(db, 'hubs', id ?? randomId());
       return runTransaction(db, async (tx) => {
         const cur = await tx.get(ref);
         const d = cur.data();
         const now = Date.now();
-        if (d && d.updatedAt > now - HUB_STALE_MS && d.hostId !== hostId) {
+        if (id) {
+          if (!d || d.updatedAt <= now - HUB_STALE_MS) throw new Error('この部屋は終了しました');
           if (d.count >= d.capacity) throw new Error('この大部屋は満員です');
           return { id: ref.id, name: String(d.name), role: 'join' as const };
         }
-        tx.set(ref, { name, hostId, hostUid: u.uid, count: 1, capacity: HUB_CAPACITY, updatedAt: now });
+        tx.set(ref, { name, hostId, hostUid: u.uid, visibility, members: [], count: 1, capacity: HUB_CAPACITY, updatedAt: now });
         return { id: ref.id, name, role: 'host' as const };
       });
     },
 
-    async heartbeat(id, count) {
-      await updateDoc(doc(db, 'hubs', id), { count, updatedAt: Date.now() });
+    async heartbeat(id, count, members = []) {
+      await updateDoc(doc(db, 'hubs', id), { count, members, updatedAt: Date.now() });
     },
 
     async releaseHub(id) {

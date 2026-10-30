@@ -1,6 +1,9 @@
+import {drawCourseArea,drawPickupArt} from './course-art';
 // 見た目の描画（背景・タイル・キャラ・フック）。ゲームの進行とは切り離してある。
 import { CHANNELS, isSolidChar, LIFT_THICK, liftTop, SAW_THICK, TEE_SIZE, TILE, type MapDef } from '../shared/physics';
-import { drawChinatown } from './chinatown';
+import { drawFace } from './face-editor';
+import type { Ability } from '../shared/abilities';
+import {drawThemeBackground} from './backgrounds';
 
 const R = TEE_SIZE / 2;
 
@@ -23,9 +26,9 @@ function hash(x: number, y: number, s = 0): number {
 // ---------- 背景 ----------
 
 export function drawBackground(
-  g: CanvasRenderingContext2D, _mapId: string, W: number, H: number, camX: number, _camY: number, _zoom: number, now: number,
+  g: CanvasRenderingContext2D, map: MapDef, W: number, H: number, camX: number, _camY: number, _zoom: number, now: number,
 ) {
-  drawChinatown(g, W, H, now, camX);
+  drawThemeBackground(g,map.background,W,H,camX);
 }
 
 // ---------- タイル ----------
@@ -44,7 +47,7 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
   c.height = height * TILE;
   const g = c.getContext('2d')!;
   g.translate(-x0 * TILE, -y0 * TILE);
-  const [rock, rockDark, rockEdge, grass] = ROCK[m.id] ?? ROCK.hill;
+  const [rock, rockDark, rockEdge, grass]=['#344e6e','#273c59','#1c2d46','#98bda2'];
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= m.width || y >= m.height ? 'X' : m.tiles[y][x]);
   const solid = (ch: string) => isSolidChar(ch, Array(CHANNELS).fill(false));
 
@@ -52,18 +55,14 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
     for (let x = x0; x < Math.min(m.width, x0 + width); x++) {
       const ch = m.tiles[y][x];
       const px = x * TILE, py = y * TILE;
-      if (ch === 'U') { g.fillStyle = '#85e6b766'; g.fillRect(px, py, TILE, TILE); }
+      if (['~','U','O'].includes(ch)) continue; // Transparent areas are drawn once in the live pass.
       if (ch === '#' || ch === 'O') {
         const gr = g.createLinearGradient(px, py, px, py + TILE);
         gr.addColorStop(0, rock);
         gr.addColorStop(1, rockDark);
         g.fillStyle = gr;
         g.fillRect(px, py, TILE, TILE);
-        // Warm masonry and jade eaves make the route part of the street.
-        g.fillStyle=rockEdge;g.fillRect(px,py+15,TILE,2);g.fillRect(px,py+31,TILE,1);
-        g.fillRect(px+(y%2?7:23),py,2,15);g.fillRect(px+(y%2?23:7),py+17,2,14);
-        g.fillStyle='#f9c98426';g.fillRect(px+3,py+3,24,1);g.fillRect(px+3,py+19,24,1);
-        if(hash(x,y,3)>.87){g.fillStyle='#422f3026';g.fillRect(px+5,py+6,11,2);g.fillRect(px+18,py+23,6,2);}
+        g.strokeStyle='#506887';g.lineWidth=1;g.strokeRect(px+2,py+2,28,28);
         // 外に面した辺の影
         g.fillStyle = rockEdge;
         if (!solid(at(x, y + 1))) g.fillRect(px, py + TILE - 4, TILE, 4);
@@ -223,6 +222,7 @@ export function drawLiveTiles(
     for (let x = Math.max(0, x0); x <= Math.min(m.width - 1, x1); x++) {
       const ch = row[x];
       const px = x * TILE, py = y * TILE;
+      if (['~','U','O'].includes(ch) && drawCourseArea(g,ch,px,py,TILE)) continue;
       if (ch === '~') {
         const k = Math.floor(now / 90);
         if (hash(x, y, k) < 0.35) {
@@ -585,6 +585,8 @@ function drawLifts(g: CanvasRenderingContext2D, m: MapDef, st: LiveState, now: n
 // ---------- キャラとフック ----------
 
 export interface RunnerLook {
+  hammerBrace?:boolean;wheelieAge?:number;gesture?:number;gestureAge?:number;
+  ability?:Ability;ghostActive?:boolean;face?:string;shotAge?:number;
   id: number; x: number; y: number; vx: number; grounded: boolean;
   stun: number; aimX: number; aimY: number; hammerAge: number;
   name: string; me: boolean;
@@ -630,7 +632,14 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   const color = colorOf(r.id);
   const stunned = r.stun > 0;
   const face = r.aimX >= 0 ? 1 : -1;
-  const body = stunned ? '#a9b4c2' : color;
+  const body = stunned ? '#a9b4c2' : '#f5c9a5';
+  if(r.ability==='bicycle'){
+    g.save();g.translate(r.x-19*face,r.y+28);g.rotate((r.wheelieAge??100)<30?-face*Math.sin((r.wheelieAge??0)/30*Math.PI)*.45:0);g.translate(-(r.x-19*face),-(r.y+28));
+    g.strokeStyle='#23304b';g.lineWidth=4;for(const dx of [-19,19]){g.beginPath();g.arc(r.x+dx,r.y+28,11,0,Math.PI*2);g.stroke();}
+    g.strokeStyle='#e94a5e';g.lineWidth=3;g.beginPath();g.moveTo(r.x-19,r.y+28);g.lineTo(r.x-5,r.y+10);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x-19,r.y+28);g.lineTo(r.x+6,r.y+14);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x+14,r.y+5);g.stroke();
+    g.save();g.translate(r.x+14,r.y+5);g.rotate((r.shotAge??100)<12?Math.sin((r.shotAge??0)/12*Math.PI)*1.2:0);g.strokeStyle='#ffd578';g.beginPath();g.moveTo(-4,0);g.lineTo(10,-3);g.stroke();g.restore();
+  }
+  if(r.ability==='bicycle')g.restore();
   const puff=r.spitCharge?Math.sin((1-r.spitCharge/19)*Math.PI/2):0;
 
   // 足（歩くと交互に動く、空中では縮める）
@@ -646,8 +655,9 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   }
 
   // ハンマー（ねらう方向に持つ。振った直後は大きく振り下ろす）
+  if(['hammer','basic','ghost'].includes(r.ability??'')){
   const swing = r.hammerAge >= 0 && r.hammerAge < 8 ? Math.sin((r.hammerAge / 8) * Math.PI) * 1.4 : 0;
-  const ha = Math.atan2(r.aimY, r.aimX) - face * (0.9 - swing);
+  const ha = r.hammerBrace?Math.PI/2:Math.atan2(r.aimY, r.aimX) - face * (0.9 - swing);
   g.save();
   g.translate(r.x, r.y);
   g.rotate(ha);
@@ -659,34 +669,19 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   g.fillRect(22, -8, 9, 3);
   g.restore();
 
-  // 体
-  const grd = g.createRadialGradient(r.x - 5, r.y - 6, 2, r.x, r.y, R + 2);
-  grd.addColorStop(0, shade(body, 0.45));
-  grd.addColorStop(0.6, body);
-  grd.addColorStop(1, shade(body, -0.25));
-  g.fillStyle = grd;
-  g.strokeStyle = shade(body, -0.5);
-  g.lineWidth = 2;
-  g.beginPath();
-  g.ellipse(r.x, r.y, R+puff*4, R-puff*2,0, 0, Math.PI * 2);
-  g.fill();
-  g.stroke();
-
-  // はちまき（後ろになびく）
-  g.fillStyle = '#ffffff';
-  g.beginPath();
-  g.arc(r.x, r.y, R - 0.5, Math.PI * 1.07, Math.PI * 1.93);
-  g.arc(r.x, r.y, R - 5, Math.PI * 1.9, Math.PI * 1.1, true);
-  g.closePath();
-  g.fill();
-  const tail = -face;
-  const wav = Math.sin(now / 120 + r.id) * 3;
-  g.beginPath();
-  g.moveTo(r.x + tail * (R - 3), r.y - 9);
-  g.quadraticCurveTo(r.x + tail * (R + 6), r.y - 12 + wav, r.x + tail * (R + 12), r.y - 6 + wav);
-  g.lineTo(r.x + tail * (R + 10), r.y - 3 + wav);
-  g.quadraticCurveTo(r.x + tail * (R + 4), r.y - 7, r.x + tail * (R - 3), r.y - 5);
-  g.fill();
+  }
+  if(r.ability==='hand'){
+    const gesture=(r.gestureAge??100)<65?(r.gesture??2):2;
+    g.save();g.translate(r.x+r.aimX*48,r.y+r.aimY*48);g.rotate(Math.atan2(r.aimY,r.aimX)+Math.PI/2);
+    g.fillStyle='#fff';g.strokeStyle='#9aacc0';g.lineWidth=2;
+    // A 48px glove: the fingers themselves change for rock, scissors and paper.
+    g.beginPath();g.roundRect(-15,-3,30,24,8);g.fill();g.stroke();
+    const fingers=gesture===0?[8,8,8,8]:gesture===1?[28,31,8,8]:[22,29,31,24];
+    for(let i=0;i<4;i++){g.beginPath();g.roundRect(-18+i*9,-fingers[i]+7,9,fingers[i],4);g.fill();g.stroke();}
+    g.save();g.translate(-16,10);g.rotate(-.65);g.beginPath();g.roundRect(-5,-13,10,23,5);g.fill();g.stroke();g.restore();
+    g.restore();
+  }
+  drawFace(g,r.face??'',r.x,r.y,34+puff*2);
 
   // 目
   const ex = r.x + r.aimX * 3, ey = r.y - 1 + r.aimY * 2;
@@ -732,6 +727,13 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   if(puff>0 || (r.spitAge!==undefined&&r.spitAge>=18&&r.spitAge<32)){
     g.fillStyle='#38202e';g.beginPath();g.ellipse(r.x+face*6,r.y+7,puff>0?2:4,puff>0?1:5,0,0,Math.PI*2);g.fill();
   }
+  if(r.ability==='bun'){
+    g.save();g.translate(r.x,r.y-12);g.fillStyle='#191b26';g.strokeStyle='#080b12';g.lineWidth=1.5;
+    g.beginPath();g.ellipse(0,0,17,12,0,Math.PI,Math.PI*2);g.closePath();g.fill();g.stroke();
+    g.strokeStyle='#d9474c';g.lineWidth=3;g.beginPath();g.moveTo(-16,0);g.lineTo(16,0);g.moveTo(0,-11);g.lineTo(0,-2);g.stroke();
+    g.fillStyle='#e34b50';g.beginPath();g.arc(0,-13,3,0,Math.PI*2);g.fill();g.restore();
+  }
+  if(r.ability==='ghost'&&!r.ghostActive)drawPickupArt(g,'P',r.x-36,r.y-24+Math.sin(now/300)*3,20);
   // 名前の札
   if (r.name) {
     g.font = 'bold 12px system-ui, "Hiragino Sans", sans-serif';

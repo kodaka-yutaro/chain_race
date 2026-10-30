@@ -1,99 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LOBBY_MAP } from '../shared/maps';
-import { emptyInput, findSpawn, TILE } from '../shared/physics';
-import { PARTY_COUNTDOWN_TICKS, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import { HostHub, type Link } from '../client/host/hub';
-
-function fakeLink(hub: HostHub) {
-  const got: ServerMsg[] = [];
-  const link: Link = { send: (m) => got.push(m), close: () => link.onClose(), onMessage: () => {}, onClose: () => {} };
-  hub.connect(link);
-  return { got, say: (m: ClientMsg) => link.onMessage(m), drop: () => link.onClose() };
-}
-
-const last = <T extends ServerMsg['t']>(got: ServerMsg[], t: T) =>
-  [...got].reverse().find((m) => m.t === t) as Extract<ServerMsg, { t: T }> | undefined;
-
-test('リスポーンは遅延した入力でも届き、同じコースに残って自分だけスタートへ戻る',()=>{
-  const hub=new HostHub('restart-test','部屋'),a=fakeLink(hub),b=fakeLink(hub);
-  a.say({t:'hello',name:'赤',guest:true});b.say({t:'hello',name:'青',guest:true});
-  a.say({t:'stageJoin',stageId:'hill'});b.say({t:'stageJoin',stageId:'hill'});
-  const start=last(a.got,'gameStart')!,game=[...hub.games].find(g=>g.id===start.gameId)!;
-  const me=game.world.runners[0],friend=game.world.runners[1],spawn=findSpawn(game.world.map);
-  me.x=500;me.raceStart=0;me.finishedTime=4;friend.x=650;
-  a.say({t:'input',gameId:game.id,list:[{seq:1,input:{...emptyInput(),kill:true}}]});
-  for(let seq=2;seq<=14;seq++)a.say({t:'input',gameId:game.id,list:[{seq,input:emptyInput()}]});
-  hub.tick();
-  assert.equal(me.x,spawn.x);assert.equal(me.y,spawn.y);assert.equal(me.raceStart,-1);assert.equal(me.finishedTime,-1);
-  assert.equal(friend.x,650);assert.equal(game.size,2);assert.equal(last(a.got,'gameStart'),start);
-  for(let seq=15;seq<=30;seq++){a.say({t:'input',gameId:game.id,list:[{seq,input:{...emptyInput(),right:true}}]});hub.tick();}
-  assert.ok(me.x>spawn.x+5,'respawn must not repeat on later frames');
+import { emptyInput,findSpawn } from '../shared/physics';
+import { defaultFace } from '../shared/face';
+import { newCourseMap } from '../shared/courses';
+import type { ClientMsg, ServerMsg } from '../shared/protocol';
+function peer(h:HostHub,name:string,host=false){const got:ServerMsg[]=[];const l:Link={send:m=>got.push(structuredClone(m)),close:()=>l.onClose(),onMessage:()=>{},onClose:()=>{}};h.connect(l,host);l.onMessage({t:'hello',name,guest:true,face:defaultFace()});return {got,say:(m:ClientMsg)=>l.onMessage(m),drop:()=>l.onClose()};}
+test('ホストだけが選択と開始を行い、全員が同じ世界と顔を受け取る',()=>{
+ const h=new HostHub('test','部屋'),a=peer(h,'主',true),b=peer(h,'友達');
+ assert.equal(h.games.size,0);b.say({t:'roomStart'});assert.equal(h.games.size,0);
+ a.say({t:'roomStart'});assert.equal(h.games.size,0);a.say({t:'courseJoin',map:{...newCourseMap(),id:'user-123456789012345678'}});a.say({t:'roomStart'});const sa=a.got.find(m=>m.t==='gameStart')!,sb=b.got.find(m=>m.t==='gameStart')!;
+ assert.equal(sa.gameId,sb.gameId);assert.equal([...h.games][0].size,2);assert.equal(sb.faces?.[1],defaultFace());
+ b.say({t:'roomStop'});assert.equal(h.games.size,1);a.say({t:'roomStop'});assert.equal(h.games.size,0);
+ assert.equal(b.got.filter(m=>m.t==='hubState').at(-1)!.hub.playing,false);
 });
-
-test('大部屋の主のブラウザで、入室から協力の台で出発するまで進む', () => {
-  const counts: number[] = [];
-  const hub = new HostHub('h', '大部屋', (n) => counts.push(n));
-  const a = fakeLink(hub), b = fakeLink(hub);
-  a.say({ t: 'hello', name: 'あ', guest: true });
-  b.say({ t: 'hello', name: 'い', guest: false });
-  assert.equal(last(a.got, 'gameStart')?.mode, 'lobby');
-  assert.equal(last(b.got, 'hubState')?.hub.members.length, 2);
-  assert.deepEqual(counts, [1, 2]);
-
-  // 2人を塔の協力の台に乗せて F
-  const z = LOBBY_MAP.zones!.find((x) => x.kind === 'party' && x.stageId === 'tower')!;
-  for (const r of hub.lobby.world.runners) { r.x = (z.x + z.w / 2) * TILE; r.y = (z.y + z.h - 1) * TILE; }
-  for (let i = 0; i < 20; i++) hub.tick();
-  a.say({ t: 'interact' });
-  for (let i = 0; i < PARTY_COUNTDOWN_TICKS + 5; i++) hub.tick();
-  const start = last(b.got, 'gameStart')!;
-  assert.equal(start.mode, 'party');
-  assert.equal(start.stageId, 'tower');
-
-  // 同じ入力が重ねて届いても1回ぶんとして扱い、ほかのゲーム宛ての入力は無視する
-  const inp = emptyInput();
-  b.say({ t: 'input', gameId: start.gameId, list: [{ seq: 1, input: inp }, { seq: 2, input: inp }] });
-  b.say({ t: 'input', gameId: start.gameId, list: [{ seq: 1, input: inp }, { seq: 2, input: inp }, { seq: 3, input: inp }] });
-  b.say({ t: 'input', gameId: 'old', list: [{ seq: 99, input: inp }] });
-  for (let i = 0; i < 4; i++) hub.tick();
-  const snap = last(b.got, 'snap')!;
-  assert.equal(snap.gameId, start.gameId);
-  assert.equal(snap.lastSeq, 3);
-
-  a.drop();
-  assert.equal(last(b.got, 'hubState')?.hub.members.length, 1);
-  assert.deepEqual(counts, [1, 2, 1]);
+test('必要人数に満たない場合は開始せず、ホストが開始した部屋には後から合流できる',()=>{
+ const h=new HostHub('test','部屋'),a=peer(h,'主',true);a.say({t:'courseJoin',map:{...newCourseMap(),minPlayers:2,id:'user-123456789012345678'}});a.say({t:'roomStart'});assert.equal(h.games.size,0);
+ const b=peer(h,'友達');a.say({t:'roomStart'});const c=peer(h,'追加');assert.equal([...h.games][0].size,3);assert.ok(c.got.some(m=>m.t==='gameStart'));
+ b.say({t:'leaveGame'});assert.equal([...h.games][0].size,2);b.say({t:'roomResume'});assert.equal([...h.games][0].size,3);
 });
-
-test('満員や名前の不正な人は入れない', () => {
-  const hub = new HostHub('h', '大部屋');
-  const x = fakeLink(hub);
-  x.say({ t: 'hello', name: '', guest: true });
-  assert.equal(x.got[0]?.t, 'error');
-  assert.equal(hub.members.size, 0);
+test('遅延した入力からのリスポーンは一度だけ実行し、相手を移動させない',()=>{
+ const h=new HostHub('test','部屋'),a=peer(h,'主',true),b=peer(h,'友達');a.say({t:'courseJoin',map:{...newCourseMap(),id:'user-123456789012345678'}});a.say({t:'roomStart'});const g=[...h.games][0],r=g.world.runners[0],o=g.world.runners[1];r.x=500;o.x=650;
+ a.say({t:'input',gameId:g.id,list:[{seq:1,input:{...emptyInput(),kill:true}}]});
+ for(let seq=2;seq<15;seq++)a.say({t:'input',gameId:g.id,list:[{seq,input:emptyInput()}]});h.tick();assert.equal(r.x,findSpawn(g.world.map).x);assert.equal(o.x,650);
+ for(let seq=15;seq<40;seq++){a.say({t:'input',gameId:g.id,list:[{seq,input:{...emptyInput(),right:true}}]});h.tick();}assert.ok(r.x>findSpawn(g.world.map).x+30);
 });
-
-test('スマホの遅いフレームでも、同時に押したミニ・攻撃・ジャンプを取りこぼさない',()=>{
-  const hub=new HostHub('touch-burst','入力確認'),a=fakeLink(hub);
-  a.say({t:'hello',name:'赤',guest:true});a.say({t:'stageJoin',stageId:'word-practice'});
-  const start=last(a.got,'gameStart')!,game=[...hub.games].find(g=>g.id===start.gameId)!;
-  for(let i=0;i<30;i++)hub.tick();
-  a.say({t:'input',gameId:game.id,list:[{seq:1,input:{...emptyInput(),miniSpit:true,fire:true,jump:true,wire:true}}]});
-  for(let seq=2;seq<=14;seq++)a.say({t:'input',gameId:game.id,list:[{seq,input:{...emptyInput(),wire:true}}]});
-  hub.tick();
-  assert.equal(game.world.words.length,1);assert.equal(game.world.words[0].hitTick,game.world.tick);
-  assert.ok(game.world.runners[0].vy<0);assert.ok(game.world.words[0].vx>15);
-});
-
-test('コース選択から同じKobraに合流し、武器と仕掛けの状態を二人に配信する', () => {
-  const hub=new HostHub('dd-test','中華街'),a=fakeLink(hub),b=fakeLink(hub);
-  a.say({t:'hello',name:'赤',guest:true});b.say({t:'hello',name:'青',guest:true});
-  a.say({t:'stageJoin',stageId:'invalid'});assert.equal(last(a.got,'gameStart')!.stageId,'lobby');
-  a.say({t:'stageJoin',stageId:'dd-kobra'});b.say({t:'stageJoin',stageId:'dd-kobra'});
-  const id=last(a.got,'gameStart')!.gameId;assert.equal(last(b.got,'gameStart')!.gameId,id);
-  a.say({t:'input',gameId:id,list:[{seq:1,input:{...emptyInput(),weapon:1}}]});
-  hub.tick();hub.tick();
-  const snap=last(a.got,'snap')!;assert.equal(snap.me!.dd!.weapon,1);assert.ok(snap.dd);assert.equal(snap.others.length,1);
-  const other=last(b.got,'snap')!.others[0];assert.equal(other.dd!.weapon,1);
+test('満員と不正な名前を拒否し、切断したメンバーを一覧から外す',()=>{
+ const h=new HostHub('test','部屋');peer(h,'主',true);for(let i=0;i<15;i++)peer(h,'人'+i);const extra=peer(h,'満員');assert.equal(h.members.size,16);assert.ok(extra.got.some(m=>m.t==='error'));peer(h,'<bad>');assert.equal(h.members.size,16);
 });

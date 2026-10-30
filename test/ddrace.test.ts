@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createWorld, emptyInput, newRunner, stepWorld, type MapDef } from '../shared/physics';
 import { ddCache, ddTiles, ddFire, ddSwitchActive } from '../shared/ddrace';
 import { toView } from '../shared/protocol';
-import { stageById } from '../shared/maps';
+import { stageById } from '../shared/legacy-maps';
 
 function setup() {
   const tiles=Array.from({length:20},(_,y)=>y===19?'#'.repeat(30):'.'.repeat(30));

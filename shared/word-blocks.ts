@@ -1,4 +1,5 @@
-import type { Input, Runner, World } from './physics';
+import {hammerImpulse} from './hammer';
+import { TICK_RATE, type Input, type Runner, type World } from './physics';
 
 export const WORD_CELL = 7;
 export const WORD_WIDTH = 35 * WORD_CELL;
@@ -47,7 +48,7 @@ export interface WordBlock {
 }
 export interface SpitState {
   charge:number; cooldown:number; prev:boolean; started:number; ax:number; ay:number; blockedUntil:number;
-  miniCooldown:number; prevMini:boolean;
+  miniCooldown:number; prevMini:boolean; spent?:boolean;
 }
 export const newSpitState = ():SpitState => ({charge:0,cooldown:0,prev:false,started:-100,ax:1,ay:0,blockedUntil:0,miniCooldown:0,prevMini:false});
 const MINI_RECTS:WordRect[]=[{x:0,y:0,w:MINI_SIZE,h:MINI_SIZE,character:0}];
@@ -77,18 +78,20 @@ export interface WordCollision {
 }
 function fits(w:World,b:WordBlock,collision:WordCollision,checkRunners:boolean) {
   if(rects(b).some(r=>collision.staticRect(b.x+r.x,b.y+r.y,r.w,r.h)||wordBoxSolid(w,b.x+r.x,b.y+r.y,r.w,r.h,b.id)))return false;
-  return !checkRunners||!w.runners.some(t=>wordBoxHit(b,t.x-14,t.y-14,28,28));
+  return !checkRunners||!w.runners.some(t=>runnerHit(b,t));
 }
+function bounds(t:Runner){return {half:t.ability==='bicycle'?30:14,bottom:t.ability==='bicycle'?40:t.hammerBrace?31:14};}
+function runnerHit(b:WordBlock,t:Runner,x=t.x,y=t.y){const r=bounds(t);return wordBoxHit(b,x-r.half,y-14,r.half*2,r.bottom+14);}
 function standing(b:WordBlock,t:Runner) {
-  return rects(b).some(r=>Math.abs(t.y+14-(b.y+r.y))<=3 && t.x+13>b.x+r.x && t.x-13<b.x+r.x+r.w);
+  return rects(b).some(r=>Math.abs(t.y+bounds(t).bottom-(b.y+r.y))<=3 && t.x+bounds(t).half-1>b.x+r.x && t.x-bounds(t).half+1<b.x+r.x+r.w);
 }
 function move(w:World,b:WordBlock,dx:number,dy:number,collision:WordCollision) {
   const next={...b,x:b.x+dx,y:b.y+dy};
   if(!fits(w,next,collision,false))return false;
   const carried=new Map<Runner,{x:number;y:number}>();
-  for(const t of w.runners)if(standing(b,t)||wordBoxHit(next,t.x-14,t.y-14,28,28))carried.set(t,{x:t.x+dx,y:t.y+dy});
+  for(const t of w.runners)if(standing(b,t)||runnerHit(next,t))carried.set(t,{x:t.x+dx,y:t.y+dy});
   for(const [t,p] of carried){
-    if(collision.runnerBox(p.x,p.y,b.id)||wordBoxHit(next,p.x-14,p.y-14,28,28))return false;
+    const box=bounds(t);if(collision.staticRect(p.x-box.half,p.y-14,box.half*2,box.bottom+14)||wordBoxSolid(w,p.x-box.half,p.y-14,box.half*2,box.bottom+14,b.id)||collision.runnerBox(p.x,p.y,b.id)||runnerHit(next,t,p.x,p.y))return false;
     // A moving word must not squeeze a rider into a wall or another player.
     for(const o of w.runners){
       if(o===t)continue;
@@ -96,6 +99,9 @@ function move(w:World,b:WordBlock,dx:number,dy:number,collision:WordCollision) {
       if(Math.hypot(p.x-q.x,p.y-q.y)<27.5 && Math.hypot(t.x-o.x,t.y-o.y)>=27.5)return false;
     }
   }
+  const carriedBalls=w.balls.filter(o=>o.carriedBy===undefined&&!(o.respawnAt&&o.respawnAt>w.tick)&&wordBoxHit(next,o.x-32,o.y-32,64,64));
+  if(carriedBalls.some(o=>collision.staticRect(o.x+dx-32,o.y+dy-32,64,64)||wordBoxSolid(w,o.x+dx-32,o.y+dy-32,64,64,b.id)||wordBoxHit(next,o.x+dx-32,o.y+dy-32,64,64)))return false;
+  for(const o of carriedBalls){o.x+=dx;o.y+=dy;}
   b.x=next.x;b.y=next.y;
   for(const [t,p] of carried){t.x=p.x;t.y=p.y;}
   return true;
@@ -116,11 +122,11 @@ function moveMinis(w:World,roots:WordBlock[],dx:number,dy:number,collision:WordC
   const carried=new Map<Runner,{x:number;y:number}>();
   for(const t of w.runners){
     if(t===exclude)continue;
-    if([...group].some(b=>standing(b,t)||wordBoxHit({...b,x:b.x+dx,y:b.y+dy},t.x-14,t.y-14,28,28)))
+    if([...group].some(b=>standing(b,t)||runnerHit({...b,x:b.x+dx,y:b.y+dy},t)))
       carried.set(t,{x:t.x+dx,y:t.y+dy});
   }
   for(const [t,p] of carried){
-    if(collision.runnerBox(p.x,p.y,ids)||[...group].some(b=>wordBoxHit({...b,x:b.x+dx,y:b.y+dy},p.x-14,p.y-14,28,28)))return false;
+    const box=bounds(t);if(collision.staticRect(p.x-box.half,p.y-14,box.half*2,box.bottom+14)||wordBoxSolid(w,p.x-box.half,p.y-14,box.half*2,box.bottom+14,ids)||collision.runnerBox(p.x,p.y,ids)||[...group].some(b=>runnerHit({...b,x:b.x+dx,y:b.y+dy},t,p.x,p.y)))return false;
     for(const o of w.runners){
       if(o===t)continue;
       const q=carried.get(o)??o;
@@ -188,15 +194,14 @@ export function hammerMinis(w:World,t:Runner,hx:number,hy:number) {
     if(!b.solid||b.kind!=='mini')continue;
     const cx=Math.max(b.x,Math.min(b.x+MINI_SIZE,hx)),cy=Math.max(b.y,Math.min(b.y+MINI_SIZE,hy));
     if(Math.hypot(hx-cx,hy-cy)>22)continue;
-    const bx=b.x+MINI_SIZE/2-t.x,by=b.y+MINI_SIZE/2-t.y,d=Math.hypot(bx,by)||1;
-    const ax=t.aimX*.65+bx/d*.35,ay=t.aimY*.65+by/d*.35-.18,n=Math.hypot(ax,ay)||1;
-    b.vx=Math.max(-32,Math.min(32,b.vx+ax/n*20));
-    b.vy=Math.max(-32,Math.min(32,b.vy+ay/n*20-2));b.hitTick=w.tick;
+    const impulse=hammerImpulse(b.x+MINI_SIZE/2-t.x,b.y+MINI_SIZE/2-t.y);
+    b.vx=Math.max(-32,Math.min(32,b.vx+impulse.vx));
+    b.vy=Math.max(-32,Math.min(32,b.vy+impulse.vy));b.hitTick=w.tick;
   }
 }
 export function stepWords(w:World,collision:WordCollision) {
   if(!w.map.wordBlocks){w.words=[];return;}
-  const owners=new Set(w.runners.map(t=>t.id));
+  const owners=new Set(w.runners.filter(t=>!w.map.abilityMode||t.ability==='bun').map(t=>t.id));
   w.words=w.words.filter(b=>(b.expires<0||b.expires>w.tick)&&owners.has(b.owner)&&b.y<w.map.height*32+128);
   for(const b of w.words){
     if(!b.solid){
@@ -218,39 +223,44 @@ export function stepWords(w:World,collision:WordCollision) {
         if(b.vy&&!moveMinis(w,[b],0,b.vy/steps,collision))b.vy=0;
       }
     }else{
-      if(!move(w,b,b.vx,0,collision))b.vx=-b.vx;
-      if(b.vy&&!move(w,b,0,b.vy,collision))b.vy=-b.vy;
+      if(!move(w,b,b.vx,0,collision)&&!w.map.abilityMode)b.vx=-b.vx;
+      if(b.vy&&!move(w,b,0,b.vy,collision)&&!w.map.abilityMode)b.vy=-b.vy;
     }
   }
 }
 export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
-  const s=t.spit;
+  const s=t.spit,repeat=!!w.map.abilityMode,interval=Math.round(.6*TICK_RATE);
+  if(repeat&&!input.spit){s.spent=false;s.charge=0;}
   if(s.cooldown>0)s.cooldown--;
   if(s.miniCooldown>0)s.miniCooldown--;
-  if(input.clearWord){
+  if(input.clearWord&&t.stun===0){
     w.words=w.words.filter(b=>b.owner!==t.id||b.kind==='mini');
     s.charge=0;
   }
   if(!w.map.wordBlocks||t.stun>0){s.charge=0;s.prev=!!input.spit;s.prevMini=!!input.miniSpit;return;}
-  if(input.miniSpit&&!s.prevMini&&!s.miniCooldown){
+  if(input.miniSpit&&(repeat||!s.prevMini)&&!s.miniCooldown){
     const len=Math.hypot(t.aimX,t.aimY)||1,ax=t.aimX/len,ay=t.aimY/len;
-    s.miniCooldown=MINI_COOLDOWN;
+    s.miniCooldown=repeat?interval:MINI_COOLDOWN;
     if(emitMini(w,t,ax,ay,collision))s.blockedUntil=0;
     else s.blockedUntil=w.tick+60;
   }
   if(s.charge>0){
     if(--s.charge===0){
+      if(repeat)s.spent=true;
       const vertical=Math.abs(s.ay)>.85;
       const b:WordBlock={id:w.wordSeq+1,owner:t.id,
         x:vertical?t.x-WORD_WIDTH/2:s.ax>=0?t.x+30:t.x-30-WORD_WIDTH,
         y:vertical?(s.ay<0?t.y-30-WORD_HEIGHT:t.y+30):t.y+14-WORD_HEIGHT,
         vx:vertical?s.ax*1.15:(s.ax>=0?1.15:-1.15),vy:s.ay*1.15,
         born:w.tick,expires:-1,solid:false,mouthX:t.x+s.ax*18,mouthY:t.y+s.ay*12};
+      const previous=w.words;
+      if(repeat)w.words=w.words.filter(o=>o.owner!==t.id||o.kind==='mini');
       if(fits(w,b,collision,true)){w.wordSeq++;w.words.push(b);}
-      else{s.blockedUntil=w.tick+60;s.cooldown=40;}
+      else {w.words=previous;s.blockedUntil=w.tick+60;if(!repeat)s.cooldown=40;}
+
     }
-  } else if(input.spit&&!input.clearWord&&!s.prev&&s.cooldown===0&&w.words.filter(b=>b.owner===t.id&&b.kind!=='mini').length<WORD_LIMIT){
-    s.charge=WORD_CHARGE;s.cooldown=WORD_COOLDOWN;s.started=w.tick;
+  } else if(input.spit&&!input.clearWord&&(repeat?!s.spent:!s.prev)&&s.cooldown===0&&(repeat||w.words.filter(b=>b.owner===t.id&&b.kind!=='mini').length<WORD_LIMIT)){
+    s.charge=WORD_CHARGE;s.cooldown=repeat?interval:WORD_COOLDOWN;s.started=w.tick;
     const len=Math.hypot(t.aimX,t.aimY)||1;s.ax=t.aimX/len;s.ay=t.aimY/len;
   }
   s.prev=!!input.spit;

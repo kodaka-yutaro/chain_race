@@ -4,7 +4,7 @@ import { HostHub, type Link } from '../host/hub';
 import { HEARTBEAT_MS, randomId, type Backend } from './backend';
 import { acceptAnswer, createAnswer, createOffer, PeerLink } from './rtc';
 
-/** 大部屋への接続。主（ホスト）でも参加者でも同じ形で扱う */
+/** 部屋への接続。主（ホスト）でも参加者でも同じ形で扱う */
 export interface Connection {
   readonly hubId: string;
   readonly hubName: string;
@@ -18,9 +18,9 @@ export interface Connection {
 
 const JOIN_TIMEOUT = 15_000;
 
-export async function enterHub(backend: Backend, hubId: string | null, hubName: string): Promise<Connection> {
+export async function enterHub(backend: Backend, hubId: string | null, hubName: string, visibility: 'public' | 'invite' = 'public'): Promise<Connection> {
   const hostId = randomId();
-  const claim = await backend.claimHub(hubId, hubName, hostId);
+  const claim = await backend.claimHub(hubId, hubName, hostId, visibility);
   return claim.role === 'host' ? host(backend, claim.id, claim.name) : join(backend, claim.id, claim.name);
 }
 
@@ -32,11 +32,11 @@ async function join(backend: Backend, hubId: string, hubName: string): Promise<C
     await acceptAnswer(p, answer);
   } catch {
     p.pc.close();
-    throw new Error('大部屋につながりませんでした。少し待ってからもう一度試してください');
+    throw new Error('部屋につながりませんでした。少し待ってからもう一度試してください');
   }
   const link = new PeerLink<ServerMsg, ClientMsg>(p);
   try { await link.opened(JOIN_TIMEOUT); } catch {
-    throw new Error('大部屋につながりませんでした。通信環境によってはつながらないことがあります');
+    throw new Error('部屋につながりませんでした。通信環境によってはつながらないことがあります');
   }
   let closedByMe = false;
   const conn: Connection = {
@@ -47,7 +47,7 @@ async function join(backend: Backend, hubId: string, hubName: string): Promise<C
     onClose: () => {},
   };
   link.onMessage = (m) => conn.onMessage(m);
-  link.onClose = () => { if (!closedByMe) conn.onClose('大部屋の主との接続が切れました'); };
+  link.onClose = () => { if (!closedByMe) conn.onClose('部屋の主との接続が切れました'); };
   return conn;
 }
 
@@ -58,7 +58,7 @@ async function join(backend: Backend, hubId: string, hubName: string): Promise<C
 function host(backend: Backend, hubId: string, hubName: string): Connection {
   let count = 1;
   let lastBeat = 0;
-  const beat = () => { lastBeat = Date.now(); backend.heartbeat(hubId, count).catch((e) => console.warn('heartbeat', e)); };
+  const beat = () => { lastBeat = Date.now(); backend.heartbeat(hubId, count, [...hub.members].map(c => c.name)).catch((e) => console.warn('heartbeat', e)); };
   let beatTimer = 0;
   const hub = new HostHub(hubId, hubName, (n) => {
     count = n;
@@ -103,7 +103,7 @@ function host(backend: Backend, hubId: string, hubName: string): Connection {
     onMessage: () => {},
     onClose: () => {},
   };
-  hub.connect(self);
+  hub.connect(self, true);
 
   const release = () => { backend.releaseHub(hubId).catch(() => {}); };
   window.addEventListener('pagehide', release);

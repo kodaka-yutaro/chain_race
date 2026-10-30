@@ -1,4 +1,4 @@
-import { canRelease, validateCourseMap, type Course } from '../../shared/courses';
+import { validateCourseMap, type Course } from '../../shared/courses';
 import { HUB_CAPACITY } from '../../shared/protocol';
 import { HUB_STALE_MS, mergeHubs, randomId, type Account, type Backend, type HubInfo } from './backend';
 
@@ -26,9 +26,13 @@ export function localBackend(): Backend {
       write('cr.courses', [c, ...read<Course[]>('cr.courses', [])]); return c;
     },
     async releaseCourse(id, results) {
-      if (!canRelease(results)) throw new Error('2人以上での協力クリアが必要です');
-      const all = read<Course[]>('cr.courses', []), c = all.find(c => c.id === id);
-      if (c && c.status === 'prerelease') { c.status = 'released'; c.firstClear = { names: results.map(r => r.name), time: Math.max(...results.map(r => r.time)), at: Date.now() }; write('cr.courses', all); }
+      const a=me();if(!a)throw Error('チェッカー登録にはログインしてください');
+      const time=results[0]?.time;if(results.length!==1||!Number.isFinite(time)||time<0)throw Error('クリア記録が正しくありません');
+      return navigator.locks.request('chainrace-checker',async()=>{
+        const all=read<Course[]>('cr.courses',[]),c=all.find(c=>c.id===id);if(!c)return null;
+        if(!c.firstClear){c.status='released';c.firstClear={uid:a.uid,names:[a.name],time,at:Date.now()};write('cr.courses',all);}
+        return c.firstClear.names.join('・');
+      });
     },
     async account() { return me(); },
     async register(name, password) {
@@ -54,23 +58,24 @@ export function localBackend(): Backend {
 
     async listHubs() {
       const now = Date.now();
-      return mergeHubs(Object.values(hubs()).filter((h) => h.updatedAt > now - HUB_STALE_MS), HUB_CAPACITY);
+      return mergeHubs(Object.values(hubs()).filter((h) => h.updatedAt > now - HUB_STALE_MS && h.visibility === 'public'), HUB_CAPACITY);
     },
-    async claimHub(id, name, hostId) {
+    async claimHub(id, name, hostId, visibility = 'public') {
       const all = hubs();
       const key = id ?? randomId();
       const d = all[key];
-      if (d && d.updatedAt > Date.now() - HUB_STALE_MS && d.hostId !== hostId) {
+      if (id) {
+        if (!d || d.updatedAt <= Date.now() - HUB_STALE_MS) throw new Error('この部屋は終了しました');
         if (d.count >= d.capacity) throw new Error('この大部屋は満員です');
         return { id: key, name: d.name, role: 'join' };
       }
-      all[key] = { id: key, name, hostId, count: 1, capacity: HUB_CAPACITY, updatedAt: Date.now() };
+      all[key] = { id: key, name, hostId, visibility, members: [], count: 1, capacity: HUB_CAPACITY, updatedAt: Date.now() };
       write('cr.hubs', all);
       return { id: key, name, role: 'host' };
     },
-    async heartbeat(id, count) {
+    async heartbeat(id, count, members = []) {
       const all = hubs();
-      if (all[id]) { all[id].count = count; all[id].updatedAt = Date.now(); write('cr.hubs', all); }
+      if (all[id]) { all[id].count = count; all[id].members = members; all[id].updatedAt = Date.now(); write('cr.hubs', all); }
     },
     async releaseHub(id) {
       const all = hubs();
