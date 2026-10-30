@@ -3,3 +3,7 @@
 #game-menu .game-actions{max-width:none;justify-content:flex-start}@media(min-width:1100px){#screen-saves .course-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
 
 .camera-notice{position:absolute;left:14px;top:58px;max-width:min(500px,85vw);background:#102334e8;border:1px solid #587888;border-radius:8px;padding:10px;display:flex;gap:10px;align-items:center;font-size:12px}.camera-notice[hidden]{display:none}.camera-notice button{white-space:nowrap}#game-menu{max-height:90dvh;overflow:auto}#game-menu section button{margin:4px}
+
+.camera-zoom{position:absolute;right:14px;top:58px;display:flex;gap:6px;z-index:12}.camera-zoom button{width:36px;height:36px;background:#172a3ddd;color:#fff;border:1px solid #7891aa;border-radius:8px;font-size:22px;cursor:pointer}
+
+.game-music{position:absolute;right:14px;top:102px;z-index:12;display:flex;align-items:center;gap:6px;padding:5px 7px;background:#172a3ddd;border-radius:8px}.game-music button{background:none;border:0;color:#fff;cursor:pointer;font-size:12px}.game-music input{width:70px;accent-color:#91d8cf}.ed-music{border-block:1px solid #ffffff22;margin:14px 0;padding:10px 0}.ed-music h3{margin:4px 0 10px}.ed-music select{width:100%}

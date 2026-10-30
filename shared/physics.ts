@@ -1,3 +1,4 @@
+import type {MusicId} from './music';
 import type {BackgroundId} from './backgrounds';
 import {ddFreezeAt} from './ddrace';
 import {hammerImpulse} from './hammer';
@@ -31,8 +32,9 @@ export const PHYS = {
   hookPlayerTicks: 60,
   springSpeed: 18,
   stunTicks: 150,
-  hammerCooldown: 25,
-  maxSpeed: 40,
+  hammerCooldown: 6,
+  hammerHitCooldown: 16,
+  maxSpeed: 6000,
   /** 昇降リフトの速さ（px/tick） */
   liftSpeed: 4,
   /** シーソー：この速さより強く着地すると、反対側の人が飛ぶ */
@@ -62,6 +64,7 @@ export const SAW_THICK = 12;
 // スイッチの色ごとに、踏む人数（二人スイッチ）や離してから閉じるまでの時間を channels で決められる。
 export interface MapDef {
   background?: BackgroundId;
+  music?: MusicId;
   id: string;
   name: string;
   description: string;
@@ -695,13 +698,14 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     // ハンマー：すぐ前の仲間を叩いて飛ばし、凍結を解く
     const weaponFired = (!w.map.abilityMode||t.ability==='basic') && ddFire(w,t,inp);
     if (t.hammerCd > 0) t.hammerCd--;
-    if (!weaponFired && !stunned && inp.fire && (w.map.abilityMode || !t.prevFire) && t.hammerCd === 0) {
+    if (!weaponFired && !stunned && inp.fire && !t.prevFire && t.hammerCd === 0) {
       t.hammerCd = PHYS.hammerCooldown;
       t.hammerTick = w.tick;
       const hx = t.x + t.aimX * R * 1.5, hy = t.y + t.aimY * R * 1.5;
       hammerMinis(w,t,hx,hy);
       for (const o of w.runners) {
-        if (o === t || !ddInteracts(t,o) || t.dd?.noHit || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE / 2) continue;
+        if (o === t || !ddInteracts(t,o) || t.dd?.noHit || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE) continue;
+        t.hammerCd = PHYS.hammerHitCooldown;
         const impulse=hammerImpulse(o.x-t.x,o.y-t.y);
         o.vx+=impulse.vx;o.vy+=impulse.vy;
         o.stun = 0;
@@ -741,12 +745,15 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     before.set(t,[t.x,t.y]);
     if(t.ghostBody){const raw=inputs.get(t.id)??emptyInput();t.vx=((raw.right?1:0)-(raw.left?1:0))*8;t.vy=((raw.down?1:0)-(raw.up?1:0))*8;}
     const m = PHYS.maxSpeed;
-    t.vx = Math.max(-m, Math.min(m, t.vx));
-    t.vy = Math.max(-m, Math.min(m, t.vy));
+    const speed=Math.hypot(t.vx,t.vy);
+    if(speed>m){t.vx*=m/speed;t.vy*=m/speed;}
     if(t.hammerBrace){t.vx=0;t.vy=checkGrounded(w,t)?0:Math.max(PHYS.gravity,t.vy);}
     ddMove(w,t);
     fall.set(t, t.vy);
+    const ramp=velocityRamp(Math.hypot(t.vx,t.vy)*TICK_RATE);
+    t.vx*=ramp;
     moveBox(w, t, collision);
+    t.vx/=ramp;
     collidePlayerMovement(w,t,...before.get(t)!);
   }
   kickSaws(w, fall);
@@ -813,3 +820,6 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   ev.killed=ev.killed.filter(id=>players.some(p=>p.id===id));
   return ev;
 }
+
+/** DDNet velocity ramp, applied only to horizontal displacement. */
+export function velocityRamp(speed:number){return speed<550?1:1/Math.pow(1.4,(speed-550)/2000);}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorld, emptyInput, newRunner, stepWorld, type MapDef } from '../shared/physics';
-import { ddCache, ddTiles, ddFire, ddSwitchActive } from '../shared/ddrace';
+import { createWorld, emptyInput, newRunner, stepWorld, velocityRamp, type MapDef } from '../shared/physics';
+import { ddCache, ddTiles, ddFire, ddProjectiles, ddSwitchActive } from '../shared/ddrace';
 import { toView } from '../shared/protocol';
 import { stageById } from '../shared/legacy-maps';
 
@@ -84,4 +84,15 @@ test('jump count and jetpack tiles affect only the runner touching them',()=>{
     t.vy=0;stepWorld(w,new Map([[1,{...emptyInput(),jump:true}]]));
     assert.equal(t.vy<0,i<2);stepWorld(w,new Map());
   }
+});
+
+test('DDNet default weapon delays, semi-auto gun, reach and ballistic curvature',()=>{
+ for(const [weapon,delay] of [[1,6],[2,25],[3,25],[4,40],[5,40]]){
+  const {w,t}=runner(setup());t.dd!.weapon=weapon;ddFire(w,t,{...emptyInput(),fire:true});assert.equal(t.dd!.cooldown,delay);
+ }
+ const {w,t}=runner(setup());t.dd!.weapon=1;t.prevFire=true;ddFire(w,t,{...emptyInput(),fire:true});assert.equal(w.dd!.shots.length,0);
+ t.prevFire=false;t.aimX=1;t.aimY=0;ddFire(w,t,{...emptyInput(),fire:true});const startY=w.dd!.shots[0].y;
+ for(let i=0;i<5;i++)ddProjectiles(w);assert.ok(Math.abs(w.dd!.shots[0].y-startY-.242*25)<1e-8);
+ const shot=runner(setup());shot.t.dd!.weapon=2;const o=newRunner(2,shot.w.map);o.x=shot.t.x+500;o.y=shot.t.y;shot.w.runners.push(o);ddFire(shot.w,shot.t,{...emptyInput(),fire:true});assert.ok(o.vx<0);
+ assert.equal(velocityRamp(500),1);assert.equal(velocityRamp(550),1);assert.ok(Math.abs(velocityRamp(2550)-1/1.4)<1e-12);
 });

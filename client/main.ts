@@ -1,3 +1,4 @@
+import {courseMusic} from './music';
 import './release.css';
 import './ability-guide';
 import {listDrafts,saveDraft} from './drafts';
@@ -54,6 +55,7 @@ let recentInputs: { seq: number; input: Input }[] = [];
 
 type Screen = 'title' | 'hubs' | 'hub' | 'game' | 'editor' | 'saves';
 function show(s: Screen) {
+  courseMusic.stop();
   for (const x of $$('.screen')) x.classList.add('hidden');
   const target = $(`#screen-${s}`);
   target.classList.remove('hidden');

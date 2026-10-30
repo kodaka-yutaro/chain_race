@@ -42,13 +42,16 @@ function collectBall(w:World,t:Runner,b:Ball){
   for(const r of w.runners){if(r.held?.kind==='ball'&&r.held.id===b.id)r.held=null;if(r.wireBall===b.id){r.wireBall=-1;r.wireState=0;r.hookLengthLock=-1;}}
 }
 export function explodeOwned(w:World,owner:number){
-  const bombs=w.balls.filter(b=>b.owner===owner&&b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick));
+  const rider=w.runners.find(r=>r.id===owner);
+  if(!rider)return;
+  // Range uses ball centers and deliberately ignores intervening walls.
+  const bombs=w.balls.filter(b=>b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick)&&Math.hypot(b.x-rider.x,b.y-rider.y)<=COLLECTION_RADIUS);
   for(const b of bombs){
     w.blasts.push({x:b.x,y:b.y,tick:w.tick,radius:160});
     const push=(o:{x:number;y:number;vx:number;vy:number},offset=0)=>{const dx=o.x+offset-b.x,dy=o.y+offset-b.y,d=Math.hypot(dx,dy);if(d>=160)return;const force=22*(1-d/160);o.vx+=(d?dx/d:0)*force;o.vy+=(d?dy/d:-1)*force;};
     w.runners.forEach(r=>push(r));w.words.filter(o=>o.kind==='mini').forEach(o=>push(o,16));w.balls.filter(o=>o!==b&&o.carriedBy===undefined).forEach(o=>push(o));
     for(const r of w.runners){if(r.wireBall===b.id){r.wireState=0;r.wireBall=-1;}if(r.held?.kind==='ball'&&r.held.id===b.id)r.held=null;}
-    const rider=w.runners.find(r=>r.id===owner);
+
     b.vx=b.vy=0;delete b.owner;delete b.respawnAt;
     if(rider){collectBall(w,rider,b);b.x=rider.x;b.y=rider.y;}
   }

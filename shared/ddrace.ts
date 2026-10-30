@@ -203,14 +203,15 @@ export function ddFire(w: World,t:Runner,input:Input): boolean {
   if(!d || d.weapon===0) return false;
   if(t.stun>0 || !input.fire || d.cooldown) return true;
   const wp=d.weapon;
-  d.cooldown=wp===1?6:wp===5?40:25;
+  if((wp===1&&!d.jetpack||wp===5)&&t.prevFire)return true;
+  d.cooldown=wp===1?6:wp===5||wp===4?40:25;
   if(wp===5) {d.dash=10;d.dashX=t.aimX;d.dashY=t.aimY;return true;}
   if(wp===1 || wp===3) {
     if(wp===1 && d.jetpack) {t.vx-=t.aimX*4;t.vy-=t.aimY*4;}
-    w.dd!.shots.push({owner:t.id,weapon:wp,x:t.x+t.aimX*21,y:t.y+t.aimY*21,vx:t.aimX*(wp===1?44:20),vy:t.aimY*(wp===1?44:20),life:wp===1?100:100});
+    w.dd!.shots.push({owner:t.id,weapon:wp,x:t.x+t.aimX*21,y:t.y+t.aimY*21,vx:t.aimX*(wp===1?44:20),vy:t.aimY*(wp===1?44:20)+(wp===1?.242:.28),life:wp===1?100:100});
     return true;
   }
-  let x=t.x,y=t.y,dx=t.aimX,dy=t.aimY,energy=wp===2?380:800;
+  let x=t.x,y=t.y,dx=t.aimX,dy=t.aimY,energy=800;
   for(let bounce=0;bounce<=1;bounce++) {
     const hit=ray(w.map,x,y,dx,dy,energy);
     let target:Runner|undefined,nearest=Infinity;
@@ -264,7 +265,7 @@ export function ddProjectiles(w:World) {
     const target=w.runners.find(t=>t!==owner&&ddInteracts(owner,t)&&segmentHit(p.x,p.y,hit.x,hit.y,t)<Infinity);
     p.x=hit.x;p.y=hit.y;
     const tele=ddCache(w.map).tele.get(indexAt(w.map,p.x,p.y));if(tele?.[1]===14){const exit=ddCache(w.map).exits.get(tele[2])?.[0];if(exit!==undefined){const pos=position(w.map,exit);p.x=pos.x;p.y=pos.y;}}
-    p.life--;p.vy+=p.weapon===3?.56:.48;
+    p.life--;p.vy+=p.weapon===3?.56:.484;
     if(hit.hit||target||p.life<=0) {
       if(p.weapon===3) {
         for(const t of w.runners) {

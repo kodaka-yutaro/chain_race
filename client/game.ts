@@ -1,4 +1,5 @@
-import {ViewCamera} from './camera';
+import {courseMusic} from './music';
+import {ViewCamera,zoomKey} from './camera';
 import {heldInput} from '../shared/held-input';
 import {drawPickupArt,drawClothBall} from './course-art';
 import {renderPosition,correctionDecay,type Point} from './motion';
@@ -85,6 +86,8 @@ export class ClientGame {
     this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
     this.bindInput();
     this.mountCameraNotice();
+    this.mountMusicControls();
+    courseMusic.play(this.map.music);
     this.canvas.parentElement?.classList.toggle('word-enabled',!!this.map.wordBlocks);
     if(this.map.wordBlocks)this.mountWordControls();
     this.resize();
@@ -158,10 +161,24 @@ export class ClientGame {
     releaseAllTouch();touch.jumpTap=touch.fireTap=touch.hookTap=touch.miniTap=false;
     this.send({seq:++this.seq,input:emptyInput()});
   }
+  private mountMusicControls(){
+    const panel=document.createElement('div');panel.className='game-music';
+    const button=document.createElement('button');button.type='button';
+    const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='100';slider.step='1';slider.setAttribute('aria-label','BGM音量');
+    const refresh=()=>{slider.value=String(Math.round(courseMusic.volume*100));button.disabled=!courseMusic.hasTrack;slider.disabled=!courseMusic.hasTrack;button.textContent=!courseMusic.hasTrack?'BGMなし':courseMusic.volume?'音楽 ON':'音楽 OFF';button.setAttribute('aria-label',courseMusic.volume?'BGMをミュート':'BGMを再生');button.setAttribute('aria-pressed',String(courseMusic.volume>0));};
+    let previous=courseMusic.volume||.3;
+    button.onclick=()=>{if(courseMusic.volume){previous=courseMusic.volume;courseMusic.setVolume(0);}else courseMusic.setVolume(previous);button.blur();};
+    slider.oninput=()=>courseMusic.setVolume(+slider.value/100);
+    panel.onpointerdown=e=>e.stopPropagation();panel.append(button,slider);this.canvas.parentElement!.append(panel);refresh();
+    const unsubscribe=courseMusic.subscribe(refresh);this.pressCleanup.push(()=>{unsubscribe();panel.remove();});
+  }
   private mountCameraNotice(){
     const panel=document.createElement('div');panel.className='camera-notice';
     const text=document.createElement('span');text.textContent='自由カメラ · ドラッグ / WASDで移動 · ホイールで拡大縮小';
     const button=document.createElement('button');button.textContent='自分へ戻る [C]';button.onclick=()=>this.followCamera();
+    const controls=document.createElement('div');controls.className='camera-zoom';
+    for(const [label,factor] of [['＋',1.15],['－',1/1.15]] as const){const b=document.createElement('button');b.textContent=label;b.setAttribute('aria-label',factor>1?'拡大':'縮小');b.onpointerdown=e=>e.stopPropagation();b.onclick=()=>{this.zoomCamera(factor);b.blur();};controls.append(b);}
+    this.canvas.parentElement!.append(controls);this.pressCleanup.push(()=>controls.remove());
     panel.append(text,button);this.canvas.parentElement!.append(panel);this.cameraNotice=panel;this.updateCameraNotice();
   }
   private updateCameraNotice(){
@@ -171,6 +188,7 @@ export class ClientGame {
 
   stop() {
     this.stopped = true;
+    courseMusic.stop();
     releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = touch.miniTap = false;
     for(const clean of this.pressCleanup)clean();
     touch.aimOnly=false;this.cameraNotice?.remove();this.canvas.style.cursor="";
@@ -345,7 +363,7 @@ export class ClientGame {
       if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName)) return;
       if(e.code==='KeyC'&&!e.repeat){e.preventDefault();this.toggleCamera();return;}
       if(e.code==='Home'&&!e.repeat){e.preventDefault();this.resetCamera();return;}
-      if(['Equal','NumpadAdd','Minus','NumpadSubtract'].includes(e.code)){e.preventDefault();this.zoomCamera(['Equal','NumpadAdd'].includes(e.code)?1.15:1/1.15);return;}
+      const zoom=zoomKey(e.key,e.code);if(zoom){e.preventDefault();this.zoomCamera(zoom);return;}
       if(this.viewCamera.free){e.preventDefault();this.keys.add(e.code);return;}
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if(e.repeat&&!this.keys.has(e.code))return; // A key held on the other character is not a new press.
@@ -490,6 +508,9 @@ export class ClientGame {
         if(drawPickupArt(g,c,x*32,y*32,32)){g.restore();continue;}
         g.fillStyle='#59829a';g.beginPath();g.roundRect(x*32+3,y*32+3,26,26,7);g.fill();g.fillStyle='#eef5ff';g.font='bold 18px sans-serif';g.textAlign='center';g.fillText(labels[c],x*32+16,y*32+23);g.restore();
       }
+    }
+    if(this.me.ability==='bicycle'){
+      g.save();g.beginPath();g.arc(this.me.x,this.me.y,COLLECTION_RADIUS,0,Math.PI*2);g.fillStyle='#ffbd4b0a';g.fill();g.strokeStyle='#ffd98299';g.lineWidth=2/this.cam.zoom;g.setLineDash([10,7]);g.stroke();g.restore();
     }
     const paintBall=(x:number,y:number,count?:number)=>{
       drawClothBall(g,x,y,BALL_RADIUS);

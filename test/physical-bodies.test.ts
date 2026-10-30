@@ -33,7 +33,7 @@ test('小中華と赤ボールは1個ずつボタンの重しになり、回収�
  w.balls.push({id:0,x:336,y:512,vx:0,vy:0,homeX:336,homeY:512});
  tick(w);assert.equal(w.plates[0],2);assert.equal(w.doorsOpen[0],true);
  r.ability='bicycle';w.balls[0].carriedBy=1;tick(w);assert.equal(w.plates[0],1);assert.equal(w.doorsOpen[0],false);
- w.balls[0].carriedBy=undefined;w.balls[0].owner=1;w.balls[0].x=800;tick(w,1,{wire:true});assert.equal(ballCount(w,1),1);assert.equal(w.balls[0].respawnAt,undefined);
+ w.balls[0].carriedBy=undefined;w.balls[0].owner=1;w.balls[0].x=350;tick(w,1,{wire:true});assert.equal(ballCount(w,1),1);assert.equal(w.balls[0].respawnAt,undefined);
 });
 test('大中華の溜めを途中で離すと中断し、次も最初から溜める',()=>{
  const {w,r}=setup();r.ability='bun';tick(w,25,{fire:true});assert.ok(r.spit.charge>0);tick(w);assert.equal(r.spit.charge,0);tick(w,40);assert.equal(w.words.length,0);
