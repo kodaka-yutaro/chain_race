@@ -151,9 +151,9 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
         g.roundRect(px + 3, py + TILE - 24, TILE - 6, 6, 3);
         g.fill();
       } else if (ch === 'F') {
-        for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) {
-          g.fillStyle = (i + j + y) % 2 ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.6)';
-          g.fillRect(px + 8 + j * 8, py + i * 8, 8, 8);
+        for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+          g.fillStyle = (i + j) % 2 ? '#ffffff' : '#17191e';
+          g.fillRect(px + j * 8, py + i * 8, 8, 8);
         }
       } else if (ch === '>') {
         const gr = g.createLinearGradient(px, 0, px + TILE, 0);
@@ -178,19 +178,6 @@ export function buildTileLayer(m: MapDef, x0 = 0, y0 = 0, width = m.width, heigh
         }
       }
     }
-  }
-  // 案内の文字は、読みやすいよう縁取りする
-  g.font = 'bold 18px system-ui, "Hiragino Sans", sans-serif';
-  g.textAlign = 'left';
-  g.lineJoin = 'round';
-  for (const h of m.hints) {
-    g.strokeStyle = 'rgba(10,14,30,0.7)';
-    g.lineWidth = 5;
-    g.fillStyle = '#fff';
-    h.text.split('\n').forEach((line,i)=>{
-      g.strokeText(line, h.x * TILE, h.y * TILE+i*25);
-      g.fillText(line, h.x * TILE, h.y * TILE+i*25);
-    });
   }
   return c;
 }

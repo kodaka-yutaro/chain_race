@@ -45,3 +45,16 @@ test('小中華と赤ボールはDD系スイッチも動かせる',()=>{
  w.balls.push({id:0,x:352,y:512,vx:0,vy:0,homeX:352,homeY:512});tick(w);
  assert.equal(w.dd!.switches[7].on,false);assert.equal(w.dd!.switches[8].on,true);
 });
+
+test('detached body touches a teleporter at its edge, transports and becomes the return destination',()=>{
+ const {w,r,m}=setup();m.dd!.tele=[[9*40+10,26,1],[8*40+25,27,1]];
+ r.ability='ghost';r.x=200;r.y=200;r.ghostBody={x:10*32-12,y:300,vx:0,vy:0,stun:0};
+ tick(w);assert.equal(r.ghostBody!.x,25*32+16);assert.equal(r.ghostBody!.y,8*32+16);assert.equal(r.x,200);assert.equal(r.y,200);
+ tick(w,30,{fire:true});assert.equal(r.ghostBody,null);assert.equal(r.x,25*32+16);
+});
+test('detached body remembers its teleport checkpoint across simulation ticks',()=>{
+ const {w,r,m}=setup();m.dd!.tele=[[9*40+10,29,7],[9*40+12,31,0],[8*40+25,30,7]];
+ r.ability='ghost';r.x=200;r.y=200;r.ghostBody={x:10*32+16,y:300,vx:0,vy:0,stun:0};
+ tick(w);assert.equal(r.ghostBody!.teleCheckpoint,7);r.ghostBody!.x=12*32+16;
+ tick(w);assert.equal(r.ghostBody!.x,25*32+16);assert.equal(r.ghostBody!.teleCheckpoint,7);
+});

@@ -131,8 +131,8 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
     }
   }
   if(t.ability==='ghost'&&t.holdTicks===30&&(!t.stun||!!t.ghostBody)){
-    if(t.ghostBody){if(collision.runnerBox(t.ghostBody.x,t.ghostBody.y,-1))return {...raw,fire:false,wire:raw.wire};t.x=t.ghostBody.x;t.y=t.ghostBody.y;t.stun=t.ghostBody.stun;t.ghostBody=null;}
-    else t.ghostBody={x:t.x,y:t.y,vx:0,vy:0,stun:0};
+    if(t.ghostBody){if(collision.runnerBox(t.ghostBody.x,t.ghostBody.y,-1))return {...raw,fire:false,wire:raw.wire};t.x=t.ghostBody.x;t.y=t.ghostBody.y;t.stun=t.ghostBody.stun;if(t.dd&&t.ghostBody.teleCheckpoint!==undefined)t.dd.teleCheckpoint=t.ghostBody.teleCheckpoint;t.ghostBody=null;}
+    else t.ghostBody={x:t.x,y:t.y,vx:0,vy:0,stun:0,...(t.dd?.teleCheckpoint!==undefined?{teleCheckpoint:t.dd.teleCheckpoint}:{})};
     t.vx=t.vy=0;t.wireState=0;t.wireRunner=t.wireBall=t.wireWord=-1;
   }
   if(t.ability==='bun'&&t.stun===0&&released&&previousHold<18){

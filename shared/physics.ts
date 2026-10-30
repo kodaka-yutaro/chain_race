@@ -146,7 +146,7 @@ export const emptyInput = (): Input => ({
 export const WIRE_IDLE = 0, WIRE_FLYING = 1, WIRE_ATTACHED = 2;
 
 export interface Runner {
-  bodyOwner?:number;ghostBody:{x:number;y:number;vx:number;vy:number;stun:number}|null;holdTicks:number;aimDistance:number; hookLengthLock:number; subDown:boolean; hammerBrace:boolean; wheelieTick:number; gesture:number; gestureTick:number;
+  bodyOwner?:number;ghostBody:{x:number;y:number;vx:number;vy:number;stun:number;teleCheckpoint?:number}|null;holdTicks:number;aimDistance:number; hookLengthLock:number; subDown:boolean; hammerBrace:boolean; wheelieTick:number; gesture:number; gestureTick:number;
   ability: Ability; actionDown: boolean; wireBall: number; shotTick:number;
   held: {kind:'ball'|'word'|'runner';id:number}|null;
   id: number;
@@ -533,6 +533,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   for(const owner of players)if(owner.ghostBody){
     const body=newRunner(1000000000+owner.id,w.map);
     Object.assign(body,owner.ghostBody,{bodyOwner:owner.id,ability:'basic'});
+    if(body.dd)body.dd.teleCheckpoint=owner.ghostBody.teleCheckpoint;
     w.runners.push(body);
   }
   w.tick++;
@@ -808,7 +809,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
   for(const body of w.runners)if(body.bodyOwner!==undefined){
     const owner=players.find(p=>p.id===body.bodyOwner);if(!owner?.ghostBody)continue;
     if(ev.killed.includes(body.id)){respawn(w,owner);ev.killed.push(owner.id);}
-    else owner.ghostBody={x:body.x,y:body.y,vx:body.vx,vy:body.vy,stun:body.stun};
+    else owner.ghostBody={x:body.x,y:body.y,vx:body.vx,vy:body.vy,stun:body.stun,...(body.dd?.teleCheckpoint!==undefined?{teleCheckpoint:body.dd.teleCheckpoint}:{})};
   }
   w.runners=players;
   ev.killed=ev.killed.filter(id=>players.some(p=>p.id===id));

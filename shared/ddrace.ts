@@ -113,6 +113,11 @@ export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTele
   const d = t.dd, c = ddCache(w.map), n = Math.max(1,Math.ceil(Math.hypot(t.x-fromX,t.y-fromY)/8));
   const indices = new Set<number>();
   for (let s = 0; s <= n; s++) indices.add(indexAt(w.map,fromX+(t.x-fromX)*s/n,fromY+(t.y-fromY)*s/n));
+  // A detached physical body triggers a portal when its body overlaps the tile,
+  // including a portal on a floor or against a wall. Other effects remain center-based.
+  if(t.bodyOwner!==undefined&&allowTeleport)for(const dx of [-13,0,13])for(const dy of [-13,0,13]){
+    const idx=indexAt(w.map,t.x+dx,t.y+dy);if(c.tele.has(idx))indices.add(idx);
+  }
   for (const idx of indices) {
     for (const row of [c.game.get(idx),c.front.get(idx)]) {
       const type = row?.[1];

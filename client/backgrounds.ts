@@ -13,7 +13,13 @@ export function paintBackground(g:CanvasRenderingContext2D,id:BackgroundId,w:num
  const sky=(top:string,bottom:string)=>{const a=g.createLinearGradient(0,0,0,540);a.addColorStop(0,top);a.addColorStop(1,bottom);g.fillStyle=a;g.fillRect(0,0,960,540);};
  const random=(n:number)=>{const v=Math.sin(n*127.1+31.7)*43758.5453;return v-Math.floor(v);};
  const hill=(base:number,height:number,color:string,phase:number)=>{const p=[[0,540]];for(let x=0;x<=980;x+=20)p.push([x,base+Math.sin(x*.007+phase)*height+Math.sin(x*.019)*height*.2]);p.push([960,540]);poly(p,color);};
- if(id==='morning'){
+ if(id==='tutorial'){
+  sky('#203e57','#8cb8b3');ellipse(760,110,45,45,'#f9e3aa');
+  layer(1);hill(300,32,'#557b8b',1);hill(350,25,'#648f99',3);
+  for(let i=0;i<7;i++){const x=i*155+20;ellipse(x,100+i%3*33,53,12,'#dceadd50');ellipse(x+16,90+i%3*33,28,16,'#dceadd50');}
+  layer(2);for(let i=0;i<7;i++){const x=i*160+25,y=335+i%3*16;rect(x,y,100,140,'#396676');rect(x-7,y-10,114,10,'#749c9d');for(let k=0;k<3;k++)rect(x+14+k*27,y+19,12,33,'#9abdb938');}
+  layer(3);hill(495,13,'#244c58',2);for(let i=0;i<8;i++){const x=i*140+12;line([[x,540],[x,375]],'#315c67',4);poly([[x+2,378],[x+48,385],[x+2,413]],i%2?'#bc9e7077':'#78bdb277');}
+ }else if(id==='morning'){
   sky('#6fa4bd','#f6deb1');ellipse(720,155,43,43,'#fff1c2');
   layer(1);for(const [x,y,k] of [[100,95,1],[390,150,.7],[800,66,.9]]){ellipse(x,y,95*k,12*k,'#e9e9dd99');ellipse(x+28,y-10,47*k,16*k,'#e9e9dd99');}
   hill(310,28,'#a0b8ab',1);layer(2);hill(365,37,'#749c92',3);layer(3);hill(440,28,'#3d746c',4);

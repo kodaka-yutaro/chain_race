@@ -44,9 +44,13 @@ export function validateCourseMap(value: unknown, playable = true): MapDef {
     dd[key]=rows.map(row=>{if(!Array.isArray(row)||row.length!==({game:3,front:3,tele:3,speed:4,switches:5,entities:5,doors:6}[key])||row.some(n=>!Number.isFinite(n)||Math.abs(n)>Math.max(100000,m.width*m.height)))throw Error('DDパーツの設定が正しくありません');
       if(key!=='doors'&&(!Number.isInteger(row[0])||row[0]<0||row[0]>=m.width*m.height))throw Error('DDパーツがコース外にあります');if(key==='doors'&&(row[0]<0||row[0]>=m.width*32||row[1]<0||row[1]>=m.height*32||Math.hypot(row[2],row[3])<.001||row[4]<0||row[4]>Math.max(m.width,m.height)*32))throw Error('扉の設定が正しくありません');return [...row];});
   }}
+  const hints=Array.isArray(m.hints)?m.hints.slice(0,64).map(h=>{
+    if(!h||!Number.isFinite(h.x)||!Number.isFinite(h.y)||h.x<0||h.x>=m.width||h.y<0||h.y>=m.height||typeof h.text!=='string'||h.text.length>600)throw Error('看板の位置か文章が正しくありません');
+    return {x:h.x,y:h.y,text:h.text};
+  }):[];
   return { music:musicId(m.music),background:backgroundId(m.background),dd,id: '', name: m.name.trim(), description: m.description, minPlayers: Number.isInteger(m.minPlayers)&&m.minPlayers>=1&&m.minPlayers<=8?m.minPlayers:2,
     abilityMode:true,wordBlocks:true,
-    width: m.width, height: m.height, tiles: [...m.tiles], hints: [], channels,
+    width: m.width, height: m.height, tiles: [...m.tiles], hints, channels,
     ...(m.wordBlocks===true?{wordBlocks:true}:{}) };
 }
 export function validateCoursePreview(value:unknown):MapDef {

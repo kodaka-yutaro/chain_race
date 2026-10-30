@@ -1,3 +1,4 @@
+import {drawCourseSigns} from './course-signs';
 import {courseMusic} from './music';
 import {ViewCamera,zoomKey} from './camera';
 import {heldInput} from '../shared/held-input';
@@ -148,6 +149,7 @@ export class ClientGame {
 
   get freeCamera(){return this.viewCamera.free;}
   get cameraScale(){return this.viewCamera.scale;}
+  focusCamera(x:number,y:number){this.viewCamera.free=true;this.viewCamera.x=x;this.viewCamera.y=y;this.clearCameraInput();this.updateCameraNotice();}
   toggleCamera(){
     this.viewCamera.toggle(this.cam.x+this.canvas.width/this.cam.zoom/2,this.cam.y+(this.canvas.height-this.bottomInset)/this.cam.zoom/2);
     this.clearCameraInput();this.updateCameraNotice();
@@ -529,6 +531,7 @@ export class ClientGame {
     }
 
     this.drawZones(g);
+    drawCourseSigns(g,this.map);
 
     const views = this.othersInterpolated(now);
     const all = [
