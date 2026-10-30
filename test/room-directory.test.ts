@@ -19,5 +19,9 @@ test('公開部屋だけを列挙し、招待IDで入室でき、終了した部
     await b.releaseHub(pub.id);await assert.rejects(()=>b.claimHub(pub.id,'古い招待','guest'),/終了/);
     const rooms=JSON.parse(local.get('cr.hubs')!);rooms[secret.id].updatedAt=Date.now()-HUB_STALE_MS-1;local.set('cr.hubs',JSON.stringify(rooms));
     await assert.rejects(()=>b.claimHub(secret.id,'期限切れ','guest'),/終了/);
+    await assert.rejects(()=>b.claimHub(secret.id,'復元','wrong-host','invite',true),/復元/);
+    assert.equal((await b.claimHub(secret.id,'復元','host-b','invite',true)).role,'host');
+    await b.releaseHub(secret.id);
+    await assert.rejects(()=>b.claimHub(secret.id,'終了後','host-b','invite',true),/復元/);
   }finally{keys.forEach((k,i)=>{if(original[i])Object.defineProperty(globalThis,k,original[i]!);else Reflect.deleteProperty(globalThis,k);});}
 });

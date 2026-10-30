@@ -1,3 +1,4 @@
+import {writeRecovery, type Recovery} from './recovery';
 import type { ClientMsg, ServerMsg } from '../../shared/protocol';
 import { TICK_RATE } from '../../shared/physics';
 import { HostHub, type Link } from '../host/hub';
@@ -18,13 +19,13 @@ export interface Connection {
 
 const JOIN_TIMEOUT = 15_000;
 
-export async function enterHub(backend: Backend, hubId: string | null, hubName: string, visibility: 'public' | 'invite' = 'public'): Promise<Connection> {
-  const hostId = randomId();
-  const claim = await backend.claimHub(hubId, hubName, hostId, visibility);
-  return claim.role === 'host' ? host(backend, claim.id, claim.name) : join(backend, claim.id, claim.name);
+export async function enterHub(backend: Backend, hubId: string | null, hubName: string, visibility: 'public' | 'invite' = 'public', recovery?: Recovery): Promise<Connection> {
+  const hostId = recovery?.hostId ?? randomId();
+  const claim = await backend.claimHub(hubId, hubName, hostId, visibility, !!recovery?.isHost);
+  return claim.role === 'host' ? host(backend, claim.id, claim.name, recovery) : join(backend, claim.id, claim.name, recovery);
 }
 
-async function join(backend: Backend, hubId: string, hubName: string): Promise<Connection> {
+async function join(backend: Backend, hubId: string, hubName: string, recovery?: Recovery): Promise<Connection> {
   const p = await createOffer();
   let answer: string;
   try {
@@ -39,15 +40,20 @@ async function join(backend: Backend, hubId: string, hubName: string): Promise<C
     throw new Error('部屋につながりませんでした。通信環境によってはつながらないことがあります');
   }
   let closedByMe = false;
+  const save=()=>{if(recovery)writeRecovery(recovery);};
+  const suspend=()=>{save();link.send({t:'suspend'});};
+  const timer=window.setInterval(save,30000);
+  window.addEventListener('pagehide',suspend);
+  const cleanup=()=>{clearInterval(timer);window.removeEventListener('pagehide',suspend);};
   const conn: Connection = {
     hubId, hubName, isHost: false,
     send: (m) => link.send(m),
-    close: () => { closedByMe = true; link.close(); },
+    close: () => { closedByMe = true; cleanup();link.close(); },
     onMessage: () => {},
     onClose: () => {},
   };
   link.onMessage = (m) => conn.onMessage(m);
-  link.onClose = () => { if (!closedByMe) conn.onClose('部屋の主との接続が切れました'); };
+  link.onClose = () => { cleanup();if (!closedByMe) conn.onClose('部屋の主との接続が切れました'); };
   return conn;
 }
 
@@ -55,7 +61,7 @@ async function join(backend: Backend, hubId: string, hubName: string): Promise<C
  * 自分が主になる。ゲーム進行（HostHub）をこのブラウザで動かし、参加者と WebRTC でつなぐ。
  * 主自身もふつうの参加者と同じく、折り返しの通信路で HostHub とやりとりする。
  */
-function host(backend: Backend, hubId: string, hubName: string): Connection {
+function host(backend: Backend, hubId: string, hubName: string, recovery?: Recovery): Connection {
   let count = 1;
   let lastBeat = 0;
   const beat = () => { lastBeat = Date.now(); backend.heartbeat(hubId, count, [...hub.members].map(c => c.name)).catch((e) => console.warn('heartbeat', e)); };
@@ -66,6 +72,17 @@ function host(backend: Backend, hubId: string, hubName: string): Connection {
     if (Date.now() - lastBeat > 5000) beat();
     else if (!beatTimer) beatTimer = window.setTimeout(() => { beatTimer = 0; beat(); }, 5000);
   });
+
+  if(recovery?.state)hub.restore(recovery.state);
+  let storageWarned=false;
+  const save=()=>{
+    if(!recovery)return;
+    recovery.hubId=hubId;recovery.hubName=hubName;recovery.isHost=true;recovery.state=hub.save();
+    if(!writeRecovery(recovery)&&!storageWarned){storageWarned=true;conn.onMessage({t:'error',message:'進捗を保存できません。ブラウザの保存領域を確認してください。'});}
+  };
+  const saveTimer=window.setInterval(save,1000);
+  const visibilitySave=()=>{if(document.hidden)save();};
+  document.addEventListener('visibilitychange',visibilitySave);
 
   const peers = new Set<PeerLink<ClientMsg, ServerMsg>>();
   const unlisten = backend.listenJoins(hubId, async (req) => {
@@ -106,7 +123,7 @@ function host(backend: Backend, hubId: string, hubName: string): Connection {
   hub.connect(self, true);
 
   const release = () => { backend.releaseHub(hubId).catch(() => {}); };
-  window.addEventListener('pagehide', release);
+  window.addEventListener('pagehide', save);
 
   const conn: Connection = {
     hubId, hubName, isHost: true,
@@ -116,7 +133,8 @@ function host(backend: Backend, hubId: string, hubName: string): Connection {
       ticker.terminate();
       clearInterval(heartbeat);
       clearTimeout(beatTimer);
-      window.removeEventListener('pagehide', release);
+      window.removeEventListener('pagehide', save);
+      document.removeEventListener('visibilitychange',visibilitySave);clearInterval(saveTimer);
       for (const p of [...peers]) p.close();
       release();
     },

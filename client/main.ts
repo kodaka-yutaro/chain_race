@@ -1,3 +1,4 @@
+import {readRecovery,writeRecovery,clearRecovery,type Recovery} from './net/recovery';
 import {BUILTIN_COURSES,isBuiltinCourse} from '../shared/builtin-courses';
 import {courseMusic} from './music';
 import './release.css';
@@ -147,22 +148,29 @@ $('#btn-back-title').addEventListener('click', () => {
 // ---------- 接続 ----------
 
 let entering = false;
-async function joinHub(id: string | null, name: string) {
+let reconnectGeneration=0;
+async function joinHub(id: string | null, name: string, recovery?: Recovery) {
   if (!profile || entering) return;
   entering = true;
   alertBar('部屋に入っています…');
   try {
-    leaveHub();
-    const c = await enterHub(backend, id, name, $('#room-visibility') ? $<HTMLSelectElement>('#room-visibility').value as 'public'|'invite' : 'public');
+    if(!recovery)leaveHub();
+    const saved:Recovery=recovery??{version:1,at:Date.now(),hubId:'',hubName:name,hostId:randomId(),isHost:false,token:randomId()+randomId(),profile:{...profile}};
+    const generation=reconnectGeneration;
+    const c = await enterHub(backend, id, name, $('#room-visibility') ? $<HTMLSelectElement>('#room-visibility').value as 'public'|'invite' : 'public', saved);
+    if(generation!==reconnectGeneration){c.close();return;}
     conn = c;
+    saved.hubId=c.hubId;saved.hubName=c.hubName;saved.isHost=c.isHost;
+    if(!writeRecovery(saved))alertBar('進捗を保存できません。ブラウザの保存設定を確認してください。');
     c.onMessage = onMessage;
     c.onClose = (reason) => {
       if (conn !== c) return;
       conn = null;
       afterLeave();
-      alertBar(reason);
+      alertBar(reason+'。再接続しています…');
+      void reconnect(saved);
     };
-    c.send({ t: 'hello', name: profile.name, guest: profile.guest, face:savedFace() });
+    c.send({ t: 'hello', name: profile.name, guest: profile.guest, face:savedFace(), resumeToken:saved.token });
   } catch (e) {
     alertBar((e as Error).message || '部屋に入れませんでした');
   } finally {
@@ -170,7 +178,32 @@ async function joinHub(id: string | null, name: string) {
   }
 }
 
+async function reconnect(saved:Recovery){
+  const generation=reconnectGeneration;
+  profile={...saved.profile};
+  for(let attempt=0;attempt<6;attempt++){
+    if(generation!==reconnectGeneration||conn)return;
+    if(entering || attempt)await new Promise(resolve=>setTimeout(resolve,3000));
+    if(generation!==reconnectGeneration||conn)return;
+    await joinHub(saved.hubId,saved.hubName,saved);
+    if(conn)return;
+  }
+  if(generation===reconnectGeneration){
+    alertBar('再接続できませんでした。ホストの復帰後に「前のプレイを再開」を押してください。');
+    showRecovery(saved);
+  }
+}
+function showRecovery(saved:Recovery){
+  document.querySelector('#recover-play')?.remove();
+  const button=el('button',{id:'recover-play'},'前のプレイを再開');
+  button.onclick=()=>{button.remove();void reconnect(saved);};
+  $('#screen-hubs').prepend(button);
+}
+
 function leaveHub() {
+  reconnectGeneration++;clearRecovery();
+  document.querySelector('#recover-play')?.remove();
+  conn?.send({t:'bye'});
   const c = conn;
   conn = null;
   c?.close();
@@ -491,3 +524,12 @@ let wasFullscreen=false;
 document.addEventListener('fullscreenchange',()=>{const active=!!document.fullscreenElement;if(wasFullscreen&&!active&&game&&gameMode!=='lobby')openGameMenu();wasFullscreen=active;});
 
 function enterFullscreen(){if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});}
+
+// Restore only this tab's session; separate rooms in other tabs keep independent saves.
+const previousPlay=readRecovery();
+if(previousPlay){profile={...previousPlay.profile};show('hubs');void reconnect(previousPlay);}
+
+window.addEventListener('pageshow',event=>{
+  if(!event.persisted||!conn||conn.isHost)return;
+  const saved=readRecovery();conn.close();conn=null;afterLeave();if(saved)void reconnect(saved);
+});

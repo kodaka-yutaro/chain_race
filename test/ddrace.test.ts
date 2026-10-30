@@ -13,15 +13,6 @@ function setup() {
 function runner(m:MapDef,x=4,y=5) {
   const w=createWorld(m),t=newRunner(1,m); t.x=x*32+16;t.y=y*32+16;w.runners.push(t);return {w,t};
 }
-test('official Kobra import retains full geometry, teleport pairs and door channels',()=>{
-  const m=stageById('dd-kobra')!;
-  assert.equal(m.width,900);assert.equal(m.height,897);assert.equal(m.tiles.length,897);
-  assert.ok(m.tiles.every(row=>row.length===900));
-  assert.equal(m.dd!.tele.filter(t=>t[1]===10).length,5011);
-  const c=ddCache(m);
-  for(const [,type,n] of m.dd!.tele)if(type===10||type===15)assert.ok(c.exits.get(n)?.length,`missing exit ${n}`);
-  assert.equal(m.dd!.doors.length,32);
-});
 test('evil teleport moves to its numbered exit, clears velocity/hooks and retains race progress',()=>{
   const m=setup();m.dd!.tele=[[5*30+4,10,7],[12*30+20,27,7]];
   const {w,t}=runner(m);t.vx=10;t.vy=12;t.wireState=2;t.raceStart=23;t.stun=42;

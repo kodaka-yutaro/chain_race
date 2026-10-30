@@ -22,7 +22,7 @@ export interface Backend {
 
   listHubs(): Promise<HubInfo[]>;
   /** 主のいない大部屋なら自分が主になる。id が null なら新しく作る */
-  claimHub(id: string | null, name: string, hostId: string, visibility?: 'public' | 'invite'): Promise<{ id: string; name: string; role: 'host' | 'join' }>;
+  claimHub(id: string | null, name: string, hostId: string, visibility?: 'public' | 'invite', resumeHost?: boolean): Promise<{ id: string; name: string; role: 'host' | 'join' }>;
   heartbeat(id: string, count: number, members?: string[]): Promise<void>;
   releaseHub(id: string): Promise<void>;
 

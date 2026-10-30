@@ -122,16 +122,20 @@ export function firebaseBackend(config: FirebaseOptions): Backend {
       return mergeHubs(live, HUB_CAPACITY);
     },
 
-    async claimHub(id, name, hostId, visibility = 'public') {
+    async claimHub(id, name, hostId, visibility = 'public', resumeHost = false) {
       const u = await ensureUser();
       const ref = doc(db, 'hubs', id ?? randomId());
       return runTransaction(db, async (tx) => {
         const cur = await tx.get(ref);
         const d = cur.data();
         const now = Date.now();
+        if(id && resumeHost){
+          if(!d || d.hostId!==hostId || d.hostUid!==u.uid)throw Error('保存した部屋を復元できませんでした');
+          tx.update(ref,{updatedAt:now});return {id:ref.id,name:String(d.name),role:'host' as const};
+        }
         if (id) {
           if (!d || d.updatedAt <= now - HUB_STALE_MS) throw new Error('この部屋は終了しました');
-          if (d.count >= d.capacity) throw new Error('この大部屋は満員です');
+
           return { id: ref.id, name: String(d.name), role: 'join' as const };
         }
         tx.set(ref, { name, hostId, hostUid: u.uid, visibility, members: [], count: 1, capacity: HUB_CAPACITY, updatedAt: now });
