@@ -13,5 +13,5 @@ for(const [index,h] of map.hints.entries()){
 }
 const goal=document.createElement('button');goal.textContent='ゴール';goal.onclick=()=>{const y=map.tiles.findIndex(r=>r.includes('F')),x=map.tiles[y].indexOf('F');select(7);game.focusCamera((x+.5)*32,(y+4)*32);game.zoomCamera(.9/game.cameraScale);readout.textContent='ゴール：黒白のチェック柄';};nav.append(goal);
 const play=document.createElement('button');play.textContent='最初から遊ぶ';play.onclick=()=>{start();select(8);readout.textContent='A/D：移動 · SPACE：ジャンプ · 右クリック：フック · C：自由カメラ';};nav.append(play);
-const link=document.querySelector<HTMLAnchorElement>('#download')!;link.href=URL.createObjectURL(new Blob([JSON.stringify(raw)],{type:'application/json'}));link.download='Basic-Operations-Room.json';
+const link=document.querySelector<HTMLAnchorElement>('#download')!;link.href=URL.createObjectURL(new Blob([JSON.stringify(raw)],{type:'application/json'}));link.download='Basic-Class.json';
 start();nav.querySelector('button')!.click();courseMusic.stop();
