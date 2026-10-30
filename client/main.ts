@@ -1,3 +1,4 @@
+import {BUILTIN_COURSES,isBuiltinCourse} from '../shared/builtin-courses';
 import {courseMusic} from './music';
 import './release.css';
 import './ability-guide';
@@ -355,9 +356,9 @@ function onFinish(m: Extract<ServerMsg, { t: 'finish' }>) {
   if (!game) return;
   if (m.runnerId !== game.youId) { toast(`${m.name} さんがゴール！ ${m.time.toFixed(2)} 秒`); return; }
   const body: (Node | string)[] = [el('p', { className: 'big', textContent: `${m.time.toFixed(2)} 秒` })];
-  const best=el('p',{className:'note',textContent:previewing?'テストプレイのクリアです':m.assisted?'ダミー使用の練習クリアです':profile?.guest?'ログインすると初クリア時にチェッカー名を登録できます。':'チェッカーを確認しています…'});
+  const best=el('p',{className:'note',textContent:isBuiltinCourse(gameStage)?'Basic Class クリア！':previewing?'テストプレイのクリアです':m.assisted?'ダミー使用の練習クリアです':profile?.guest?'ログインすると初クリア時にチェッカー名を登録できます。':'チェッカーを確認しています…'});
   body.push(best);
-  if(!m.assisted&&!previewing&&!profile?.guest){
+  if(!isBuiltinCourse(gameStage)&&!m.assisted&&!previewing&&!profile?.guest){
     backend.releaseCourse(gameStage,[{id:m.runnerId,name:m.name,time:m.time}]).then(checker=>{best.textContent=checker?`このコースのチェッカー：${checker}`:'クリアしました';}).catch(()=>{
       best.textContent='チェッカーを保存できませんでした。';const retry=el('button',{},'再試行');retry.onclick=()=>onFinish(m);best.append(retry);
     });
@@ -421,7 +422,7 @@ async function openCourses() {
   const account=await backend.account();
   const add=(c:Course)=>{const map=c.map,b=el('button',{disabled:!conn?.isHost||hub?.playing},'このコースで遊ぶ');
     b.onclick=()=>{send({t:'courseJoin',map});catalogue.close();};
-    const card=el('article',{className:'course-card'},courseOverview(map),el('strong',{},map.name),el('p',{},`${map.minPlayers}人〜 · 作者：${c.authorName}`),el('p',{},c.firstClear?`チェッカー：${c.firstClear.names.join('・')}`:'プレリリース · チェッカー募集中'),b);
+    const card=el('article',{className:'course-card'},courseOverview(map),el('strong',{},map.name),el('p',{},`${map.minPlayers}人〜 · 作者：${c.authorName}`),el('p',{},c.status==='released'?(c.firstClear?`リリース済み · チェッカー：${c.firstClear.names.join('・')}`:'リリース済み'):'プレリリース · チェッカー募集中'),b);
     if(account?.uid===c.author){
       const remove=el('button',{className:'course-delete'},'投稿したコースを削除');
       remove.onclick=async()=>{
@@ -432,7 +433,8 @@ async function openCourses() {
       };card.append(remove);
     }
     grid.append(card);};
-  try{courses=await backend.listCourses();for(const c of courses)add(c);if(!courses.length)grid.append(el('p',{},'プレリリースされたコースはまだありません。保存ページからコースを作って公開できます。'));}catch{note.textContent+=' 投稿コースは読み込めませんでした。';}
+  courses=[...BUILTIN_COURSES];for(const c of courses)add(c);
+  try{const posted=(await backend.listCourses()).filter(c=>!isBuiltinCourse(c.id));courses.push(...posted);for(const c of posted)add(c);if(!courses.length)grid.append(el('p',{},'プレリリースされたコースはまだありません。保存ページからコースを作って公開できます。'));}catch{note.textContent+=' 投稿コースは読み込めませんでした。';}
   const file=el('input',{type:'file',accept:'.json,application/json',disabled:!conn?.isHost||hub?.playing});
   file.onchange=async()=>{try{const f=file.files?.[0];if(!f)return;if(f.size>COURSE_FILE_MAX_BYTES)throw Error('ファイルが大きすぎます');const map=validateCourseMap(JSON.parse(await f.text()));send({t:'courseJoin',map:{...map,id:'user-'+randomId()}});catalogue.close();}catch(e){note.textContent=(e as Error).message;}};
   catalogue.append(el('p',{},'エディタで保存したコースファイルを使う（投稿不要）'),file);
