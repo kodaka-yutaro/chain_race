@@ -4,6 +4,9 @@ import {localBackend} from '../client/net/local';
 import {newCourseMap} from '../shared/courses';
 function storage(){const data=new Map<string,string>();return {getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>data.set(k,v),removeItem:(k:string)=>data.delete(k)};}
 test('プレリリースはログイン必須で、初クリア者は後から上書きされない',async()=>{
+ // Browser Web Locks are not available in the Node 22 CI runtime.
+ let lockQueue:Promise<unknown>=Promise.resolve();
+ Object.defineProperty(globalThis,'navigator',{value:{locks:{request:(_name:string,run:()=>unknown)=>{const next=lockQueue.then(run);lockQueue=next.catch(()=>{});return next;}}},configurable:true});
  Object.defineProperty(globalThis,'localStorage',{value:storage(),configurable:true});
  Object.defineProperty(globalThis,'sessionStorage',{value:storage(),configurable:true});
  Object.defineProperty(globalThis,'BroadcastChannel',{value:class {addEventListener(){} removeEventListener(){} postMessage(){}},configurable:true});
