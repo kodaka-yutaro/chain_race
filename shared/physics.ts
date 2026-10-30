@@ -274,6 +274,7 @@ export function wordCollision(w:World):WordCollision {
 function moveBox(w: World, t: Runner, collision:WordCollision) {
   const blocked=(x:number,y:number)=>{
     const part=metalPart({...t,x,y});
+    if(part&&w.runners.some(o=>playerCollides(t,o)&&part.x<o.x+13.99&&part.x+part.w>o.x-13.99&&part.y<o.y+13.99&&part.y+part.h>o.y-13.99))return true;
     if(part&&(collision.staticRect(part.x,part.y,part.w,part.h)||wordBoxSolid(w,part.x,part.y,part.w,part.h)||metalOverlap(w,part.x,part.y,part.w,part.h,t.id)))return true;
     return (w.map.abilityMode&&t.ability==='bicycle'?bicycleBlocked(w,x,y):testBox(w,x,y))||metalOverlap(w,x-13.99,y-13.99,27.98,27.98,t.id);
   };

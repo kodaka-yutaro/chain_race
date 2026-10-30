@@ -1,32 +1,32 @@
 // ChainRace's simple area visuals. No upstream game artwork is used here.
 export function areaKind(id:string):'freeze'|'thaw'|'mesh'|'entrance'|'exit'|'stop'|undefined {
-  if(/^dd:(game|front):60:/.test(id))return 'stop';
+  if(/^dd:(game|front):(60|240):/.test(id))return 'stop';
   if(id==='~'||id==='dd:game:9:0'||id==='dd:front:9:0')return 'freeze';
   if(id==='U'||id==='dd:game:11:0'||id==='dd:front:11:0')return 'thaw';
   if(id==='O'||id==='dd:front:66:0')return 'mesh';
-  if(id==='dd:tele:26:0')return 'entrance';
-  if(id==='dd:tele:27:0')return 'exit';
+  if(/^dd:tele:(26|10|15|14|29|31|63):0$/.test(id))return 'entrance';
+  if(/^dd:tele:(27|30):0$/.test(id))return 'exit';
 }
 
-export function drawCourseArea(g:CanvasRenderingContext2D,id:string,x:number,y:number,size:number,badge?:string):boolean {
+export function drawCourseArea(g:CanvasRenderingContext2D,id:string,x:number,y:number,size:number,badge?:string,teleColor=0):boolean {
   const kind=areaKind(id);if(!kind)return false;
   g.save();g.translate(x,y);g.scale(size/32,size/32);
   if(kind==='stop'){
     const flags=Number(id.split(':')[3])&11;
     const angle=({0:Math.PI/2,1:Math.PI/2,8:Math.PI,9:Math.PI,3:-Math.PI/2,2:-Math.PI/2,11:0,10:0} as Record<number,number>)[flags]??0;
-    g.translate(16,16);g.rotate(angle);g.strokeStyle='rgba(115,153,174,.95)';g.lineWidth=2;g.lineCap='round';g.lineJoin='round';g.beginPath();
+    g.translate(16,16);g.rotate(angle);g.strokeStyle=id.includes(':240:')?'#ef535b':'rgba(115,153,174,.95)';g.lineWidth=2;g.lineCap='round';g.lineJoin='round';g.beginPath();
     for(const dx of [-7,7]){g.moveTo(dx+3,-8);g.lineTo(dx-3,0);g.lineTo(dx+3,8);}g.stroke();
   }else if(kind==='freeze'||kind==='thaw'){
 
     g.fillStyle=kind==='freeze'?'rgba(155,216,255,0.32)':'rgba(255,235,146,0.30)';g.fillRect(0,0,32,32);
-  }else if(kind==='entrance'){g.fillStyle='#000';g.fillRect(0,0,32,32);}
+  }else if(kind==='entrance'){g.fillStyle=teleColor===1?'#c9cdd2':'#000';g.fillRect(0,0,32,32);}
   else if(kind==='mesh'){
     g.beginPath();g.rect(0,0,32,32);g.clip();g.fillStyle='rgba(144,91,48,.12)';g.fillRect(0,0,32,32);
     g.strokeStyle='#986239';g.lineWidth=1.5;g.beginPath();
     // Integer period dividing 32 keeps the lattice continuous across adjacent tiles.
     for(let d=-32;d<=64;d+=8){g.moveTo(d,0);g.lineTo(d+32,32);g.moveTo(d,0);g.lineTo(d-32,32);}g.stroke();
   }else{
-    g.strokeStyle='rgba(0,0,0,.28)';g.lineWidth=2;g.lineCap='round';g.beginPath();
+    g.strokeStyle=teleColor===1?'rgba(215,220,227,.8)':'rgba(0,0,0,.28)';g.lineWidth=2;g.lineCap='round';g.beginPath();
     for(let i=0;i<=100;i++){const t=i/100*Math.PI*5,r=1+i/100*12,px=16+Math.cos(t)*r,py=16+Math.sin(t)*r;i?g.lineTo(px,py):g.moveTo(px,py);}g.stroke();
   }
   // Connection numbers are an editor aid, kept out of the plain gameplay zones.

@@ -2,9 +2,9 @@ import {drawCourseArea,drawPickupArt,drawClothBall} from './course-art';
 import { DD_PARTS } from '../shared/dd-parts';
 
 // Simple original areas, generated pickups, and existing temporary fallback artwork.
-export function drawPart(g: CanvasRenderingContext2D, id: string, x: number, y: number, size: number, badge?: string, angle = 0) {
+export function drawPart(g: CanvasRenderingContext2D, id: string, x: number, y: number, size: number, badge?: string, angle = 0, teleColor = 0) {
   if(id==='o'){drawClothBall(g,x+size/2,y+size/2,size*.47);return;}
-  if(drawCourseArea(g,id,x,y,size,badge)||drawPickupArt(g,id,x,y,size))return;
+  if(drawCourseArea(g,id,x,y,size,badge,teleColor)||drawPickupArt(g,id,x,y,size))return;
   const part = DD_PARTS.find(p => p.id === id);
   let kind = id, color = '#9eacf0', mark = '', state = '';
   if (part) {

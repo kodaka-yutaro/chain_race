@@ -1,3 +1,4 @@
+import {ballStopperBlocks} from './ddrace';
 import {hammerImpulse} from './hammer';
 import { TICK_RATE, type Input, type Runner, type World } from './physics';
 
@@ -85,25 +86,32 @@ function runnerHit(b:WordBlock,t:Runner,x=t.x,y=t.y){const r=bounds(t);return wo
 function standing(b:WordBlock,t:Runner) {
   return rects(b).some(r=>Math.abs(t.y+bounds(t).bottom-(b.y+r.y))<=3 && t.x+bounds(t).half-1>b.x+r.x && t.x-bounds(t).half+1<b.x+r.x+r.w);
 }
+/** Move a large platform and every loose object it pushes as one transaction. */
 function move(w:World,b:WordBlock,dx:number,dy:number,collision:WordCollision) {
   const next={...b,x:b.x+dx,y:b.y+dy};
-  if(!fits(w,next,collision,false))return false;
-  const carried=new Map<Runner,{x:number;y:number}>();
-  for(const t of w.runners)if(standing(b,t)||runnerHit(next,t))carried.set(t,{x:t.x+dx,y:t.y+dy});
-  for(const [t,p] of carried){
-    const box=bounds(t);if(collision.staticRect(p.x-box.half,p.y-14,box.half*2,box.bottom+14)||wordBoxSolid(w,p.x-box.half,p.y-14,box.half*2,box.bottom+14,b.id)||collision.runnerBox(p.x,p.y,b.id)||runnerHit(next,t,p.x,p.y))return false;
-    // A moving word must not squeeze a rider into a wall or another player.
-    for(const o of w.runners){
-      if(o===t)continue;
-      const q=carried.get(o)??o;
-      if(Math.hypot(p.x-q.x,p.y-q.y)<27.5 && Math.hypot(t.x-o.x,t.y-o.y)>=27.5)return false;
+  const fixed=w.words.filter(o=>o!==b&&o.solid&&o.kind!=='mini');
+  if(rects(next).some(r=>collision.staticRect(next.x+r.x,next.y+r.y,r.w,r.h)||fixed.some(o=>wordBoxHit(o,next.x+r.x,next.y+r.y,r.w,r.h))))return false;
+  type ObjectBox={ball?:boolean;object:{x:number;y:number};x:number;y:number;w:number;h:number};
+  const objects:ObjectBox[]=[
+    ...w.words.filter(o=>o.solid&&o.kind==='mini').map(o=>({object:o,x:o.x,y:o.y,w:MINI_SIZE,h:MINI_SIZE})),
+    ...w.balls.filter(o=>o.carriedBy===undefined&&!(o.respawnAt&&o.respawnAt>w.tick)).map(o=>({ball:true,object:o,x:o.x-32,y:o.y-32,w:64,h:64})),
+    ...w.runners.filter(t=>!t.ghostBody).map(t=>{const r=bounds(t);return {object:t,x:t.x-r.half,y:t.y-14,w:r.half*2,h:r.bottom+14};}),
+  ];
+  const overlaps=(a:ObjectBox,o:ObjectBox)=>overlap(a.x,a.y,a.w,a.h,o.x,o.y,o.w,o.h);
+  const supports=(a:{x:number;y:number;w:number;h:number},o:ObjectBox)=>Math.abs(o.y+o.h-a.y)<=1.01&&o.x+o.w>a.x+.01&&o.x<a.x+a.w-.01;
+  const movers=new Set(objects.filter(o=>wordBoxHit(next,o.x,o.y,o.w,o.h)||rects(b).some(r=>supports({x:b.x+r.x,y:b.y+r.y,w:r.w,h:r.h},o))));
+  for(const o of movers){
+    const target={...o,x:o.x+dx,y:o.y+dy};
+    if(o.ball&&ballStopperBlocks(w,o.object.x,o.object.y,o.object.x+dx,o.object.y+dy,32))return false;
+    if(collision.staticRect(target.x,target.y,o.w,o.h)||fixed.some(f=>wordBoxHit(f,target.x,target.y,o.w,o.h))||wordBoxHit(next,target.x,target.y,o.w,o.h))return false;
+    for(const other of objects){
+      if(other===o||movers.has(other))continue;
+      if(supports(o,other)||(overlaps(target,other)&&!overlaps(o,other)))movers.add(other);
     }
   }
-  const carriedBalls=w.balls.filter(o=>o.carriedBy===undefined&&!(o.respawnAt&&o.respawnAt>w.tick)&&wordBoxHit(next,o.x-32,o.y-32,64,64));
-  if(carriedBalls.some(o=>collision.staticRect(o.x+dx-32,o.y+dy-32,64,64)||wordBoxSolid(w,o.x+dx-32,o.y+dy-32,64,64,b.id)||wordBoxHit(next,o.x+dx-32,o.y+dy-32,64,64)))return false;
-  for(const o of carriedBalls){o.x+=dx;o.y+=dy;}
+  // Nothing is committed if the chain is blocked by a wall, ceiling or another large word.
   b.x=next.x;b.y=next.y;
-  for(const [t,p] of carried){t.x=p.x;t.y=p.y;}
+  for(const {object} of movers){object.x+=dx;object.y+=dy;}
   return true;
 }
 
@@ -223,8 +231,13 @@ export function stepWords(w:World,collision:WordCollision) {
         if(b.vy&&!moveMinis(w,[b],0,b.vy/steps,collision))b.vy=0;
       }
     }else{
-      if(!move(w,b,b.vx,0,collision)&&!w.map.abilityMode)b.vx=-b.vx;
-      if(b.vy&&!move(w,b,0,b.vy,collision)&&!w.map.abilityMode)b.vy=-b.vy;
+      const steps=Math.max(1,Math.ceil(Math.max(Math.abs(b.vx),Math.abs(b.vy))));
+      let blockedX=false,blockedY=false;
+      for(let n=0;n<steps;n++){
+        if(!blockedX&&b.vx&&!move(w,b,b.vx/steps,0,collision))blockedX=true;
+        if(!blockedY&&b.vy&&!move(w,b,0,b.vy/steps,collision))blockedY=true;
+      }
+      if(!w.map.abilityMode){if(blockedX)b.vx=-b.vx;if(blockedY)b.vy=-b.vy;}
     }
   }
 }

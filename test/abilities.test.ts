@@ -26,7 +26,7 @@ test('自転車の車輪はしびれ床とトゲの上を走れるが、乗員�
    r.y=16*32+16;tick(w);if(hazard==='~')assert.ok(r.stun>0);else assert.equal(r.ability,'basic');}
 });
 test('マジックハンドで赤いボールを持ち運んで離せる。壁越しにはつかめない',()=>{
- const {w,r}=setup();r.ability='hand';w.balls.push({id:1,x:r.x+40,y:r.y,vx:0,vy:0,homeX:240,homeY:r.y});tick(w,1,{fire:true});assert.deepEqual(r.held,{kind:'ball',id:1});tick(w,10,{right:true});assert.ok(Math.abs(w.balls[0].x-r.x-70)<1);
+ const {w,r}=setup();r.ability='hand';w.balls.push({id:1,x:r.x+40,y:r.y-18,vx:0,vy:0,homeX:240,homeY:r.y-18});tick(w,1,{fire:true});assert.deepEqual(r.held,{kind:'ball',id:1});tick(w,10,{right:true});assert.ok(Math.abs(w.balls[0].x-r.x-70)<1);
  tick(w,1,{fire:true});assert.equal(r.held,null);tick(w);r.x=200;r.y=400;w.balls[0].x=250;w.balls[0].y=400;tile(w,7,12,'X');tick(w,1,{fire:true});assert.equal(r.held,null);
 });
 test('赤いボールを自転車でシュートでき、別のプレイヤーのフックでつかめる',()=>{
@@ -43,7 +43,7 @@ test('能力アイテムと赤いボールをエディタ形式で往復でき�
 
 
 test('メインとサブは能力ごとに独立し、じゃんけんは保持物を離さない',()=>{
- const {w,r}=setup();r.ability='hand';w.balls.push({id:0,x:240,y:r.y,vx:0,vy:0,homeX:240,homeY:r.y});tick(w,1,{fire:true});tick(w,1,{wire:true});assert.ok(r.held);assert.ok(r.gesture>=0&&r.gesture<=2);const stamp=r.gestureTick;tick(w,4,{wire:true});assert.equal(r.gestureTick,stamp);
+ const {w,r}=setup();r.ability='hand';w.balls.push({id:0,x:240,y:r.y-18,vx:0,vy:0,homeX:240,homeY:r.y-18});tick(w,1,{fire:true});tick(w,1,{wire:true});assert.ok(r.held);assert.ok(r.gesture>=0&&r.gesture<=2);const stamp=r.gestureTick;tick(w,4,{wire:true});assert.equal(r.gestureTick,stamp);
  r.ability='hook';r.held=null;tick(w,1,{wire:true});assert.equal(r.wireState,0);tick(w,1,{fire:true});assert.notEqual(r.wireState,0);
 });
 test('ハンマーのサブは地上で固定、空中で真下に落下し、離すと動ける',()=>{
