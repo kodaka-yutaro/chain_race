@@ -81,7 +81,7 @@ function fits(w:World,b:WordBlock,collision:WordCollision,checkRunners:boolean) 
   if(rects(b).some(r=>collision.staticRect(b.x+r.x,b.y+r.y,r.w,r.h)||wordBoxSolid(w,b.x+r.x,b.y+r.y,r.w,r.h,b.id)))return false;
   return !checkRunners||!w.runners.some(t=>runnerHit(b,t));
 }
-function bounds(t:Runner){return {half:t.ability==='bicycle'?30:14,bottom:t.ability==='bicycle'?40:t.hammerBrace?31:14};}
+function bounds(t:Runner){return {half:t.ability==='bicycle'?42:14,bottom:t.ability==='bicycle'?42:t.hammerBrace?31:14};}
 function runnerHit(b:WordBlock,t:Runner,x=t.x,y=t.y){const r=bounds(t);return wordBoxHit(b,x-r.half,y-14,r.half*2,r.bottom+14);}
 function standing(b:WordBlock,t:Runner) {
   return rects(b).some(r=>Math.abs(t.y+bounds(t).bottom-(b.y+r.y))<=3 && t.x+bounds(t).half-1>b.x+r.x && t.x-bounds(t).half+1<b.x+r.x+r.w);
@@ -264,7 +264,7 @@ export function stepSpit(w:World,t:Runner,input:Input,collision:WordCollision) {
       const b:WordBlock={id:w.wordSeq+1,owner:t.id,
         x:vertical?t.x-WORD_WIDTH/2:s.ax>=0?t.x+30:t.x-30-WORD_WIDTH,
         y:vertical?(s.ay<0?t.y-30-WORD_HEIGHT:t.y+30):t.y+14-WORD_HEIGHT,
-        vx:vertical?s.ax*1.15:(s.ax>=0?1.15:-1.15),vy:s.ay*1.15,
+        vx:vertical?s.ax*1.4:(s.ax>=0?1.4:-1.4),vy:s.ay*1.4,
         born:w.tick,expires:-1,solid:false,mouthX:t.x+s.ax*18,mouthY:t.y+s.ay*12};
       const previous=w.words;
       if(repeat)w.words=w.words.filter(o=>o.owner!==t.id||o.kind==='mini');

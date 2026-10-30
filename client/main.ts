@@ -57,7 +57,7 @@ let recentInputs: { seq: number; input: Input }[] = [];
 
 type Screen = 'title' | 'hubs' | 'hub' | 'game' | 'editor' | 'saves';
 function show(s: Screen) {
-  courseMusic.stop();
+  if(!(game&&((s==='hub'&&gameMode==='lobby')||(s==='game'&&gameMode!=='lobby'))))courseMusic.stop();
   for (const x of $$('.screen')) x.classList.add('hidden');
   const target = $(`#screen-${s}`);
   target.classList.remove('hidden');
@@ -227,7 +227,7 @@ function onMessage(m: ServerMsg) {
       return;
     case 'hubState':
       hub = m.hub;
-      if(m.hub.members.find(p=>p.id===me?.id)?.status==='待機中'){stopGame();show('hub');}
+      if(m.hub.members.find(p=>p.id===me?.id)?.status==='待機中'){if(gameMode!=='lobby')stopGame();show('hub');}
       renderHub();
       return;
     case 'chat':

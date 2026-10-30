@@ -62,6 +62,7 @@ export class ClientGame {
   private spitQueued=false;
   private miniQueued=false;
   private clearWordQueued=false;
+  private effectLog:HTMLElement|null=null;
   private wordPanel:HTMLElement|null=null;
   private mouseAimed=false;
   private listeners: [EventTarget, string, (e: any) => void][] = [];
@@ -88,6 +89,7 @@ export class ClientGame {
     this.bindInput();
     this.mountCameraNotice();
     this.mountMusicControls();
+    this.effectLog=document.createElement('div');this.effectLog.className='effect-log';this.effectLog.setAttribute('role','status');this.canvas.parentElement?.append(this.effectLog);
     courseMusic.play(this.map.music);
     this.canvas.parentElement?.classList.toggle('word-enabled',!!this.map.wordBlocks);
     if(this.map.wordBlocks)this.mountWordControls();
@@ -194,6 +196,7 @@ export class ClientGame {
     releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = touch.miniTap = false;
     for(const clean of this.pressCleanup)clean();
     touch.aimOnly=false;this.cameraNotice?.remove();this.canvas.style.cursor="";
+    this.effectLog?.remove();
     this.wordPanel?.remove();this.canvas.parentElement?.classList.remove('word-enabled');
     cancelAnimationFrame(this.raf);
     for (const [t, ev, fn] of this.listeners) t.removeEventListener(ev, fn);
@@ -338,6 +341,10 @@ export class ClientGame {
       this.viewCamera.pan(dx/length*speed,dy/length*speed);
     }
     this.render(now);
+    if(this.effectLog){const lines=(this.me.dd?.notices??[]).filter(n=>this.world.tick-n.tick<250).map(n=>n.text);
+      for(const [number,s] of Object.entries(this.world.dd?.switches??{}))if(s.until>this.world.tick)lines.push('時限スイッチ '+number+'：'+(s.on?'ON':'OFF')+' 残り '+Math.ceil((s.until-this.world.tick)/50)+'秒');
+      this.effectLog.textContent=lines.slice(-6).join('\n');this.effectLog.hidden=!lines.length;
+    }
     if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
     if(this.wordPanel){
       const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
