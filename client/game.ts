@@ -1,3 +1,4 @@
+import {ViewCamera} from './camera';
 import {heldInput} from '../shared/held-input';
 import {drawPickupArt,drawClothBall} from './course-art';
 import {renderPosition,correctionDecay,type Point} from './motion';
@@ -10,7 +11,6 @@ import { PARTY_CAPACITY, type RunnerView, type ServerMsg, type ZoneState } from 
 import { releaseAllTouch, touch } from './touch';
 import { bindPress } from './press';
 import { buildTileLayer, drawBackground, drawHammerHit, drawHook, drawLiveTiles, drawRunner } from './render';
-import { WEAPON_NAMES } from '../shared/ddrace';
 import { drawDD } from './dd-render';
 import { drawWords } from './word-render';
 import { BALL_RADIUS,COLLECTION_RADIUS,ballCount,shotPreview,ABILITY_NAMES, ITEM_ABILITIES } from '../shared/abilities';
@@ -52,7 +52,10 @@ export class ClientGame {
   private lastSnapAt = 0;
   private stopped = false;
   private waitingForParty = false;
-  private weaponPanel: HTMLElement | null = null;
+  private viewCamera=new ViewCamera();
+  private cameraNotice:HTMLElement|null=null;
+  private cameraDrag:{id:number;x:number;y:number}|null=null;
+  private baseZoom=1;
   private weaponQueued: number | undefined;
   private spitQueued=false;
   private miniQueued=false;
@@ -81,7 +84,7 @@ export class ClientGame {
     this.ctx = canvas.getContext('2d')!;
     this.staticLayer = this.map.width * this.map.height > 24000 ? null : buildTileLayer(this.map);
     this.bindInput();
-    if(this.map.dd) this.mountWeapons();
+    this.mountCameraNotice();
     this.canvas.parentElement?.classList.toggle('word-enabled',!!this.map.wordBlocks);
     if(this.map.wordBlocks)this.mountWordControls();
     this.resize();
@@ -100,6 +103,7 @@ export class ClientGame {
 
   private controlHolds=new Map<number,{keys:string[];left:boolean;right:boolean;touch:{moveX:number;jump:boolean;hook:boolean;fire:boolean};aim:{x:number;y:number}}>();
   flushControlInput(){
+    if(this.viewCamera.free){this.send({seq:++this.seq,input:emptyInput()});return;}
     const input=heldInput(this.sampleInput());
     input.left=this.keys.has('KeyA')||this.keys.has('ArrowLeft')||touch.active&&touch.moveX<0;
     input.right=this.keys.has('KeyD')||this.keys.has('ArrowRight')||touch.active&&touch.moveX>0;
@@ -139,28 +143,37 @@ export class ClientGame {
     panel.append(row);this.canvas.parentElement!.append(panel);this.wordPanel=panel;
   }
 
-  private mountWeapons() {
-    const panel=document.createElement('div');panel.className='dd-tools';
-    const row=document.createElement('div');row.className='dd-weapons';
-    for(let n=0;n<6;n++){
-      const b=document.createElement('button');b.textContent=`${n+1} ${['鎚','銃','散','爆','光','忍'][n]}`;
-      b.title=WEAPON_NAMES[n];b.setAttribute('aria-label',WEAPON_NAMES[n]);b.dataset.weapon=String(n);
-      this.pressCleanup.push(bindPress(b,()=>{this.weaponQueued=n;}));row.append(b);
-    }
-    const status=document.createElement('div');status.className='dd-status';
-    panel.append(row,status);
-    if(touch.active){
-      const toggle=document.createElement('button');toggle.className='dd-aim-toggle';toggle.textContent='右スティック: フック';
-      this.pressCleanup.push(bindPress(toggle,()=>{releaseAllTouch();touch.hookTap=false;touch.aimOnly=!touch.aimOnly;toggle.textContent=`右スティック: ${touch.aimOnly?'照準だけ':'フック'}`;}));panel.append(toggle);
-    }
-    this.canvas.parentElement!.append(panel);this.weaponPanel=panel;
+  get freeCamera(){return this.viewCamera.free;}
+  get cameraScale(){return this.viewCamera.scale;}
+  toggleCamera(){
+    this.viewCamera.toggle(this.cam.x+this.canvas.width/this.cam.zoom/2,this.cam.y+(this.canvas.height-this.bottomInset)/this.cam.zoom/2);
+    this.clearCameraInput();this.updateCameraNotice();
+  }
+  followCamera(){this.viewCamera.follow();this.clearCameraInput();this.updateCameraNotice();}
+  zoomCamera(factor:number){this.viewCamera.zoom(factor);this.cam.zoom=this.baseZoom*this.viewCamera.scale;this.updateCameraNotice();}
+  resetCamera(){this.viewCamera.reset();this.cam.zoom=this.baseZoom;this.clearCameraInput();this.updateCameraNotice();}
+  private clearCameraInput(){
+    this.keys.clear();this.tapped.clear();this.clicked={left:false,right:false};this.mouse.left=this.mouse.right=false;
+    this.killQueued=this.spitQueued=this.miniQueued=this.clearWordQueued=false;this.weaponQueued=undefined;this.cameraDrag=null;
+    releaseAllTouch();touch.jumpTap=touch.fireTap=touch.hookTap=touch.miniTap=false;
+    this.send({seq:++this.seq,input:emptyInput()});
+  }
+  private mountCameraNotice(){
+    const panel=document.createElement('div');panel.className='camera-notice';
+    const text=document.createElement('span');text.textContent='自由カメラ · ドラッグ / WASDで移動 · ホイールで拡大縮小';
+    const button=document.createElement('button');button.textContent='自分へ戻る [C]';button.onclick=()=>this.followCamera();
+    panel.append(text,button);this.canvas.parentElement!.append(panel);this.cameraNotice=panel;this.updateCameraNotice();
+  }
+  private updateCameraNotice(){
+    if(this.cameraNotice)this.cameraNotice.hidden=!this.viewCamera.free;
+    this.canvas.style.cursor=this.viewCamera.free?'grab':'';
   }
 
   stop() {
     this.stopped = true;
     releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = touch.miniTap = false;
     for(const clean of this.pressCleanup)clean();
-    touch.aimOnly=false;this.weaponPanel?.remove();
+    touch.aimOnly=false;this.cameraNotice?.remove();this.canvas.style.cursor="";
     this.wordPanel?.remove();this.canvas.parentElement?.classList.remove('word-enabled');
     cancelAnimationFrame(this.raf);
     for (const [t, ev, fn] of this.listeners) t.removeEventListener(ev, fn);
@@ -232,6 +245,7 @@ export class ClientGame {
     const clicked = this.clicked;
     this.clicked = { left: false, right: false };
     const i = emptyInput();
+    if(this.viewCamera.free){releaseAllTouch();touch.jumpTap=touch.fireTap=touch.hookTap=touch.miniTap=false;return i;}
     if (document.querySelector('dialog[open]')) { this.keys.clear();this.tapped.clear();this.mouse.left=this.mouse.right=false; this.spitQueued=this.miniQueued=this.clearWordQueued=false; releaseAllTouch(); touch.jumpTap = touch.fireTap = touch.hookTap = touch.miniTap = false; return i; }
     i.left = k.has('KeyA') || k.has('ArrowLeft');
     i.right = k.has('KeyD') || k.has('ArrowRight');
@@ -295,6 +309,12 @@ export class ClientGame {
     const decay=correctionDecay(dt);
     this.smoothX *= decay;
     this.smoothY *= decay;
+    if(this.viewCamera.free&&!document.querySelector('dialog[open]')){
+      const dx=Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft'));
+      const dy=Number(this.keys.has('KeyS')||this.keys.has('ArrowDown'))-Number(this.keys.has('KeyW')||this.keys.has('ArrowUp'));
+      const length=Math.hypot(dx,dy)||1,speed=dt*.9/this.viewCamera.scale;
+      this.viewCamera.pan(dx/length*speed,dy/length*speed);
+    }
     this.render(now);
     if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
     if(this.wordPanel){
@@ -306,14 +326,6 @@ export class ClientGame {
       const miniButton=this.canvas.parentElement?.querySelector<HTMLButtonElement>('.tbtn.mini');
       if(miniButton){miniButton.textContent=`ミニ ${miniCount}/${MINI_LIMIT}`;miniButton.disabled=!!s.miniCooldown||this.waitingForParty;}
       this.wordPanel.querySelector<HTMLButtonElement>('.word-clear')!.disabled=(!big&&!s.charge)||this.waitingForParty;
-    }
-    if(this.weaponPanel)this.weaponPanel.hidden=this.me.ability!=="basic";
-    if(this.me.dd&&this.weaponPanel){
-      const d=this.me.dd;
-      for(const b of this.weaponPanel.querySelectorAll<HTMLButtonElement>('[data-weapon]')){
-        const n=Number(b.dataset.weapon);b.disabled=!(d.weapons&1<<n);b.setAttribute('aria-pressed',String(d.weapon===n));
-      }
-      this.weaponPanel.querySelector('.dd-status')!.textContent=`${WEAPON_NAMES[d.weapon]}${d.solo?' · SOLO':''}${d.jetpack?' · JET':''} · ${d.endlessJump?'∞':d.jumps<0?'地上のみ':d.jumps}段ジャンプ`;
     }
     const running = this.me.raceStart >= 0 && this.me.finishedTime < 0;
     const t = this.me.finishedTime >= 0 ? this.me.finishedTime
@@ -329,7 +341,12 @@ export class ClientGame {
 
   private bindInput() {
     this.on(window, 'keydown', (e: KeyboardEvent) => {
+      if(e.ctrlKey||e.metaKey||e.altKey)return;
       if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName)) return;
+      if(e.code==='KeyC'&&!e.repeat){e.preventDefault();this.toggleCamera();return;}
+      if(e.code==='Home'&&!e.repeat){e.preventDefault();this.resetCamera();return;}
+      if(['Equal','NumpadAdd','Minus','NumpadSubtract'].includes(e.code)){e.preventDefault();this.zoomCamera(['Equal','NumpadAdd'].includes(e.code)?1.15:1/1.15);return;}
+      if(this.viewCamera.free){e.preventDefault();this.keys.add(e.code);return;}
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if(e.repeat&&!this.keys.has(e.code))return; // A key held on the other character is not a new press.
       if (e.code === 'KeyR' && !e.repeat) this.queueSpit();
@@ -345,7 +362,7 @@ export class ClientGame {
       if (e.key === 'Meta') this.keys.clear();
     });
     // 別のウィンドウやタブに移ると keyup が届かないので、押しっぱなしのまま固まらないよう離す
-    const releaseAll = () => { this.keys.clear(); this.mouse.left = this.mouse.right = false; releaseAllTouch(); };
+    const releaseAll = () => { this.cameraDrag=null;this.keys.clear(); this.mouse.left = this.mouse.right = false; releaseAllTouch(); };
     this.on(window, 'blur', releaseAll);
     this.on(document, 'visibilitychange', () => {
       if (!document.hidden) return;
@@ -371,13 +388,24 @@ export class ClientGame {
       requestAnimationFrame(() => this.resize());
     });
     this.on(this.canvas, 'contextmenu', (e) => e.preventDefault());
+    this.on(this.canvas,'wheel',(e:WheelEvent)=>{if(document.querySelector('dialog[open]'))return;e.preventDefault();this.zoomCamera(Math.exp(-Math.max(-100,Math.min(100,e.deltaY))*.002));});
+    this.on(this.canvas,'pointerdown',(e:PointerEvent)=>{if(!this.viewCamera.free||e.button!==0)return;e.preventDefault();this.cameraDrag={id:e.pointerId,x:e.clientX,y:e.clientY};this.canvas.setPointerCapture(e.pointerId);});
+    this.on(this.canvas,'pointermove',(e:PointerEvent)=>{
+      const drag=this.cameraDrag;if(!drag||drag.id!==e.pointerId||!this.viewCamera.free)return;
+      const rect=this.canvas.getBoundingClientRect();
+      this.viewCamera.pan(-(e.clientX-drag.x)*this.canvas.width/rect.width/this.cam.zoom,-(e.clientY-drag.y)*this.canvas.height/rect.height/this.cam.zoom);
+      drag.x=e.clientX;drag.y=e.clientY;
+    });
+    for(const event of ['pointerup','pointercancel','lostpointercapture'])this.on(this.canvas,event,()=>{this.cameraDrag=null;});
     this.on(this.canvas, 'mousemove', (e: MouseEvent) => {
+      if(this.viewCamera.free)return;
       this.mouseAimed=true;
       const r = this.canvas.getBoundingClientRect();
       this.mouse.x = (e.clientX - r.left) * (this.canvas.width / r.width);
       this.mouse.y = (e.clientY - r.top) * (this.canvas.height / r.height);
     });
     this.on(this.canvas, 'mousedown', (e: MouseEvent) => {
+      if(this.viewCamera.free){e.preventDefault();return;}
       if (e.button === 0) this.mouse.left = this.clicked.left = true;
       if (e.button === 2) this.mouse.right = this.clicked.right = true;
     });
@@ -392,7 +420,8 @@ export class ClientGame {
     this.canvas.width = Math.floor(this.canvas.clientWidth * dpr);
     this.canvas.height = Math.floor(this.canvas.clientHeight * dpr);
     // 縦長の画面（スマホ）でも横に12マスは見えるようにする
-    this.cam.zoom = Math.min(this.canvas.height / (TILE * 20), this.canvas.width / (TILE * 12));
+    this.baseZoom = Math.min(this.canvas.height / (TILE * 20), this.canvas.width / (TILE * 12));
+    this.cam.zoom=this.baseZoom*this.viewCamera.scale;
     const pad = this.canvas.parentElement?.querySelector('.touch-pad');
     const portrait = this.canvas.clientHeight > this.canvas.clientWidth;
     this.bottomInset = 0;
@@ -424,11 +453,8 @@ export class ClientGame {
     const displayed=this.displayPosition(),meX=displayed.x,meY=displayed.y;
     const vw = W / z, vh = H / z;
     const mw = this.map.width * TILE, mh = this.map.height * TILE;
-    this.cam.x = Math.max(0, Math.min(mw - vw, meX - vw / 2));
     const ev = vh - this.bottomInset / z;
-    this.cam.y = Math.max(0, Math.min(mh - ev, meY - ev / 2));
-    if (vw > mw) this.cam.x = (mw - vw) / 2;
-    if (ev > mh) this.cam.y = (mh - ev) / 2;
+    Object.assign(this.cam,this.viewCamera.view({x:meX,y:meY},mw,mh,vw,ev));
 
     drawBackground(g, this.map, W, H, this.cam.x, this.cam.y, z, now);
 
