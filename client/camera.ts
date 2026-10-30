@@ -16,3 +16,9 @@ export class ViewCamera {
     return {x,y};
   }
 }
+
+export function zoomKey(key:string,code:string){
+  if(key==='+'||key==='＋'||code==='Equal'||code==='NumpadAdd')return 1.15;
+  if(key==='-'||key==='－'||code==='Minus'||code==='NumpadSubtract')return 1/1.15;
+  return 0;
+}

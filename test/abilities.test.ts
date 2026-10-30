@@ -50,12 +50,12 @@ test('ハンマーのサブは地上で固定、空中で真下に落下し、�
  const {w,r}=setup();r.ability='hammer';tick(w,20);const x=r.x,y=r.y;r.vx=10;tick(w,10,{wire:true,right:true,jump:true,fire:true});assert.equal(r.x,x);assert.equal(r.y,y-17);assert.equal(r.hammerTick,-100);
  r.y-=100;r.vy=-10;const airY=r.y;tick(w,8,{wire:true,right:true,jump:true});assert.equal(r.x,x);assert.ok(r.y>airY);tick(w,8,{right:true});assert.ok(r.x>x);
 });
-test('自転車の右クリックは自分が発射したボールだけを爆破し周囲を飛ばす',()=>{
+test('自転車の右クリックは範囲内のボールを爆破し周囲を飛ばす',()=>{
  const {w,r}=setup();r.ability='bicycle';r.x=500;r.y=300;
  for(const [id,owner] of [[0,1],[1,2]])w.balls.push({id,owner,x:600,y:300,vx:0,vy:0,homeX:600,homeY:300});
  const other=newRunner(2,w.map);other.x=650;other.y=300;w.runners.push(other);
- tick(w,1,{wire:true});assert.equal(w.blasts.length,1);assert.ok(other.vx>0);assert.ok(r.vx<0);assert.equal(w.balls[0].carriedBy,r.id);assert.equal(ballCount(w,r.id),1);assert.equal(w.balls[1].respawnAt,undefined);
- tick(w,2,{wire:true});assert.equal(w.blasts.length,1);
+ tick(w,1,{wire:true});assert.equal(w.blasts.length,2);assert.ok(other.vx>0);assert.ok(r.vx<0);assert.equal(w.balls[0].carriedBy,r.id);assert.equal(ballCount(w,r.id),2);assert.equal(w.balls[1].respawnAt,undefined);
+ tick(w,2,{wire:true});assert.equal(w.blasts.length,2);
 });
 test('中華まんは左で大中華、右で従来の小中華を出す',()=>{
  const {w,r}=setup();r.ability='bun';tick(w,1,{wire:true});assert.equal(w.words.filter(b=>b.kind==='mini').length,1);tick(w,15,{wire:true});assert.equal(w.words.length,1);tick(w);r.x=400;tick(w,40,{fire:true});assert.equal(w.words.filter(b=>b.kind!=='mini').length,1);
@@ -67,11 +67,22 @@ test('回収済みのボールは別の自転車やフックが取得せず、�
  o.ability='hook';o.x=300;o.y=r.y;stepWorld(w,new Map([[2,{...emptyInput(),fire:true,aimX:-1}]]));assert.equal(o.wireBall,-1);
  r.ability='hand';tick(w);assert.equal(ballCount(w,1),0);assert.equal(w.balls[0].carriedBy,undefined);
 });
-test('ハンマーの長押しは25tick（0.5秒）ごとで、連打でも間隔を短縮しない',()=>{
- const {w,r}=setup();r.ability='hammer';const hits:number[]=[];
- for(let i=0;i<95;i++){tick(w,1,{fire:true});if(r.hammerTick===w.tick)hits.push(w.tick);}
- assert.deepEqual(hits,[1,26,51,76]);tick(w,1,{fire:false});tick(w,1,{fire:true});assert.equal(r.hammerTick,76);
- tick(w,40);assert.equal(r.hammerTick,76);
+test('DDNet hammer requires a new press and uses 6 ticks on miss, 16 on hit',()=>{
+ const {w,r}=setup();tick(w,30,{fire:true});assert.equal(r.hammerTick,1);
+ tick(w);tick(w,1,{fire:true});assert.equal(r.hammerTick,32);assert.equal(r.hammerCd,6);
+ tick(w);tick(w,1,{fire:true});assert.equal(r.hammerTick,32);
+ tick(w,3);tick(w,1,{fire:true});assert.equal(r.hammerTick,38);
+ const hit=setup(),o=newRunner(2,hit.m);o.x=hit.r.x+55;o.y=hit.r.y;o.stun=100;hit.w.runners.push(o);
+ tick(hit.w,1,{fire:true});assert.equal(hit.r.hammerCd,16);assert.equal(o.stun,0);assert.ok(o.vx>0);assert.ok(o.vy<0);
+ tick(hit.w);tick(hit.w,1,{fire:true});assert.equal(hit.r.hammerTick,1);
+ tick(hit.w,13);tick(hit.w,1,{fire:true});assert.equal(hit.r.hammerTick,17);
+});
+test('bike recall reaches through walls, includes boundary, excludes out of range and stored balls',()=>{
+ const {w,r}=setup();r.ability='bicycle';r.x=200;r.y=300;tile(w,9,9,'X');
+ for(const [id,dx] of [[0,200],[1,COLLECTION_RADIUS],[2,COLLECTION_RADIUS+1],[3,100]])w.balls.push({id,x:r.x+dx,y:r.y,vx:0,vy:0,homeX:r.x+dx,homeY:r.y,...(id===3?{carriedBy:2}:{})});
+ const other=newRunner(2,w.map);other.ability='bicycle';other.x=800;other.y=300;w.runners.push(other);
+ tick(w,1,{wire:true});assert.equal(ballCount(w,1),2);assert.equal(w.blasts.length,2);assert.equal(w.balls[2].carriedBy,undefined);assert.equal(w.balls[3].carriedBy,2);
+ tick(w,2,{wire:true});assert.equal(w.blasts.length,2);
 });
 test('大中華は長押し1回につき1発、小中華は30tick間隔',()=>{
  const {w,r}=setup();r.ability='bun';const starts:number[]=[],born:number[]=[];let last=0;

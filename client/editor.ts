@@ -1,3 +1,5 @@
+import {MUSIC,musicId} from '../shared/music';
+import {courseMusic} from './music';
 import {BACKGROUNDS,backgroundId} from '../shared/backgrounds';
 import {paintBackground} from './backgrounds';
 import './backgrounds.css';
@@ -36,7 +38,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">配置済みパーツは「マス選択」か右クリックで選ぶと設定を変更できます。</p></aside>
     </div>
     <footer class="ed-footer"><span data-status role="status">下書きはこの端末に自動保存</span><button data-export>ファイルに保存</button><label class="file-button">開く<input data-import type="file" accept="application/json,.json"></label><button data-publish>プレリリース</button></footer>
-    <dialog class="ed-dialog" data-settings-dialog><div class="ed-dialog-head"><h2>コース設定</h2><button data-dismiss>閉じる</button></div><button data-backgrounds>背景を選ぶ</button><label>説明<input data-desc maxlength="280"></label><div class="ed-size"><label>幅（マス）<input data-width type="number" min="20" max="${COURSE_MAX_WIDTH}"></label><label>高さ（マス）<input data-height type="number" min="16" max="${COURSE_MAX_HEIGHT}"></label><button data-resize>サイズ変更</button></div><label>開始に必要な人数<select data-players>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}人</option>`).join('')}</select></label><p class="note">テストプレイは設定人数にかかわらず1人で試せます。</p><button data-new>新しいコース</button><label hidden><input type="checkbox" data-word-blocks>中華</label></dialog>
+    <dialog class="ed-dialog" data-settings-dialog><div class="ed-dialog-head"><h2>コース設定</h2><button data-dismiss>閉じる</button></div><button data-backgrounds>背景を選ぶ</button><section class="ed-music"><h3>コースのBGM</h3><label>曲を選ぶ<select data-music>${MUSIC.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label><p data-music-description class="note"></p><button data-music-preview type="button">試聴</button><label>音量（この端末）<input data-music-volume type="range" min="0" max="100" step="1" value="${Math.round(courseMusic.volume*100)}"></label><p class="note">選んだ曲はコースと一緒に保存されます。「ともに走れ」は現在、歌声なしの伴奏版です。</p></section><label>説明<input data-desc maxlength="280"></label><div class="ed-size"><label>幅（マス）<input data-width type="number" min="20" max="${COURSE_MAX_WIDTH}"></label><label>高さ（マス）<input data-height type="number" min="16" max="${COURSE_MAX_HEIGHT}"></label><button data-resize>サイズ変更</button></div><label>開始に必要な人数<select data-players>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}人</option>`).join('')}</select></label><p class="note">テストプレイは設定人数にかかわらず1人で試せます。</p><button data-new>新しいコース</button><label hidden><input type="checkbox" data-word-blocks>中華</label></dialog>
     <dialog class="ed-dialog bg-dialog" data-background-dialog><div class="ed-dialog-head"><h2>背景を選ぶ</h2><button data-dismiss>閉じる</button></div><p>コースと一緒に保存され、プレイ中に表示されます。</p><div data-background-grid></div></dialog>
     <dialog class="ed-dialog" data-help-dialog><div class="ed-dialog-head"><h2>パーツの説明一覧</h2><button data-dismiss>閉じる</button></div><p>出現地点を1つ置くとテストできます。公開にはスタートとゴールも必要です。数字はスイッチ・転送先の接続番号です。</p><div data-parts-list></div></dialog>`;
   const q = <T extends HTMLElement = HTMLElement>(s: string) => root.querySelector<T>(s)!;
@@ -55,6 +57,13 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     const caption=document.createElement('span');caption.textContent=`${index+1}. ${label}`;button.append(preview,caption);
     button.onclick=()=>{history.push(snapshot());if(history.length>60)history.shift();future=[];map.background=id;save();refreshBackground();draw();};q('[data-background-grid]').append(button);
   }
+  let previewingMusic=false;
+  const stopPreview=()=>{if(previewingMusic)courseMusic.stop();previewingMusic=false;q('[data-music-preview]').textContent='試聴';};
+  function refreshMusic(){const id=musicId(map.music);q<HTMLSelectElement>('[data-music]').value=id;q('[data-music-description]').textContent=MUSIC.find(m=>m[0]===id)![2];q<HTMLButtonElement>('[data-music-preview]').disabled=id==='none';}
+  q('[data-music]').onchange=()=>{stopPreview();history.push(snapshot());if(history.length>60)history.shift();future=[];map.music=musicId(q<HTMLSelectElement>('[data-music]').value);save();refreshMusic();draw();};
+  q('[data-music-preview]').onclick=()=>{if(previewingMusic){stopPreview();return;}courseMusic.play(map.music);previewingMusic=true;q('[data-music-preview]').textContent='試聴を止める';};
+  q<HTMLInputElement>('[data-music-volume]').oninput=e=>courseMusic.setVolume(+(e.target as HTMLInputElement).value/100);
+  q('[data-settings-dialog]').addEventListener('close',stopPreview);
   q('[data-inspector-toggle]').onclick=()=>q('.ed-inspector').classList.toggle('ed-open');
   q('[data-channel-select]').onchange=()=>root.querySelectorAll<HTMLElement>('.channels > div').forEach((row,i)=>row.hidden=i!==+q<HTMLSelectElement>('[data-channel-select]').value);
   function centreSpawn(){const y=map.tiles.findIndex(row=>row.includes('S')),x=map.tiles[y]?.indexOf('S')??0;viewport.scrollLeft=Math.max(0,(x+.5)*size-viewport.clientWidth/2);viewport.scrollTop=Math.max(0,(y+.5)*size-viewport.clientHeight/2);}
@@ -108,7 +117,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   }
   function load() {
     overview=undefined;selected=null;
-    refreshBackground();name.value = map.name; desc.value = map.description;
+    stopPreview();refreshMusic();refreshBackground();name.value = map.name; desc.value = map.description;
     q<HTMLInputElement>('[data-width]').value=String(map.width);q<HTMLInputElement>('[data-height]').value=String(map.height);q<HTMLSelectElement>('[data-players]').value=String(map.minPlayers);
     q<HTMLInputElement>('[data-word-blocks]').checked=!!map.wordBlocks;
     q('.channels').replaceChildren(...Array.from({ length: 5 }, (_, i) => {
@@ -301,7 +310,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     try { save(); await publish(validateCourseMap(map)); status('プレリリースしました！部屋のホストがコース一覧から選べます。'); }
     catch (e) { status((e as Error).message); } finally { b.disabled = false; }
   };
-  q('[data-test]').onclick=()=>{const error=q('[data-test-error]');error.hidden=true;try{save();if(!test)throw Error('テスト機能を読み込めませんでした。ページを再読み込みしてください。');test(validateCoursePreview(map));}catch(e){error.textContent=(e as Error).message;error.hidden=false;error.scrollIntoView({block:'nearest'});}};
+  q('[data-test]').onclick=()=>{stopPreview();const error=q('[data-test-error]');error.hidden=true;try{save();if(!test)throw Error('テスト機能を読み込めませんでした。ページを再読み込みしてください。');test(validateCoursePreview(map));}catch(e){error.textContent=(e as Error).message;error.hidden=false;error.scrollIntoView({block:'nearest'});}};
   q('[data-players]').onchange=save;
   q('[data-resize]').onclick=()=>{const w=+q<HTMLInputElement>('[data-width]').value,h=+q<HTMLInputElement>('[data-height]').value;
     if(!Number.isInteger(w)||!Number.isInteger(h)||w<20||w>COURSE_MAX_WIDTH||h<16||h>COURSE_MAX_HEIGHT){status(`幅20〜${COURSE_MAX_WIDTH}、高さ16〜${COURSE_MAX_HEIGHT}の整数にしてください`);return;}
@@ -314,6 +323,6 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   const warn=(e:BeforeUnloadEvent)=>{if(revision!==savedRevision){e.preventDefault();e.returnValue='';}};
   const visibility=()=>{if(document.hidden&&revision!==savedRevision)void persist();};
   window.addEventListener('beforeunload',warn);document.addEventListener('visibilitychange',visibility);
-  editorCleanup=()=>{artMounted=false;clearTimeout(saveTimer);cancelAnimationFrame(drawFrame);window.removeEventListener('beforeunload',warn);document.removeEventListener('visibilitychange',visibility);};
+  editorCleanup=()=>{stopPreview();artMounted=false;clearTimeout(saveTimer);cancelAnimationFrame(drawFrame);window.removeEventListener('beforeunload',warn);document.removeEventListener('visibilitychange',visibility);};
   return {flush:()=>{save();return persist();}};
 }

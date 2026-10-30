@@ -1,3 +1,4 @@
+import {musicId} from './music';
 import {backgroundId} from './backgrounds';
 import {blankDD} from './dd-parts';
 import type { MapDef } from './physics';
@@ -43,7 +44,7 @@ export function validateCourseMap(value: unknown, playable = true): MapDef {
     dd[key]=rows.map(row=>{if(!Array.isArray(row)||row.length!==({game:3,front:3,tele:3,speed:4,switches:5,entities:5,doors:6}[key])||row.some(n=>!Number.isFinite(n)||Math.abs(n)>Math.max(100000,m.width*m.height)))throw Error('DDパーツの設定が正しくありません');
       if(key!=='doors'&&(!Number.isInteger(row[0])||row[0]<0||row[0]>=m.width*m.height))throw Error('DDパーツがコース外にあります');if(key==='doors'&&(row[0]<0||row[0]>=m.width*32||row[1]<0||row[1]>=m.height*32||Math.hypot(row[2],row[3])<.001||row[4]<0||row[4]>Math.max(m.width,m.height)*32))throw Error('扉の設定が正しくありません');return [...row];});
   }}
-  return { background:backgroundId(m.background),dd,id: '', name: m.name.trim(), description: m.description, minPlayers: Number.isInteger(m.minPlayers)&&m.minPlayers>=1&&m.minPlayers<=8?m.minPlayers:2,
+  return { music:musicId(m.music),background:backgroundId(m.background),dd,id: '', name: m.name.trim(), description: m.description, minPlayers: Number.isInteger(m.minPlayers)&&m.minPlayers>=1&&m.minPlayers<=8?m.minPlayers:2,
     abilityMode:true,wordBlocks:true,
     width: m.width, height: m.height, tiles: [...m.tiles], hints: [], channels,
     ...(m.wordBlocks===true?{wordBlocks:true}:{}) };
@@ -57,7 +58,7 @@ export function newCourseMap(width = 80, height = 30): MapDef {
   const rows: string[][] = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) =>
     y === 0 || x === 0 || x === width - 1 ? 'X' : y >= height - 3 ? '#' : '.'));
   rows[height - 4][3] = 'S'; rows[height - 4][7] = '>'; rows[height - 4][width - 5] = 'F';
-  return {background:'dusk',dd:blankDD(), id: '', name: 'わたしのコース', description: '', minPlayers: 1, abilityMode:true,wordBlocks:true, width, height, tiles: rows.map(r => r.join('')), hints: [] };
+  return {music:'none',background:'dusk',dd:blankDD(), id: '', name: 'わたしのコース', description: '', minPlayers: 1, abilityMode:true,wordBlocks:true, width, height, tiles: rows.map(r => r.join('')), hints: [] };
 }
 export function canRelease(results: { id: number; name: string; time: number }[]): boolean {
   return results.length >= 2 && results.length <= 8 && new Set(results.map(r => r.id)).size === results.length
