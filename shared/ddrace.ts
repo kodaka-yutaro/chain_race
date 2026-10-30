@@ -9,6 +9,7 @@ export interface DDMapData {
   switches: number[][]; doors: number[][];
 }
 export interface DDRunner {
+  notices?:{tick:number;text:string}[];
   deepFreeze?:boolean;liveFreeze?:boolean;noCollision?:boolean;noHook?:boolean;noHit?:boolean;teleCheckpoint?:number;solo: boolean; endlessHook: boolean; endlessJump: boolean; jetpack: boolean;
   jumps: number; usedJumps: number; weapon: number; weapons: number; cooldown: number;
   ninjaUntil: number; dash: number; dashX: number; dashY: number;
@@ -94,7 +95,8 @@ export function ballStopperBlocks(w:World,x:number,y:number,nx:number,ny:number,
   return false;
 }
 export function ddClamp(w: World, t: Runner) {
-  const r = ddRestrictions(w,t.x,t.y);
+let r = ddRestrictions(w,t.x,t.y);
+  if(t.ability==='bicycle')for(const dx of [-28,0,28])for(const dy of [0,28])r|=ddRestrictions(w,t.x+dx,t.y+dy);
   if ((r & 1 && t.vx > 0) || (r & 4 && t.vx < 0)) t.vx = 0;
   if ((r & 8 && t.vy < 0) || (r & 2 && t.vy > 0)) {
     if (t.vy > 0 && t.dd) { t.dd.usedJumps = 0; t.jumped &= ~2; }
@@ -135,6 +137,7 @@ export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTele
   for (const idx of indices) {
     for (const row of [c.game.get(idx),c.front.get(idx)]) {
       const type = row?.[1];
+      const old={...d};
       // Normal freeze/unfreeze uses the same body contact test as legacy tiles.
       if(type===12)d.deepFreeze=true;if(type===13){d.deepFreeze=false;t.stun=0;}
       if(type===144)d.liveFreeze=true;if(type===145)d.liveFreeze=false;
@@ -153,6 +156,8 @@ export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTele
       if (type === 106) d.jetpack = true;
       if (type && type >= 35 && type <= 59) d.checkpoint = Math.max(d.checkpoint,type-35);
       if (type === 197) { d.weapons = 3; d.weapon = Math.min(d.weapon,1); d.ninjaUntil = 0; d.dash = 0; }
+      const effects: [keyof DDRunner,string,string][]=[['deepFreeze','永久凍結：解除まで続きます','永久凍結を解除'],['liveFreeze','入力凍結：移動入力を停止','入力凍結を解除'],['noCollision','プレイヤー衝突 OFF','プレイヤー衝突 ON'],['noHook','対人フック OFF','対人フック ON'],['noHit','攻撃 OFF','攻撃 ON'],['solo','ソロ ON','ソロ OFF'],['endlessHook','無限フック ON','無限フック OFF'],['endlessJump','無限ジャンプ ON','無限ジャンプ OFF'],['jetpack','ジェットパック ON','ジェットパック OFF']];
+      for(const [key,on,off] of effects)if(!!old[key]!==!!d[key])d.notices=[...(d.notices??[]).filter(n=>w.tick-n.tick<250),{tick:w.tick,text:d[key]?on:off}].slice(-4);
       const weapon = ({199:2,200:3,202:4,201:5} as Record<number,number>)[type ?? 0];
       if (weapon !== undefined) {
         if (!(d.weapons & 1 << weapon)) d.weapon = weapon;
@@ -172,7 +177,7 @@ export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTele
     }
     const tele = c.tele.get(idx);
     if(tele?.[1]===29)d.teleCheckpoint=tele[2];
-    if(allowTeleport&&tele&&[10,26,31,63].includes(tele[1])){
+    if(allowTeleport&&tele&&[10,26,31,63,241].includes(tele[1])){
       const checkpoint=[31,63].includes(tele[1]);
       const exits=checkpoint?w.map.dd!.tele.filter(row=>row[1]===30&&row[2]===d.teleCheckpoint).map(row=>row[0]):c.exits.get(tele[2]);
       if(exits?.length){const p=position(w.map,exits[(w.tick+t.id)%exits.length]);t.x=p.x;t.y=p.y;

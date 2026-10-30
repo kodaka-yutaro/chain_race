@@ -14,7 +14,7 @@ test('host sends selected music with course to participants',()=>{
  const hub=new HostHub('music','test'),got:ServerMsg[]=[];
  const link:Link={send:m=>got.push(m),close:()=>{},onMessage:()=>{},onClose:()=>{}};hub.connect(link,true);link.onMessage({t:'hello',name:'主',guest:true});
  link.onMessage({t:'courseJoin',map:{...newCourseMap(),id:'user-123456789012345678',music:'jazz'}});link.onMessage({t:'roomStart'});
- assert.equal(got.find(m=>m.t==='gameStart')?.map?.music,'jazz');
+ assert.equal(got.filter(m=>m.t==='gameStart').find(m=>m.mode!=='lobby')?.map?.music,'jazz');
 });
 test('all original arrangements contain finite, ordered notes and distinct motifs',()=>{
  const fingerprints=new Set<string>();

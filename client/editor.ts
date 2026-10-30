@@ -19,7 +19,7 @@ let editorCleanup:(()=>void)|undefined;
 const KEY = 'tsunagu.course-draft.v1';
 const RECENT_KEY = 'tsunagu.editor-recent.v1', PAGE_SIZE = 18, RECENT_LIMIT = 30;
 const ZOOMS=[.5,1,2,3,6,12,24,36,48];
-const PARTS = [...TILE_TOOLS,...DD_PARTS.filter(p=>!['dd:game:9:0','dd:game:11:0'].includes(p.id)).map(p=>[p.id,p.name])];
+const PARTS = [...TILE_TOOLS.filter(([id])=>!/[2-5b-eB-E]/.test(id)).map(([id,name])=>[id,/^[1aA]$/.test(id)?name.replace('1',''):name]),...DD_PARTS.filter(p=>!['dd:game:9:0','dd:game:11:0'].includes(p.id)).map(p=>[p.id,p.name])];
 
 export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<void>, test?: (m:MapDef)=>void, options?: {initial:MapDef; save:(m:MapDef)=>Promise<void>}) {
   editorCleanup?.();
@@ -66,7 +66,8 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   q<HTMLInputElement>('[data-music-volume]').oninput=e=>courseMusic.setVolume(+(e.target as HTMLInputElement).value/100);
   q('[data-settings-dialog]').addEventListener('close',stopPreview);
   q('[data-inspector-toggle]').onclick=()=>q('.ed-inspector').classList.toggle('ed-open');
-  q('[data-channel-select]').onchange=()=>root.querySelectorAll<HTMLElement>('.channels > div').forEach((row,i)=>row.hidden=i!==+q<HTMLSelectElement>('[data-channel-select]').value);
+  q('[data-channel-select]').onchange=e=>{root.querySelectorAll<HTMLElement>('.channels > div').forEach((row,i)=>row.hidden=i!==+q<HTMLSelectElement>('[data-channel-select]').value);
+    if(e.isTrusted&&selected&&/^[1-5a-eA-E]$/.test(tool)){history.push(snapshot());future=[];const row=[...map.tiles[selected.y]];row[selected.x]=legacyCode();map.tiles[selected.y]=row.join('');draw();save();}updatePreview();};
   function centreSpawn(){const y=map.tiles.findIndex(row=>row.includes('S')),x=map.tiles[y]?.indexOf('S')??0;viewport.scrollLeft=Math.max(0,(x+.5)*size-viewport.clientWidth/2);viewport.scrollTop=Math.max(0,(y+.5)*size-viewport.clientHeight/2);}
   q('[data-spawn]').onclick=centreSpawn;
 
@@ -177,6 +178,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   }
   q('[data-search]').oninput=()=>{page=0;filterParts();};
   q('[data-page-prev]').onclick=()=>{page--;filterParts();};q('[data-page-next]').onclick=()=>{page++;filterParts();};
+  function legacyCode(){if(!/^[1-5a-eA-E]$/.test(tool))return tool;const n=+q<HTMLSelectElement>('[data-channel-select]').value;return /[1-5]/.test(tool)?String(n+1):String.fromCharCode((tool===tool.toUpperCase()?65:97)+n);}
   function selectPart(c:string,label:string){
     const p=DD_PARTS.find(p=>p.id===c);q('[data-selected-name]').textContent=label;q('[data-part-help]').textContent=(p?.layer==='tele'?`${p.description}。入口と出口の接続番号を揃えます。別の組には別番号（1〜255）を指定できます。`:p?.description)??descriptions[c]??'同じ番号のスイッチ・扉・橋を接続します。';
     const fields:string[]=[];
@@ -229,7 +231,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     history.push(snapshot());if(history.length>60)history.shift();future=[];
     const rows=map.tiles.map(row=>[...row]);
     if(map.dd)map.dd=structuredClone(map.dd);
-    for(const idx of cells){const cx=idx%map.width,cy=Math.floor(idx/map.width);if(tool.startsWith('dd:'))placeDD(cx,cy,true);else rows[cy][cx]=tool;}
+    for(const idx of cells){const cx=idx%map.width,cy=Math.floor(idx/map.width);if(tool.startsWith('dd:'))placeDD(cx,cy,true);else rows[cy][cx]=legacyCode();}
     map.tiles=rows.map(row=>row.join(''));rememberPart();draw();save();status(`${cells.length}マスを塗りつぶしました（R / Ctrl+Zで戻す）`);
   }
   canvas.onpointerleave=()=>{hover=null;updatePreview();};
@@ -244,7 +246,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     const row=(yy:number)=>{let value=changed.get(yy);if(!value){value=[...map.tiles[yy]];changed.set(yy,value);}return value;};
     if(tool==='S') {for(let yy=0;yy<map.height;yy++)if(map.tiles[yy].includes('S'))map.tiles[yy]=map.tiles[yy].replaceAll('S','.');row(y)[x]='S';}
     else for(let i=0;i<=n;i++){const px=Math.round(start.x+(x-start.x)*i/n),py=Math.round(start.y+(y-start.y)*i/n),radius=tool==='.'?eraseRadius:0;
-      for(let yy=Math.max(0,py-radius);yy<=Math.min(map.height-1,py+radius);yy++)for(let xx=Math.max(0,px-radius);xx<=Math.min(map.width-1,px+radius);xx++){placeDD(xx,yy);row(yy)[xx]=tool.startsWith('dd:')?'.':tool;}}
+      for(let yy=Math.max(0,py-radius);yy<=Math.min(map.height-1,py+radius);yy++)for(let xx=Math.max(0,px-radius);xx<=Math.min(map.width-1,px+radius);xx++){placeDD(xx,yy);row(yy)[xx]=tool.startsWith('dd:')?'.':legacyCode();}}
     overview=undefined;
     for(const [yy,value] of changed)map.tiles[yy]=value.join(''); selected={x,y};lastCell = { x, y }; rememberPart(); draw();
   };
@@ -262,7 +264,8 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     }
     const door=map.dd?.doors.find(r=>Math.floor(r[0]/32)===x&&Math.floor(r[1]/32)===y);
     if(door){code='dd:doors:49:0';q<HTMLInputElement>('[data-number]').value=String(door[5]);q<HTMLInputElement>('[data-angle]').value=String((Math.atan2(door[3],door[2])*180/Math.PI+360)%360);}
-    choosePart(code);selected={x,y};
+    const originalCode=code;if(/^[2-5]$/.test(code))code='1';else if(/^[b-e]$/.test(code))code='a';else if(/^[B-E]$/.test(code))code='A';
+    choosePart(code);if(/^[1-5a-eA-E]$/.test(originalCode)){q<HTMLSelectElement>('[data-channel-select]').value=String(/[1-5]/.test(originalCode)?+originalCode-1:originalCode.toLowerCase().charCodeAt(0)-97);q('[data-channel-select]').dispatchEvent(new Event('change'));}selected={x,y};
     if(e.button!==2){mode='select';root.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode==='select')));q('[data-erase]').setAttribute('aria-pressed','false');}
     hover={x:e.clientX,y:e.clientY};viewport.focus({preventScroll:true});draw();updatePreview();
     status(e.button===2?'パーツを拾いました。左クリックで配置／矢印で延長':`${x}, ${y} を選択。矢印で延長／右の設定で変更`);

@@ -621,6 +621,7 @@ export function drawRunner(g: CanvasRenderingContext2D, r: RunnerLook, now: numb
   const face = r.aimX >= 0 ? 1 : -1;
   const body = stunned ? '#a9b4c2' : '#f5c9a5';
   if(r.ability==='bicycle'){
+    g.fillStyle='rgba(175,190,205,.18)';g.fillRect(r.x-42,r.y-14,84,56);g.strokeStyle='rgba(185,205,215,.65)';g.lineWidth=1;g.strokeRect(r.x-42,r.y-14,84,56);g.beginPath();g.moveTo(r.x-42,r.y+14);g.lineTo(r.x+42,r.y+14);g.stroke();
     g.save();g.translate(r.x-19*face,r.y+28);g.rotate((r.wheelieAge??100)<30?-face*Math.sin((r.wheelieAge??0)/30*Math.PI)*.45:0);g.translate(-(r.x-19*face),-(r.y+28));
     g.strokeStyle='#23304b';g.lineWidth=4;for(const dx of [-19,19]){g.beginPath();g.arc(r.x+dx,r.y+28,11,0,Math.PI*2);g.stroke();}
     g.strokeStyle='#e94a5e';g.lineWidth=3;g.beginPath();g.moveTo(r.x-19,r.y+28);g.lineTo(r.x-5,r.y+10);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x-19,r.y+28);g.lineTo(r.x+6,r.y+14);g.lineTo(r.x+19,r.y+28);g.lineTo(r.x+14,r.y+5);g.stroke();

@@ -8,7 +8,7 @@ import {hammerImpulse} from './hammer';
 import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
 import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
-import { abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
+import { recoverBicycle, abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
 
 export const TILE = 32;
 export const TICK_RATE = 50;
@@ -149,6 +149,7 @@ export const WIRE_IDLE = 0, WIRE_FLYING = 1, WIRE_ATTACHED = 2;
 
 export interface Runner {
   bodyOwner?:number;ghostBody:{x:number;y:number;vx:number;vy:number;stun:number;teleCheckpoint?:number}|null;holdTicks:number;aimDistance:number; hookLengthLock:number; subDown:boolean; hammerBrace:boolean; wheelieTick:number; gesture:number; gestureTick:number;
+  bikeTicks?:number; bikeDir?:number;
   ability: Ability; actionDown: boolean; wireBall: number; shotTick:number;
   held: {kind:'ball'|'word'|'runner';id:number}|null;
   id: number;
@@ -271,6 +272,9 @@ export function wordCollision(w:World):WordCollision {
   }};
 }
 
+function segmentUpperBike(x:number,y:number,ex:number,ey:number,o:Runner){
+  const n=Math.max(1,Math.ceil(Math.hypot(ex-x,ey-y)));for(let i=0;i<=n;i++){const px=x+(ex-x)*i/n,py=y+(ey-y)*i/n;if(Math.abs(px-o.x)<42&&Math.abs(py-o.y)<14)return true;}return false;
+}
 function moveBox(w: World, t: Runner, collision:WordCollision) {
   const blocked=(x:number,y:number)=>{
     const part=metalPart({...t,x,y});
@@ -288,8 +292,8 @@ function moveBox(w: World, t: Runner, collision:WordCollision) {
     if(t.vx&&blocked(nx,t.y))pushMinis(w,t,nx,t.y,collision);
     if(t.vy<0&&blocked(t.x,ny))pushMinis(w,t,t.x,ny,collision);
     if(w.map.abilityMode&&(t.ability==='bicycle'||t.hammerBrace)&&t.vy>=0){
-      const bottom=t.hammerBrace?31:40,oldBottom=t.y+bottom,nextBottom=ny+bottom;
-      for(const x of [nx-(t.hammerBrace?7:29),nx,nx+(t.hammerBrace?7:29)]){const row=Math.floor(nextBottom/32);if(oldBottom<=row*32+.01&&bicycleFloor(w,x,nextBottom)){ny=row*32-bottom;t.vy=0;break;}}
+      const bottom=t.hammerBrace?31:42,oldBottom=t.y+bottom,nextBottom=ny+bottom;
+      for(const x of [nx-(t.hammerBrace?7:41),nx,nx+(t.hammerBrace?7:41)]){const row=Math.floor(nextBottom/32);if(oldBottom<=row*32+.01&&bicycleFloor(w,x,nextBottom)){ny=row*32-bottom;t.vy=0;break;}}
     }
     if (blocked(nx,ny)) {
       let hits = 0;
@@ -358,7 +362,7 @@ function touchedTiles(w: World, t: Runner): string[] {
 }
 
 function checkGrounded(w: World, t: Runner): boolean {
-  if(w.map.abilityMode&&(t.ability==='bicycle'||t.hammerBrace)){const bottom=t.hammerBrace?31:40,half=t.hammerBrace?7:29;return [t.x-half,t.x,t.x+half].some(x=>isSolid(w,x,t.y+bottom+1)||bicycleFloor(w,x,t.y+bottom+1))||metalOverlap(w,t.x-half,t.y+bottom,half*2,2,t.id);}
+  if(w.map.abilityMode&&(t.ability==='bicycle'||t.hammerBrace)){const bottom=t.hammerBrace?31:42,half=t.hammerBrace?7:41;return [t.x-half,t.x,t.x+half].some(x=>isSolid(w,x,t.y+bottom+1)||bicycleFloor(w,x,t.y+bottom+1))||metalOverlap(w,t.x-half,t.y+bottom,half*2,2,t.id);}
   if(metalOverlap(w,t.x-13,t.y+14,26,3,t.id))return true;
   if (ddRestrictions(w,t.x,t.y) & 2) return true;
   if (wordBoxSolid(w,t.x-R+1,t.y+R-.01,TEE_SIZE-2,3.01)) return true;
@@ -407,7 +411,7 @@ export function intersectLine(w: World, x0: number, y0: number, x1: number, y1: 
   for (let i = 0; i <= n; i++) {
     const a = i / n;
     const x = x0 + (x1 - x0) * a, y = y0 + (y1 - y0) * a;
-    if(metalOverlap(w,x,y,.01,.01,ignoreRunner))return {x:px,y:py,hit:true,stick:false,teleport:undefined,word:undefined};
+    if(w.runners.some(r=>r.id!==ignoreRunner&&r.ability!=='bicycle'&&(()=>{const b=metalPart(r);return b&&x>=b.x&&x<b.x+b.w&&y>=b.y&&y<b.y+b.h;})()))return {x:px,y:py,hit:true,stick:false,teleport:undefined,word:undefined};
     const word=wordPoint(w,x,y);
     if(word)return {x:px,y:py,hit:true,stick:true,teleport:undefined,word};
     const teleport = ddHookExit(w.map,x,y);
@@ -558,6 +562,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     const al = Math.hypot(inp.aimX, inp.aimY);
     if (al > 0.0001) { t.aimX = inp.aimX / al; t.aimY = inp.aimY / al; }
     stepSpit(w,t,inp,collision);
+    recoverBicycle(w,t);
     ddPrepare(w,t,inp);
 
     const stunned = t.stun > 0;
@@ -565,7 +570,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     dirs.set(t.id, dir);
     t.grounded = checkGrounded(w, t);
 
-    const maxSpeed = t.grounded ? PHYS.groundSpeed : PHYS.airSpeed;
+    if(t.ability==='bicycle'&&dir&&Math.sign(t.vx)===dir&&Math.abs(t.vx)>3){t.bikeTicks=t.bikeDir===dir?(t.bikeTicks??0)+1:1;t.bikeDir=dir;}else{t.bikeTicks=0;t.bikeDir=dir;}
+    const maxSpeed = t.ability==='bicycle'&&(t.bikeTicks??0)>=75 ? 17 : t.grounded ? PHYS.groundSpeed : PHYS.airSpeed;
     const accel = t.grounded ? PHYS.groundAccel : PHYS.airAccel;
     const friction = t.grounded ? PHYS.groundFriction : PHYS.airFriction;
 
@@ -621,7 +627,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       for (const o of w.runners) {
         if (o === t || !ddInteracts(t,o)||t.dd?.noHook||o.dd?.noHook) continue;
         const c = closestPointOnSegment(t.wireX, t.wireY, hit.x, hit.y, o.x, o.y);
-        if (Math.hypot(c.x - o.x, c.y - o.y) < R + 2) {
+        if (o.ability==='bicycle'?segmentUpperBike(t.wireX,t.wireY,hit.x,hit.y,o):Math.hypot(c.x - o.x, c.y - o.y) < R + 2) {
           const d = Math.hypot(c.x - t.wireX, c.y - t.wireY);
           if (d < bestD) { bestD = d; best = o.id; }
         }
@@ -802,6 +808,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
     }
     const [fromX,fromY]=before.get(t)!;
     ddTiles(w,t,fromX,fromY);
+    recoverBicycle(w,t);
     if(t.bodyOwner!==undefined)continue;
     if (tiles.includes('>') && t.finishedTime < 0) t.raceStart = w.tick;
     if (tiles.includes('F') && t.raceStart >= 0 && t.finishedTime < 0) {

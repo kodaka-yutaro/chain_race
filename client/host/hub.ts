@@ -1,3 +1,4 @@
+import {waitingMap} from '../../shared/waiting-map';
 import { validateCourseMap, validateCoursePreview, newCourseMap } from '../../shared/courses';
 import { stageById } from '../../shared/maps';
 import { HUB_CAPACITY, validName, type ClientMsg, type HubState, type ServerMsg } from '../../shared/protocol';
@@ -8,7 +9,7 @@ export const RECONNECT_GRACE_MS = 120_000;
 export interface HubSave {
   selected: GameSave['world']['map']; nextId: number;
   members: {id:number;name:string;guest:boolean;face:string;host:boolean;token:string;playing:boolean}[];
-  game?: GameSave;
+  game?: GameSave; lobby?:GameSave;
 }
 
 export interface Client {
@@ -20,11 +21,13 @@ export interface Link {
   onMessage: (msg: ClientMsg) => void; onClose: () => void;
 }
 
-/** A host-owned room. The waiting screen has no simulated lobby world. */
+/** A host-owned room with a shared waiting playground. */
 export class HostHub {
   readonly members = new Set<Client>();
   readonly games = new Set<Game>();
   private selected = { ...newCourseMap(), id: '', name: 'コースを選んでください', minPlayers: 1 };
+  private lobby:Game|null=null;
+  private enterLobby(c:Client){if(this.editorPreview)return;if(!this.lobby)this.lobby=new Game('waiting-room','lobby',()=>{}, {},waitingMap());c.game?.remove(c);this.lobby.add(c);}
   private nextId = 1;
   private tickCount = 0;
   private tokens = new Map<Client,string>();
@@ -34,7 +37,7 @@ export class HostHub {
   save(): HubSave {
     return structuredClone({selected:this.selected,nextId:this.nextId,
       members:[...this.members].map(c=>({id:c.id,name:c.name,guest:c.guest,face:c.face,host:c.host,
-        token:this.tokens.get(c)??'',playing:!!c.game})),game:[...this.games][0]?.save()});
+        token:this.tokens.get(c)??'',playing:!!c.game&&c.game.mode!=='lobby'})),game:[...this.games][0]?.save(),lobby:this.lobby?.save()});
   }
   restore(data: HubSave) {
     if(!data || !Array.isArray(data.members) || data.members.length>HUB_CAPACITY || !Number.isSafeInteger(data.nextId))throw Error('Invalid room save');
@@ -44,6 +47,7 @@ export class HostHub {
       const c:Client={...m,game:null,lastChat:0,send:()=>{},close:()=>{}};
       this.members.add(c);this.tokens.set(c,m.token);this.disconnected.set(c,Date.now()+RECONNECT_GRACE_MS);
     }
+    if(data.lobby){validateCoursePreview(data.lobby.world.map);this.lobby=new Game('waiting-room','lobby',()=>{}, {},waitingMap());this.lobby.restore(data.lobby,[...this.members].filter(c=>!data.members.find(m=>m.id===c.id)?.playing));}
     if(data.game){
       validateCourseMap(data.game.world.map);
       const g=new Game(data.game.stageId,data.game.mode,g=>this.games.delete(g),{},data.game.world.map);
@@ -66,7 +70,7 @@ export class HostHub {
           const oldClose=old.close;this.links.delete(old);old.send=()=>{};old.close=()=>{};oldClose();
           c=old;c.send=m=>link.send(m);c.close=()=>link.close();this.disconnected.delete(c);
           this.links.set(c,link);
-          c.send({t:'welcome',you:{id:c.id,name:c.name,guest:c.guest}});c.game?.reconnect(c);this.pushState();this.onCount(this.members.size);return;
+          c.send({t:'welcome',you:{id:c.id,name:c.name,guest:c.guest}});if(c.game)c.game.reconnect(c);else this.enterLobby(c);this.pushState();this.onCount(this.members.size);return;
         }
       }
       if(c.name&&this.links.get(c)!==link)return;
@@ -86,8 +90,8 @@ export class HostHub {
   }
   tick() {
     for(const [c,until] of this.disconnected)if(Date.now()>=until)this.forget(c);
-    const paused=[...this.disconnected.keys()].some(c=>c.game);
-    this.tickCount++; for(const game of this.games) game.tick(this.tickCount%2===0,paused);
+    const paused=(g:Game)=>[...this.disconnected.keys()].some(c=>c.game===g);
+    this.tickCount++;this.lobby?.tick(this.tickCount%2===0,paused(this.lobby)); for(const game of this.games) game.tick(this.tickCount%2===0,paused(game));
   }
   private handle(c: Client, msg: ClientMsg) {
     if (!msg || typeof msg !== 'object') return;
@@ -97,7 +101,7 @@ export class HostHub {
       if(!name || this.members.size>=HUB_CAPACITY){c.send({t:'error',message:'名前が無効か、部屋が満員です'});c.close();return;}
       c.name=name;c.guest=!!msg.guest;c.face=validFace(msg.face)?msg.face!:'';
       this.members.add(c);c.send({t:'welcome',you:{id:c.id,name,guest:c.guest}});
-      const active=[...this.games][0]; if(active)active.add(c);
+      const active=[...this.games][0]; if(active)active.add(c);else this.enterLobby(c);
       this.pushState();this.onCount(this.members.size);return;
     }
     if(!this.members.has(c))return;
@@ -118,10 +122,10 @@ export class HostHub {
           aimX:Number.isFinite(i.aimX)?i.aimX:1,aimY:Number.isFinite(i.aimY)?i.aimY:0,spit:!!i.spit,miniSpit:!!i.miniSpit,clearWord:!!i.clearWord});
       }return;
     }
-    if(msg.t==='roomResume'){const g=[...this.games][0];if(g&&!c.game)g.add(c);this.pushState();return;}
-    if(msg.t==='leaveGame'){ c.game?.remove(c);this.pushState();return; }
+    if(msg.t==='roomResume'){const g=[...this.games][0];if(g&&c.game!==g){c.game?.remove(c);g.add(c);}this.pushState();return;}
+    if(msg.t==='leaveGame'){ c.game?.remove(c);this.enterLobby(c);this.pushState();return; }
     if(!c.host){c.send({t:'error',message:'コース選択と開始はホストが行います'});return;}
-    if(msg.t==='roomStop') { for(const peer of this.members)peer.game?.remove(peer); this.games.clear();this.pushState();return; }
+    if(msg.t==='roomStop') { for(const peer of this.members)peer.game?.remove(peer); this.games.clear();for(const peer of this.members)this.enterLobby(peer);this.pushState();return; }
     if(this.games.size){c.send({t:'error',message:'コースを変更するには全員を待機画面に戻してください'});return;}
     if(msg.t==='stageJoin'){
       const m=stageById(msg.stageId);if(!m)return;
@@ -140,12 +144,12 @@ export class HostHub {
       if(this.members.size+(msg.withDummy===true?1:0)<this.selected.minPlayers){c.send({t:'error',message:`${this.selected.minPlayers}人以上で開始できます`});return;}
 
       const g=new Game(this.selected.id,'party',g=>this.games.delete(g),{},this.selected);this.games.add(g);
-      for(const peer of this.members)g.add(peer);if(msg.withDummy===true)g.dummy(c,'add',msg.dummyFace);this.pushState();
+      for(const peer of this.members){peer.game?.remove(peer);g.add(peer);}if(msg.withDummy===true)g.dummy(c,'add',msg.dummyFace);this.pushState();
     }
   }
   private pushState(){
     const state:HubState={id:this.id,name:this.name,host:[...this.members].find(c=>c.host)?.id??-1,stageId:this.selected.id,stageName:this.selected.name,playing:this.games.size>0,
-      members:[...this.members].map(c=>({id:c.id,name:c.name,guest:c.guest,status:c.game?'プレイ中':'待機中'})),free:[]};
+      members:[...this.members].map(c=>({id:c.id,name:c.name,guest:c.guest,status:c.game&&c.game.mode!=='lobby'?'プレイ中':'待機中'})),free:[]};
     for(const c of this.members)c.send({t:'hubState',hub:state});
   }
 }

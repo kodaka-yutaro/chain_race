@@ -112,6 +112,7 @@
 
     <!-- 部屋の中（歩き回れる広場） -->
     <section id="screen-hub" class="screen hidden">
+      <div class="waiting-playground"><canvas id="lobby-canvas" aria-label="待機広場"></canvas></div>
       <div class="room-card"><p class="eyebrow">HOST ROOM</p><h2>みんなの準備を待とう</h2><p id="room-owner"></p><h3 id="room-stage"></h3><div class="buttons"><button data-courses>コースを選ぶ</button><label><input id="room-with-dummy" type="checkbox">自分のダミーと開始</label><button id="room-start" class="primary">全員で開始</button><button id="room-resume">プレイに戻る</button><button id="room-stop">全員を待機画面へ戻す</button><button id="room-invite">友達を招待</button></div><input id="room-invite-url" readonly hidden aria-label="この部屋の招待リンク"><p>ホストが部屋を閉じると全員が退室します。招待リンクは部屋が開いている間だけ有効です。</p></div>
       <header class="lobby-bar">
         <h2 id="hub-name"></h2>

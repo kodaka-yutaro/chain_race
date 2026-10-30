@@ -13,5 +13,5 @@ test('ホストが選んだ背景が参加者にも送られる',()=>{
  const hub=new HostHub('background','test'),got:ServerMsg[]=[];
  const link:Link={send:m=>got.push(m),close:()=>{},onMessage:()=>{},onClose:()=>{}};hub.connect(link,true);link.onMessage({t:'hello',name:'主',guest:true});
  link.onMessage({t:'courseJoin',map:{...newCourseMap(),id:'user-123456789012345678',background:'spirals'}});link.onMessage({t:'roomStart'});
- assert.equal(got.find(m=>m.t==='gameStart')?.map?.background,'spirals');
+ assert.equal(got.filter(m=>m.t==='gameStart').find(m=>m.mode!=='lobby')?.map?.background,'spirals');
 });

@@ -17,12 +17,12 @@ test('中華まんだけが小中華と大中華を生成できる',()=>{
  r.ability='hammer';tick(w,1,{miniSpit:true});assert.equal(w.words.length,0);
 });
 test('自転車は一段ジャンプで、歩行者が通れる幅の通路に入れない',()=>{
- const {w,r}=setup();r.ability='bicycle';r.y=17*32-40;tick(w,1,{jump:true});assert.ok(r.vy<0);tick(w);const vy=r.vy;tick(w,1,{jump:true});assert.ok(r.vy>vy,'空中で再ジャンプしない');
+ const {w,r}=setup();r.ability='bicycle';r.y=17*32-42;tick(w,1,{jump:true});assert.ok(r.vy<0);tick(w);const vy=r.vy;tick(w,1,{jump:true});assert.ok(r.vy>vy,'空中で再ジャンプしない');
  for(let y=1;y<17;y++){tile(w,10,y,'X');tile(w,12,y,'X');}assert.ok(bicycleBlocked(w,11*32+16,300));
  r.ability='hand';r.x=11*32+16;r.y=300;r.vx=0;tick(w,10);assert.equal(r.x,11*32+16);
 });
 test('自転車の車輪はしびれ床とトゲの上を走れるが、乗員に触れると反応する',()=>{
- for(const hazard of ['~','^']){const {w,r}=setup();for(let x=2;x<30;x++)tile(w,x,16,hazard);r.ability='bicycle';r.y=16*32-40;tick(w,25,{right:true});assert.equal(r.stun,0);assert.equal(r.ability,'bicycle');assert.ok(Math.abs(r.y-(16*32-40))<1);
+ for(const hazard of ['~','^']){const {w,r}=setup();for(let x=2;x<30;x++)tile(w,x,16,hazard);r.ability='bicycle';r.y=16*32-42;tick(w,25,{right:true});assert.equal(r.stun,0);assert.equal(r.ability,'bicycle');assert.ok(Math.abs(r.y-(16*32-42))<1);
    r.y=16*32+16;tick(w);if(hazard==='~')assert.ok(r.stun>0);else assert.equal(r.ability,'basic');}
 });
 test('マジックハンドで赤いボールを持ち運んで離せる。壁越しにはつかめない',()=>{
@@ -30,7 +30,7 @@ test('マジックハンドで赤いボールを持ち運んで離せる。壁�
  tick(w,1,{fire:true});assert.equal(r.held,null);tick(w);r.x=200;r.y=400;w.balls[0].x=250;w.balls[0].y=400;tile(w,7,12,'X');tick(w,1,{fire:true});assert.equal(r.held,null);
 });
 test('赤いボールを自転車でシュートでき、別のプレイヤーのフックでつかめる',()=>{
- const {w,r}=setup();r.ability='bicycle';r.y=17*32-40;w.balls.push({id:0,x:r.x+38,y:r.y+24,vx:0,vy:0,homeX:240,homeY:r.y});tick(w,1,{fire:true,aimX:500});assert.ok(w.balls[0].vx>5);
+ const {w,r}=setup();r.ability='bicycle';r.y=17*32-42;w.balls.push({id:0,x:r.x+38,y:r.y+24,vx:0,vy:0,homeX:240,homeY:r.y});tick(w,1,{fire:true,aimX:500});assert.ok(w.balls[0].vx>5);
  r.ability='hook';r.x=180;r.y=400;w.balls[0].x=270;w.balls[0].y=400;w.balls[0].vx=w.balls[0].vy=0;tick(w);tick(w,1,{fire:true});assert.equal(r.wireBall,0);assert.equal(r.wireState,2);
 });
 test('乗員のボディをフックでつかめる',()=>{
@@ -116,19 +116,19 @@ test('マウスの距離で飛距離が増え、点線の予測と実際の放�
  for(let i=1;i<Math.min(15,points.length-1);i++){tick(w);assert.ok(Math.abs(w.balls[0].x-points[i].x)<.001);assert.ok(Math.abs(w.balls[0].y-points[i].y)<.001);}
  const b={...far};for(let i=0;i<Math.round(far.frames);i++)ballStep(b);assert.ok(Math.abs(b.x-(r.x+600))<far.vx+1);
 });
-test('車体と下向きハンマーは金属。胴体にはフックが掛かる',()=>{
+test('自転車の下段はフック透過、上段はフック対象。下向きハンマーは金属',()=>{
  for(const ability of ['bicycle','hammer'] as const){
   const {w,r}=setup();r.ability='hook';r.x=180;r.y=300;const o=newRunner(2,w.map);o.ability=ability;o.x=260;o.y=300;o.hammerBrace=ability==='hammer';w.runners.push(o);
   const otherInput={...emptyInput(),wire:ability==='hammer'};
   stepWorld(w,new Map([[1,{...emptyInput(),fire:true}],[2,otherInput]]));assert.equal(r.wireRunner,2);
   r.wireState=0;r.prevWire=false;r.x=180;r.y=o.y+(ability==='hammer'?26:25);
-  stepWorld(w,new Map([[1,{...emptyInput(),fire:true}],[2,otherInput]]));assert.equal(r.wireState,0);assert.equal(r.wireRunner,-1);
+  stepWorld(w,new Map([[1,{...emptyInput(),fire:true}],[2,otherInput]]));assert.equal(r.wireState,ability==='bicycle'?1:0);assert.equal(r.wireRunner,-1);
   assert.ok(metalPart(o));
  }
 });
 test('ハンマーに乗ると足が地面から浮き、車体とハンマーは歩行を遮る',()=>{
  for(const ability of ['bicycle','hammer'] as const){
-  const {w,r}=setup();r.ability=ability;r.x=300;if(ability==='bicycle')r.y=17*32-40;
+  const {w,r}=setup();r.ability=ability;r.x=300;if(ability==='bicycle')r.y=17*32-42;
   tick(w,1,{wire:ability==='hammer'});const part=metalPart(r)!;assert.ok(part);assert.ok(r.y+14<17*32);assert.ok(Math.abs(part.y+part.h-17*32)<1);
   const o=newRunner(2,w.map);o.x=240;o.y=17*32-14;w.runners.push(o);
   for(let i=0;i<30;i++)stepWorld(w,new Map([[1,{...emptyInput(),wire:ability==='hammer'}],[2,{...emptyInput(),right:true}]]));
@@ -144,7 +144,7 @@ test('幽霊は長押しで本体を残して飛行し、離して再長押し�
 });
 test('中華の単押しは生成せず操舵し、長押しで生成する',()=>{
  const {w,r}=setup();r.ability='bun';tick(w,40,{fire:true});const b=w.words.find(b=>b.kind!=='mini')!;assert.ok(b);const id=b.id;
- tick(w);tick(w,1,{fire:true,aimX:0,aimY:-1});tick(w,1,{aimX:0,aimY:-1});assert.equal(b.id,id);assert.equal(b.vx,0);assert.equal(b.vy,-2.4);
+ tick(w);tick(w,1,{fire:true,aimX:0,aimY:-1});tick(w,1,{aimX:0,aimY:-1});assert.equal(b.id,id);assert.equal(b.vx,0);assert.equal(b.vy,-2.9);
 });
 
 test('能力アイテムへの持ち替えと復活は大小両方の中華をそのtickで消す',()=>{

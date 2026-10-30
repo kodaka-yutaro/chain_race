@@ -21,9 +21,9 @@ const block=(owner=1):WordBlock=>({id:1,owner,x:300,y:400,vx:1.15,vy:0,born:0,ex
 test('自転車は車輪で大中華に乗り、車体ごと運ばれ、めり込まない',()=>{
   const w=createWorld(newCourseMap(40,30)),r=newRunner(1,w.map),b=block(2);
   const owner=newRunner(2,w.map);owner.ability='bun';owner.x=100;w.runners.push(owner);
-  w.runners.push(r);w.words=[b];r.ability='bicycle';r.x=b.x+60;r.y=b.y-40;r.vx=r.vy=0;
+  w.runners.push(r);w.words=[b];r.ability='bicycle';r.x=b.x+60;r.y=b.y-42;r.vx=r.vy=0;
   const x=r.x;tick(w,40);
-  assert.ok(r.x>x+40);assert.ok(Math.abs(r.y+40-b.y)<1);
+  assert.ok(r.x>x+40);assert.ok(Math.abs(r.y+42-b.y)<1);
   assert.equal(wordBoxHit(b,r.x-29.99,r.y-13.99,59.98,53.98),false);
 });
 
@@ -31,7 +31,7 @@ test('上昇する大中華は天井との間の自転車を潰さず止まる',
   const m=newCourseMap(40,30);m.tiles[10]='#'.repeat(40);
   const w=createWorld(m),r=newRunner(1,m),b={...block(2),y:430,vx:0,vy:-1};
   const owner=newRunner(2,m);owner.ability='bun';owner.x=100;w.runners.push(owner);
-  w.runners.push(r);w.words=[b];r.ability='bicycle';r.x=b.x+60;r.y=b.y-40;r.vx=r.vy=0;
+  w.runners.push(r);w.words=[b];r.ability='bicycle';r.x=b.x+60;r.y=b.y-42;r.vx=r.vy=0;
   tick(w,80);assert.ok(r.y-14>=352);assert.ok(b.y>=406);assert.equal(b.vy,-1);
   assert.equal(wordBoxHit(b,r.x-29.99,r.y-13.99,59.98,53.98),false);
 });
