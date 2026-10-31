@@ -1,4 +1,4 @@
-import {ballStopperBlocks} from './ddrace';
+import {ddClamp,ballStopperBlocks} from './ddrace';
 import {hammerImpulse} from './hammer';
 import { TICK_RATE, type Input, type Runner, type World } from './physics';
 
@@ -86,22 +86,26 @@ function runnerHit(b:WordBlock,t:Runner,x=t.x,y=t.y){const r=bounds(t);return wo
 function standing(b:WordBlock,t:Runner) {
   return rects(b).some(r=>Math.abs(t.y+bounds(t).bottom-(b.y+r.y))<=3 && t.x+bounds(t).half-1>b.x+r.x && t.x-bounds(t).half+1<b.x+r.x+r.w);
 }
+function restricted(w:World,t:Runner,dx:number,dy:number){
+  for(const at of [0,1]){const copy={...t,x:t.x+dx*at,y:t.y+dy*at,vx:dx,vy:dy,dd:t.dd?{...t.dd}:undefined};ddClamp(w,copy);if(copy.vx!==dx||copy.vy!==dy)return true;}return false;
+}
 /** Move a large platform and every loose object it pushes as one transaction. */
 function move(w:World,b:WordBlock,dx:number,dy:number,collision:WordCollision) {
   const next={...b,x:b.x+dx,y:b.y+dy};
   const fixed=w.words.filter(o=>o!==b&&o.solid&&o.kind!=='mini');
   if(rects(next).some(r=>collision.staticRect(next.x+r.x,next.y+r.y,r.w,r.h)||fixed.some(o=>wordBoxHit(o,next.x+r.x,next.y+r.y,r.w,r.h))))return false;
-  type ObjectBox={ball?:boolean;object:{x:number;y:number};x:number;y:number;w:number;h:number};
+  type ObjectBox={runner?:Runner;ball?:boolean;object:{x:number;y:number};x:number;y:number;w:number;h:number};
   const objects:ObjectBox[]=[
     ...w.words.filter(o=>o.solid&&o.kind==='mini').map(o=>({object:o,x:o.x,y:o.y,w:MINI_SIZE,h:MINI_SIZE})),
     ...w.balls.filter(o=>o.carriedBy===undefined&&!(o.respawnAt&&o.respawnAt>w.tick)).map(o=>({ball:true,object:o,x:o.x-32,y:o.y-32,w:64,h:64})),
-    ...w.runners.filter(t=>!t.ghostBody).map(t=>{const r=bounds(t);return {object:t,x:t.x-r.half,y:t.y-14,w:r.half*2,h:r.bottom+14};}),
+    ...w.runners.filter(t=>!t.ghostBody).map(t=>{const r=bounds(t);return {runner:t,object:t,x:t.x-r.half,y:t.y-14,w:r.half*2,h:r.bottom+14};}),
   ];
   const overlaps=(a:ObjectBox,o:ObjectBox)=>overlap(a.x,a.y,a.w,a.h,o.x,o.y,o.w,o.h);
   const supports=(a:{x:number;y:number;w:number;h:number},o:ObjectBox)=>Math.abs(o.y+o.h-a.y)<=1.01&&o.x+o.w>a.x+.01&&o.x<a.x+a.w-.01;
   const movers=new Set(objects.filter(o=>wordBoxHit(next,o.x,o.y,o.w,o.h)||rects(b).some(r=>supports({x:b.x+r.x,y:b.y+r.y,w:r.w,h:r.h},o))));
   for(const o of movers){
     const target={...o,x:o.x+dx,y:o.y+dy};
+    if(o.runner&&restricted(w,o.runner,dx,dy))return false;
     if(o.ball&&ballStopperBlocks(w,o.object.x,o.object.y,o.object.x+dx,o.object.y+dy,32))return false;
     if(collision.staticRect(target.x,target.y,o.w,o.h)||fixed.some(f=>wordBoxHit(f,target.x,target.y,o.w,o.h))||wordBoxHit(next,target.x,target.y,o.w,o.h))return false;
     for(const other of objects){
@@ -134,6 +138,7 @@ function moveMinis(w:World,roots:WordBlock[],dx:number,dy:number,collision:WordC
       carried.set(t,{x:t.x+dx,y:t.y+dy});
   }
   for(const [t,p] of carried){
+    if(restricted(w,t,dx,dy))return false;
     const box=bounds(t);if(collision.staticRect(p.x-box.half,p.y-14,box.half*2,box.bottom+14)||wordBoxSolid(w,p.x-box.half,p.y-14,box.half*2,box.bottom+14,ids)||collision.runnerBox(p.x,p.y,ids)||[...group].some(b=>runnerHit({...b,x:b.x+dx,y:b.y+dy},t,p.x,p.y)))return false;
     for(const o of w.runners){
       if(o===t)continue;

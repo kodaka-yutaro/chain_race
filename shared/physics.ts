@@ -5,7 +5,7 @@ import type {BackgroundId} from './backgrounds';
 import {ddFreezeAt} from './ddrace';
 import {hammerImpulse} from './hammer';
 // サーバーとクライアントで共有する決定的な物理シミュレーション（50 tick/秒）。
-import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
+import { occupiedCells, ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
 import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
 import { hammerBalls, bodyBounds, recoverBicycle, abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
@@ -477,6 +477,7 @@ function updateSwitches(w: World) {
   for(const b of w.words)if(b.kind==='mini'&&b.solid)pressRect(b.x,b.y,32,32);
   for(const b of w.balls)if(b.carriedBy===undefined&&!(b.respawnAt&&b.respawnAt>w.tick))pressRect(b.x-32,b.y-32,64,64,true);
   w.plates = plates;
+  const previous=w.doorsOpen;
   w.doorsOpen = plates.map((n, i) => {
     const ch = w.map.channels?.[i];
     const on = n >= (ch?.need ?? 1);
@@ -484,6 +485,7 @@ function updateSwitches(w: World) {
     else if (w.timers[i] > 0) w.timers[i]--;
     return on || w.timers[i] > 0;
   });
+  for(const idx of occupiedCells(w)){const c=w.map.tiles[Math.floor(idx/w.map.width)][idx%w.map.width];if(isSolidChar(c,w.doorsOpen)&&!isSolidChar(c,previous)){const i=c.toLowerCase().charCodeAt(0)-97;if(i>=0&&i<CHANNELS)w.doorsOpen[i]=previous[i];}}
 }
 
 const overlapsX = (t: Runner, l: Lift) => t.x + R > l.x * TILE && t.x - R < (l.x + l.w) * TILE;
@@ -816,7 +818,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       t.stun--;
     }
     if (tiles.includes('U')||ddTouch(11)) t.stun = 0;
-    if(flying)continue;
+    if(flying){const [fromX,fromY]=before.get(t)!;ddTiles(w,t,fromX,fromY,true,true);continue;}
     if (tiles.includes('J') && t.vy > -PHYS.springSpeed) {
       t.vy = -PHYS.springSpeed;
       t.jumped &= ~2;

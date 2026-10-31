@@ -1,3 +1,4 @@
+import {guideEnabled,saveGuide} from './ability-guide';
 import {readRecovery,writeRecovery,clearRecovery,type Recovery} from './net/recovery';
 import {BUILTIN_COURSES,isBuiltinCourse} from '../shared/builtin-courses';
 import {courseMusic} from './music';
@@ -510,6 +511,7 @@ if (backend.local) console.info('Firebase 未設定のため、同じブラウ�
 for(const button of $$('[data-fullscreen]'))button.onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{toast('全画面に切り替えられませんでした');}};
 
 const gameMenu=$<HTMLDialogElement>('#game-menu');
+const guideToggle=$<HTMLInputElement>('#show-ability-guide');guideToggle.checked=guideEnabled();guideToggle.onchange=()=>{saveGuide(guideToggle.checked);game?.setGuideVisible(guideToggle.checked);};
 function updateCameraMenu(){ $('#camera-state').textContent=`${game?.freeCamera?'自由カメラ':'自分を追う'} · ${Math.round((game?.cameraScale??1)*100)}%`; }
 function openGameMenu(){updateCameraMenu();if(!gameMenu.open)gameMenu.showModal();}
 $('#camera-free').onclick=()=>{if(!game?.freeCamera)game?.toggleCamera();gameMenu.close();};

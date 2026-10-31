@@ -1,3 +1,4 @@
+import {abilityGuide,guideEnabled,saveGuide} from './ability-guide';
 import {drawCourseSigns} from './course-signs';
 import {courseMusic} from './music';
 import {ViewCamera,zoomKey} from './camera';
@@ -63,7 +64,9 @@ export class ClientGame {
   private miniQueued=false;
   private clearWordQueued=false;
   private effectLog:HTMLElement|null=null;
-  private wordPanel:HTMLElement|null=null;
+  private guide:HTMLElement|null=null;
+  private guideVisible=guideEnabled();
+  setGuideVisible(enabled:boolean){this.guideVisible=enabled;saveGuide(enabled);if(this.guide)this.guide.hidden=!enabled;}
   private mouseAimed=false;
   private listeners: [EventTarget, string, (e: any) => void][] = [];
   private pressCleanup:(()=>void)[]=[];
@@ -92,7 +95,7 @@ export class ClientGame {
     this.effectLog=document.createElement('div');this.effectLog.className='effect-log';this.effectLog.setAttribute('role','status');this.canvas.parentElement?.append(this.effectLog);
     courseMusic.play(this.map.music);
     this.canvas.parentElement?.classList.toggle('word-enabled',!!this.map.wordBlocks);
-    if(this.map.wordBlocks)this.mountWordControls();
+    this.guide=document.createElement('aside');this.guide.className='ability-guide';this.guide.setAttribute('aria-label','今の能力の操作');this.canvas.parentElement?.append(this.guide);
     this.resize();
     this.raf = requestAnimationFrame(this.frame);
   }
@@ -133,21 +136,6 @@ export class ClientGame {
   queueSpit() { if(this.map.wordBlocks)this.spitQueued=true; }
   queueMini() { if(this.map.wordBlocks)this.miniQueued=true; }
   queueClearWord() { if(this.map.wordBlocks)this.clearWordQueued=true; }
-
-  private mountWordControls(){
-    const panel=document.createElement('div');panel.className='word-controls';
-    const row=document.createElement('div');row.className='word-buttons';
-    for(const [cls,label,key,run] of [
-      ['word-spit','大中華','R',()=>this.queueSpit()],
-      ['word-mini','ミニ中華','T',()=>this.queueMini()],
-      ['word-clear','大を消す','X',()=>this.queueClearWord()],
-    ] as const){
-      const b=document.createElement('button');b.className=cls;
-      b.append(document.createTextNode(label));const k=document.createElement('kbd');k.textContent=` [${key}]`;b.append(k);
-      this.pressCleanup.push(bindPress(b,run));row.append(b);
-    }
-    panel.append(row);this.canvas.parentElement!.append(panel);this.wordPanel=panel;
-  }
 
   get freeCamera(){return this.viewCamera.free;}
   get cameraScale(){return this.viewCamera.scale;}
@@ -197,7 +185,7 @@ export class ClientGame {
     for(const clean of this.pressCleanup)clean();
     touch.aimOnly=false;this.cameraNotice?.remove();this.canvas.style.cursor="";
     this.effectLog?.remove();
-    this.wordPanel?.remove();this.canvas.parentElement?.classList.remove('word-enabled');
+    this.guide?.remove();this.canvas.parentElement?.classList.remove('word-enabled');
     cancelAnimationFrame(this.raf);
     for (const [t, ev, fn] of this.listeners) t.removeEventListener(ev, fn);
   }
@@ -345,17 +333,9 @@ export class ClientGame {
       for(const [number,s] of Object.entries(this.world.dd?.switches??{}))if(s.until>this.world.tick)lines.push('時限スイッチ '+number+'：'+(s.on?'ON':'OFF')+' 残り '+Math.ceil((s.until-this.world.tick)/50)+'秒');
       this.effectLog.textContent=lines.slice(-6).join('\n');this.effectLog.hidden=!lines.length;
     }
-    if(this.wordPanel)this.wordPanel.hidden=!!this.map.abilityMode&&this.me.ability!=='bun';
-    if(this.wordPanel){
-      const s=this.me.spit,owned=this.world.words.filter(b=>b.owner===this.youId),big=owned.some(b=>b.kind!=='mini');
-      this.wordPanel.querySelector<HTMLButtonElement>('.word-spit')!.disabled=!!s.charge||!!s.cooldown||big||this.waitingForParty;
-      this.wordPanel.querySelector<HTMLButtonElement>('.word-mini')!.disabled=!!s.miniCooldown||this.waitingForParty;
-      const miniCount=owned.filter(b=>b.kind==='mini').length;
-      this.wordPanel.querySelector<HTMLButtonElement>('.word-mini')!.firstChild!.textContent=`ミニ中華 ${miniCount}/${MINI_LIMIT}`;
-      const miniButton=this.canvas.parentElement?.querySelector<HTMLButtonElement>('.tbtn.mini');
-      if(miniButton){miniButton.textContent=`ミニ ${miniCount}/${MINI_LIMIT}`;miniButton.disabled=!!s.miniCooldown||this.waitingForParty;}
-      this.wordPanel.querySelector<HTMLButtonElement>('.word-clear')!.disabled=(!big&&!s.charge)||this.waitingForParty;
-    }
+    if(this.guide){this.guide.hidden=!this.guideVisible||this.viewCamera.free;const text=abilityGuide(this.me.ability,!!this.me.ghostBody);if(this.guide.textContent!==text)this.guide.textContent=text;}
+    const miniButton=this.canvas.parentElement?.querySelector<HTMLButtonElement>('.tbtn.mini');
+    if(miniButton){miniButton.textContent='ミニ '+this.world.words.filter(b=>b.owner===this.youId&&b.kind==='mini').length+'/'+MINI_LIMIT;miniButton.disabled=!!this.me.spit.miniCooldown||this.waitingForParty;}
     const running = this.me.raceStart >= 0 && this.me.finishedTime < 0;
     const t = this.me.finishedTime >= 0 ? this.me.finishedTime
       : running ? (this.world.tick - this.me.raceStart) / TICK_RATE : 0;
