@@ -8,7 +8,7 @@ import {hammerImpulse} from './hammer';
 import { ddPressSwitch, ddClamp, ddFire, ddHookExit, ddHookThrough, ddInteracts, ddMove, ddPrepare, ddProjectiles, ddRestrictions, ddTick, ddTiles, newDDRunner, newDDWorld, type DDMapData, type DDRunner, type DDWorld } from './ddrace';
 import { hammerMinis, pushMinis, newSpitState, stepSpit, stepWords, wordBoxSolid, wordPoint, type SpitState, type WordBlock, type WordCollision } from './word-blocks';
 
-import { recoverBicycle, abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
+import { hammerBalls, bodyBounds, recoverBicycle, abilityInput, metalOverlap, metalPart, BALL_RADIUS, bicycleBlocked, bicycleFloor, initBalls, moveHeld, stepBalls, type Ability, type Ball, type Blast } from './abilities';
 
 export const TILE = 32;
 export const TICK_RATE = 50;
@@ -272,20 +272,31 @@ export function wordCollision(w:World):WordCollision {
   }};
 }
 
-function segmentUpperBike(x:number,y:number,ex:number,ey:number,o:Runner){
-  const n=Math.max(1,Math.ceil(Math.hypot(ex-x,ey-y)));for(let i=0;i<=n;i++){const px=x+(ex-x)*i/n,py=y+(ey-y)*i/n;if(Math.abs(px-o.x)<42&&Math.abs(py-o.y)<14)return true;}return false;
-}
 function moveBox(w: World, t: Runner, collision:WordCollision) {
+  const carried=new Set<Runner>();
+  const rect=(r:Runner,x=r.x,y=r.y)=>{const b=bodyBounds(r);return {x:x-b.left,y:y-b.top,w:b.left*2,h:b.top+b.bottom};};
+  const overlap=(a:{x:number;y:number;w:number;h:number},b:{x:number;y:number;w:number;h:number})=>a.x<b.x+b.w-.01&&a.x+a.w>b.x+.01&&a.y<b.y+b.h-.01&&a.y+a.h>b.y+.01;
+  const canCarry=(dx:number,dy:number)=>{
+    for(const r of carried){const b=rect(r,r.x+dx,r.y+dy),check={...r,vx:dx,vy:dy};ddClamp(w,check);
+      if(check.vx!==dx||check.vy!==dy||collision.staticRect(b.x,b.y,b.w,b.h)||wordBoxSolid(w,b.x,b.y,b.w,b.h)||w.runners.some(o=>o!==t&&!carried.has(o)&&playerCollides(r,o)&&overlap(b,rect(o))))return false;
+    }return true;
+  };
   const blocked=(x:number,y:number)=>{
     const part=metalPart({...t,x,y});
-    if(part&&w.runners.some(o=>playerCollides(t,o)&&part.x<o.x+13.99&&part.x+part.w>o.x-13.99&&part.y<o.y+13.99&&part.y+part.h>o.y-13.99))return true;
-    if(part&&(collision.staticRect(part.x,part.y,part.w,part.h)||wordBoxSolid(w,part.x,part.y,part.w,part.h)||metalOverlap(w,part.x,part.y,part.w,part.h,t.id)))return true;
-    return (w.map.abilityMode&&t.ability==='bicycle'?bicycleBlocked(w,x,y):testBox(w,x,y))||metalOverlap(w,x-13.99,y-13.99,27.98,27.98,t.id);
+    if(part&&w.runners.some(o=>!carried.has(o)&&playerCollides(t,o)&&part.x<o.x+13.99&&part.x+part.w>o.x-13.99&&part.y<o.y+13.99&&part.y+part.h>o.y-13.99))return true;
+    if(part&&(collision.staticRect(part.x,part.y,part.w,part.h)||wordBoxSolid(w,part.x,part.y,part.w,part.h)||metalOverlap(w,part.x,part.y,part.w,part.h,t.id,carried)))return true;
+    return (w.map.abilityMode&&t.ability==='bicycle'?bicycleBlocked(w,x,y):testBox(w,x,y))||metalOverlap(w,x-13.99,y-13.99,27.98,27.98,t.id,carried);
   };
   const dist = Math.max(Math.abs(t.vx), Math.abs(t.vy));
   const steps = Math.max(1, Math.ceil(dist));
   const f = 1 / steps;
   for (let i = 0; i < steps; i++) {
+    carried.clear();
+    if(t.ability==='bicycle'){
+      const supports=[t];for(const base of supports){const b=rect(base);for(const o of w.runners){if(o===t||carried.has(o)||!playerCollides(t,o)||o.vy<0)continue;const a=rect(o);
+        if(Math.abs(a.y+a.h-b.y)<=1.05&&a.x+a.w>b.x+.01&&a.x<b.x+b.w-.01){carried.add(o);supports.push(o);}
+      }}
+    }
     ddClamp(w, t);
     let nx = t.x + t.vx * f;
     let ny = t.y + t.vy * f;
@@ -295,12 +306,14 @@ function moveBox(w: World, t: Runner, collision:WordCollision) {
       const bottom=t.hammerBrace?31:42,oldBottom=t.y+bottom,nextBottom=ny+bottom;
       for(const x of [nx-(t.hammerBrace?7:41),nx,nx+(t.hammerBrace?7:41)]){const row=Math.floor(nextBottom/32);if(oldBottom<=row*32+.01&&bicycleFloor(w,x,nextBottom)){ny=row*32-bottom;t.vy=0;break;}}
     }
-    if (blocked(nx,ny)) {
+    const movementBlocked=(x:number,y:number)=>blocked(x,y)||!canCarry(x-t.x,y-t.y);
+    if (movementBlocked(nx,ny)) {
       let hits = 0;
-      if (blocked(t.x,ny)) { ny = t.y; t.vy = 0; hits++; }
-      if (blocked(nx,t.y)) { nx = t.x; t.vx = 0; hits++; }
+      if (movementBlocked(t.x,ny)) { ny = t.y; t.vy = 0; hits++; }
+      if (movementBlocked(nx,t.y)) { nx = t.x; t.vx = 0; hits++; }
       if (hits === 0) { nx = t.x; ny = t.y; t.vx = 0; t.vy = 0; }
     }
+    for(const rider of carried){rider.x+=nx-t.x;rider.y+=ny-t.y;}
     t.x = nx; t.y = ny;
   }
 }
@@ -627,7 +640,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       for (const o of w.runners) {
         if (o === t || !ddInteracts(t,o)||t.dd?.noHook||o.dd?.noHook) continue;
         const c = closestPointOnSegment(t.wireX, t.wireY, hit.x, hit.y, o.x, o.y);
-        if (o.ability==='bicycle'?segmentUpperBike(t.wireX,t.wireY,hit.x,hit.y,o):Math.hypot(c.x - o.x, c.y - o.y) < R + 2) {
+        if (Math.hypot(c.x - o.x, c.y - o.y) < R + 2) {
           const d = Math.hypot(c.x - t.wireX, c.y - t.wireY);
           if (d < bestD) { bestD = d; best = o.id; }
         }
@@ -707,6 +720,8 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       t.hammerTick = w.tick;
       const hx = t.x + t.aimX * R * 1.5, hy = t.y + t.aimY * R * 1.5;
       hammerMinis(w,t,hx,hy);
+      // Same short, wall-independent hammer arc as players; the ball itself still sweeps walls.
+      if(hammerBalls(w,t,hx,hy))t.hammerCd=PHYS.hammerHitCooldown;
       for (const o of w.runners) {
         if (o === t || !ddInteracts(t,o) || t.dd?.noHit || Math.hypot(o.x - hx, o.y - hy) >= R + TEE_SIZE) continue;
         t.hammerCd = PHYS.hammerHitCooldown;

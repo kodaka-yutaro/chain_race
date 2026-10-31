@@ -1,4 +1,5 @@
 import {drawCourseArea,areaKind} from './course-art';
+import {drawPart} from './part-art';
 import {DD_PARTS} from '../shared/dd-parts';
 import { ddCache, ddSwitchActive } from '../shared/ddrace';
 import type { World } from '../shared/physics';
@@ -35,7 +36,8 @@ export function drawDD(g:CanvasRenderingContext2D,w:World,x0:number,y0:number,x1
     if(blocked){g.fillStyle='#f05ac168';g.fillRect(px,py,32,32);g.strokeStyle='#ff8bd5';g.strokeRect(px+2,py+2,28,28);}
     let spriteDrawn=false;
     if(!blocked&&!speed&&!entity){
-      if(sw?.[1]===9)spriteDrawn=drawCourseArea(g,'dd:switches:9:0',px,py,32,String(sw[2]));
+      if(sw&&[22,23,24,25].includes(sw[1])){drawPart(g,`dd:switches:${sw[1]}:0`,px,py,32,String(sw[2]));spriteDrawn=true;}
+      else if(sw?.[1]===9)spriteDrawn=drawCourseArea(g,'dd:switches:9:0',px,py,32,String(sw[2]));
       else if(!sw){
         // Follow the same front-over-game-over-tele precedence as the tile labels.
         const front=c.front.get(idx),game=c.game.get(idx);

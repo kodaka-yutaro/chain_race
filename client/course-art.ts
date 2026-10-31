@@ -1,5 +1,6 @@
 // ChainRace's simple area visuals. No upstream game artwork is used here.
-export function areaKind(id:string):'freeze'|'thaw'|'mesh'|'entrance'|'exit'|'stop'|'effect'|undefined {
+export function areaKind(id:string):'freeze'|'thaw'|'mesh'|'entrance'|'exit'|'stop'|'effect'|'ball-speed'|undefined {
+  if(/^dd:(game|front):243:/.test(id))return 'ball-speed';
   if(/^dd:(game|front):(60|240):/.test(id))return 'stop';
   if(/^dd:(game|front):(17|18|19|20|21|22|88|89|90|91|104|105|106|107):/.test(id))return 'effect';
   if(/^dd:(game|front):(12|144):/.test(id))return 'freeze';
@@ -7,14 +8,17 @@ export function areaKind(id:string):'freeze'|'thaw'|'mesh'|'entrance'|'exit'|'st
   if(id==='~'||id==='dd:game:9:0'||id==='dd:front:9:0')return 'freeze';
   if(id==='U'||id==='dd:game:11:0'||id==='dd:front:11:0')return 'thaw';
   if(id==='O'||id==='dd:front:66:0')return 'mesh';
-  if(/^dd:tele:(26|10|15|14|29|31|63|241):0$/.test(id))return 'entrance';
+  if(/^dd:tele:(26|10|15|14|29|31|63|241|242):0$/.test(id))return 'entrance';
   if(/^dd:tele:(27|30):0$/.test(id))return 'exit';
 }
 
 export function drawCourseArea(g:CanvasRenderingContext2D,id:string,x:number,y:number,size:number,badge?:string,teleColor=0):boolean {
   const kind=areaKind(id);if(!kind)return false;
   g.save();g.translate(x,y);g.scale(size/32,size/32);
-  if(kind==='effect'){g.beginPath();g.rect(0,0,32,32);g.clip();g.fillStyle='rgba(140,145,152,.12)';g.fillRect(0,0,32,32);g.strokeStyle='rgba(165,170,180,.65)';g.lineWidth=2;g.beginPath();for(let d=-32;d<64;d+=8){g.moveTo(d,0);g.lineTo(d+32,32);}g.stroke();
+  if(kind==='ball-speed'){
+    const angle=({11:0,8:Math.PI,3:-Math.PI/2,0:Math.PI/2} as Record<number,number>)[Number(id.split(':')[3])&11]??0;
+    g.translate(16,16);g.rotate(angle);g.strokeStyle='rgba(255,130,140,.65)';g.lineWidth=3;g.lineCap='round';g.lineJoin='round';g.beginPath();g.moveTo(-7,-10);g.lineTo(5,0);g.lineTo(-7,10);g.stroke();
+  }else if(kind==='effect'){g.beginPath();g.rect(0,0,32,32);g.clip();g.fillStyle='rgba(140,145,152,.12)';g.fillRect(0,0,32,32);g.strokeStyle='rgba(165,170,180,.65)';g.lineWidth=2;g.beginPath();for(let d=-32;d<64;d+=8){g.moveTo(d,0);g.lineTo(d+32,32);}g.stroke();
   }else if(kind==='stop'){
     const flags=Number(id.split(':')[3])&11;
     const angle=({0:Math.PI/2,1:Math.PI/2,8:Math.PI,9:Math.PI,3:-Math.PI/2,2:-Math.PI/2,11:0,10:0} as Record<number,number>)[flags]??0;
@@ -23,14 +27,14 @@ export function drawCourseArea(g:CanvasRenderingContext2D,id:string,x:number,y:n
   }else if(kind==='freeze'||kind==='thaw'){
 
     g.fillStyle=kind==='freeze'?'rgba(155,216,255,0.32)':'rgba(255,235,146,0.30)';g.fillRect(0,0,32,32);
-  }else if(kind==='entrance'){g.fillStyle=teleColor===1?'#c9cdd2':'#000';g.fillRect(0,0,32,32);}
+  }else if(kind==='entrance'){g.fillStyle=teleColor===2?'#dc4e59':teleColor===1?'#c9cdd2':'#000';g.fillRect(0,0,32,32);}
   else if(kind==='mesh'){
     g.beginPath();g.rect(0,0,32,32);g.clip();g.fillStyle='rgba(144,91,48,.12)';g.fillRect(0,0,32,32);
     g.strokeStyle='#986239';g.lineWidth=1.5;g.beginPath();
     // Integer period dividing 32 keeps the lattice continuous across adjacent tiles.
     for(let d=-32;d<=64;d+=8){g.moveTo(d,0);g.lineTo(d+32,32);g.moveTo(d,0);g.lineTo(d-32,32);}g.stroke();
   }else{
-    g.strokeStyle=teleColor===1?'rgba(215,220,227,.8)':'rgba(0,0,0,.28)';g.lineWidth=2;g.lineCap='round';g.beginPath();
+    g.strokeStyle=teleColor===2?'rgba(235,90,100,.9)':teleColor===1?'rgba(215,220,227,.8)':'rgba(0,0,0,.28)';g.lineWidth=2;g.lineCap='round';g.beginPath();
     for(let i=0;i<=100;i++){const t=i/100*Math.PI*5,r=1+i/100*12,px=16+Math.cos(t)*r,py=16+Math.sin(t)*r;i?g.lineTo(px,py):g.moveTo(px,py);}g.stroke();
   }
   // Connection numbers are an editor aid, kept out of the plain gameplay zones.

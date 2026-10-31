@@ -42,7 +42,7 @@ export function validateCourseMap(value: unknown, playable = true): MapDef {
   if(m.dd){for(const key of ['game','front','tele','speed','switches','entities','doors'] as const){
     const rows=m.dd[key]??[];if(!Array.isArray(rows)||rows.length>m.width*m.height*2)throw Error('DDパーツが多すぎます');
     dd[key]=rows.map(row=>{if(!Array.isArray(row)||(key==='tele'?![3,4].includes(row.length):row.length!==({game:3,front:3,tele:3,speed:4,switches:5,entities:5,doors:6}[key]))||row.some(n=>!Number.isFinite(n)||Math.abs(n)>Math.max(100000,m.width*m.height)))throw Error('DDパーツの設定が正しくありません');
-      if(key==='tele'&&row.length===4&&row[3]!==0&&row[3]!==1)throw Error('テレポートの色が正しくありません');
+      if(key==='tele'&&row.length===4&&row[3]!==0&&row[3]!==1&&row[3]!==2)throw Error('テレポートの色が正しくありません');
       if(key!=='doors'&&(!Number.isInteger(row[0])||row[0]<0||row[0]>=m.width*m.height))throw Error('DDパーツがコース外にあります');if(key==='doors'&&(row[0]<0||row[0]>=m.width*32||row[1]<0||row[1]>=m.height*32||Math.hypot(row[2],row[3])<.001||row[4]<0||row[4]>Math.max(m.width,m.height)*32))throw Error('扉の設定が正しくありません');return [...row];});
   }}
   const hints=Array.isArray(m.hints)?m.hints.slice(0,64).map(h=>{
