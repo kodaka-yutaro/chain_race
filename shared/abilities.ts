@@ -1,3 +1,4 @@
+import {hammerImpulse} from './hammer';
 import {ddCache,ballStopperBlocks} from './ddrace';
 import type { Input, Runner, World } from './physics';
 import { isSolidChar, tileAt, TILE } from './physics';
@@ -15,8 +16,8 @@ export function metalPart(t:Runner){
   if(t.hammerBrace)return {x:t.x-8,y:t.y+22,w:16,h:9};
   return null;
 }
-export function metalOverlap(w:World,x:number,y:number,width:number,height:number,ignore=-1){
-  return w.runners.some(r=>{if(r.id===ignore)return false;const b=metalPart(r);return b&&x<b.x+b.w&&x+width>b.x&&y<b.y+b.h&&y+height>b.y;});
+export function metalOverlap(w:World,x:number,y:number,width:number,height:number,ignore=-1,ignoreAlso?:ReadonlySet<Runner>){
+  return w.runners.some(r=>{if(r.id===ignore||ignoreAlso?.has(r))return false;const b=metalPart(r);return b&&x<b.x+b.w&&x+width>b.x&&y<b.y+b.h&&y+height>b.y;});
 }
 export function shotLaunch(t:Runner,dx=t.aimX*t.aimDistance,dy=t.aimY*t.aimDistance){
   const length=Math.hypot(dx,dy)||1,scale=Math.max(96,Math.min(SHOT_MAX_DISTANCE,length))/length;dx*=scale;dy*=scale;
@@ -102,6 +103,7 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
     if(t.ghostBody)continue;
     if(!a||a===t.ability||(a!=='basic'&&(w.pickups[key]??0)>w.tick))continue;
     const ny=t.y+(t.ability==='bicycle'?28:t.hammerBrace?17:0)-(a==='bicycle'?28:0);
+    if(a==='bicycle'&&metalOverlap(w,t.x-42,ny-14,84,56,t.id))continue;
     if(a==='bicycle'&&w.runners.some(o=>o!==t&&!o.ghostBody&&t.x-42<o.x+14&&t.x+42>o.x-14&&ny-14<o.y+14&&ny+42>o.y-14))continue;
     if(a==='bicycle'?bicycleBlocked(w,t.x,ny):collision.runnerBox(t.x,ny,-1))continue;
     w.words=w.words.filter(b=>b.owner!==t.id);
@@ -158,7 +160,7 @@ export function abilityInput(w:World,t:Runner,raw:Input,collision:WordCollision)
     spit:t.ability==='bun'&&((raw.fire&&t.holdTicks>=18)||raw.spit),miniSpit:t.ability==='bun'&&(raw.wire||raw.miniSpit),clearWord:t.ability==='bun'&&raw.clearWord,weapon:t.ability==='basic'?raw.weapon:undefined};
 }
 export function recoverBicycle(w:World,t:Runner){
-  if(t.ability!=='bicycle'||!bicycleBlocked(w,t.x,t.y))return;
+  if(t.ability!=='bicycle'||(!bicycleBlocked(w,t.x,t.y)&&!metalOverlap(w,t.x-42,t.y-14,84,56,t.id)))return;
   const ox=t.x,oy=t.y;
   for(let radius=1;radius<=96;radius++)for(const [dx,dy] of [[0,-radius],[-radius,0],[radius,0],[0,radius],[-radius,-radius],[radius,-radius],[-radius,radius],[radius,radius]]){
     const x=ox+dx,y=oy+dy;if(!bicycleBlocked(w,x,y)&&!metalOverlap(w,x-42,y-14,84,56,t.id)&&!w.runners.some(o=>o!==t&&!o.ghostBody&&Math.abs(o.x-x)<56&&o.y+14>y-14&&o.y-14<y+42)){t.x=x;t.y=y;t.vx=t.vy=0;return;}
@@ -170,7 +172,7 @@ function teleportBall(w:World,b:Ball,collision:WordCollision){
   if(!w.map.dd)return false;
   const c=ddCache(w.map);let portal:number[]|undefined;
   for(let y=Math.floor((b.y-31.99)/32);y<=Math.floor((b.y+31.99)/32);y++)for(let x=Math.floor((b.x-31.99)/32);x<=Math.floor((b.x+31.99)/32);x++){
-    if(x<0||y<0||x>=w.map.width||y>=w.map.height)continue;const row=c.tele.get(y*w.map.width+x);if(row?.[1]===241)portal=row;
+    if(x<0||y<0||x>=w.map.width||y>=w.map.height)continue;const row=c.tele.get(y*w.map.width+x);if(row&&[241,242].includes(row[1]))portal=row;
   }
   if(!portal){b.teleLock=false;return false;}if(b.teleLock)return false;
   const exits=c.exits.get(portal[2]);if(!exits?.length)return false;
@@ -179,6 +181,12 @@ function teleportBall(w:World,b:Ball,collision:WordCollision){
     b.x=nx;b.y=ny;b.teleLock=true;for(const t of w.runners)if(t.wireBall===b.id){t.wireState=0;t.wireBall=-1;}return true;
   }return false;
 }
+export function hammerBalls(w:World,t:Runner,hx:number,hy:number){
+  let hit=false;
+  for(const b of w.balls){if(b.carriedBy!==undefined||(b.respawnAt&&b.respawnAt>w.tick)||Math.hypot(b.x-hx,b.y-hy)>=BALL_RADIUS+28)continue;
+    const impulse=hammerImpulse(b.x-t.x,b.y-t.y);b.vx+=impulse.vx;b.vy+=impulse.vy;hit=true;
+  }return hit;
+}
 export function stepBalls(w:World,collision:WordCollision){
   w.blasts=w.blasts.filter(b=>w.tick-b.tick<30);
   for(const b of w.balls){
@@ -186,6 +194,10 @@ export function stepBalls(w:World,collision:WordCollision){
     if(b.carriedBy!==undefined){const rider=w.runners.find(r=>r.id===b.carriedBy&&r.ability==='bicycle');if(rider){b.x=rider.x;b.y=rider.y;continue;}delete b.carriedBy;b.x=b.homeX;b.y=b.homeY;b.vx=b.vy=0;}
     if(w.runners.some(r=>r.held?.kind==='ball'&&r.held.id===b.id))continue;
     if(teleportBall(w,b,collision))continue;
+    if(w.map.dd){const c=ddCache(w.map);for(let y=Math.floor((b.y-31.99)/32);y<=Math.floor((b.y+31.99)/32);y++)for(let x=Math.floor((b.x-31.99)/32);x<=Math.floor((b.x+31.99)/32);x++){
+      if(x<0||y<0||x>=w.map.width||y>=w.map.height)continue;
+      for(const row of [c.game.get(y*w.map.width+x),c.front.get(y*w.map.width+x)])if(row?.[1]===243){const f=row[2]&11;if(f===11)b.vx=Math.max(14,b.vx);if(f===8)b.vx=Math.min(-14,b.vx);if(f===0)b.vy=Math.max(14,b.vy);if(f===3)b.vy=Math.min(-14,b.vy);}
+    }}
     b.vy+=BALL_GRAVITY;
     const n=Math.max(1,Math.ceil(Math.max(Math.abs(b.vx),Math.abs(b.vy))));
     for(let i=0;i<n;i++){

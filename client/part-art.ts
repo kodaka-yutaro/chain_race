@@ -54,7 +54,7 @@ export function drawPart(g: CanvasRenderingContext2D, id: string, x: number, y: 
   else if(kind==='portal'){circle(16,16,12);circle(16,16,9);text(mark);}
   else if(kind==='speed'){g.save();g.translate(16,16);g.rotate(angle*Math.PI/180);line([-10,-8,-2,0,-10,8]);line([1,-8,9,0,1,8]);g.restore();}
   else if(kind==='door'){g.strokeRect(5,3,22,26);line([12,4,12,28]);line([20,4,20,28]);}
-  else if(kind==='switch'){g.strokeRect(3,22,26,6);g.fillRect(8,16,16,6);if(mark)text(mark,16,9,13);}
+  else if(kind==='switch'){g.strokeRect(3,22,26,6);g.fillRect(8,16,16,6);if(mark==='◷'){circle(12,8,6);line([12,4,12,8,16,10]);}else if(mark)text(mark,16,9,13);}
   else if(kind==='bridge'){line([2,21,30,21]);for(let a=5;a<30;a+=7)line([a,15,a,26]);}
   else if(kind==='flag'){line([7,28,7,3]);for(let a=0;a<4;a++)for(let b=0;b<3;b++){g.fillStyle=(a+b)%2?'#16191f':'#fff';g.fillRect(8+a*5,4+b*5,5,5);}}
   else if(kind==='spawn'){circle(16,10,5);line([7,27,7,23,12,18,20,18,25,23,25,27]);}
