@@ -1,4 +1,4 @@
-import {abilityGuide,guideEnabled,saveGuide} from './ability-guide';
+import {abilityGuide,guideEnabled,saveGuide} from './in-game-guide';
 import {drawCourseSigns} from './course-signs';
 import {courseMusic} from './music';
 import {ViewCamera,zoomKey} from './camera';

@@ -4,7 +4,7 @@ import {newCourseMap} from '../shared/courses';
 import {createWorld,newRunner,emptyInput,stepWorld,wordCollision,type World} from '../shared/physics';
 import {ddPressSwitch,ddTick,ddSwitchActive} from '../shared/ddrace';
 import {stepWords,type WordBlock} from '../shared/word-blocks';
-import {abilityGuide} from '../client/ability-guide';
+import {abilityGuide} from '../client/in-game-guide';
 import raw from '../shared/tutorial-course.json';
 function setup(){const m=newCourseMap(50,30),w=createWorld(m),r=newRunner(1,m);r.x=300;r.y=400;w.runners=[r];return {m,w,r};}
 function tile(w:World,x:number,y:number,c:string){const row=[...w.map.tiles[y]];row[x]=c;w.map.tiles[y]=row.join('');}

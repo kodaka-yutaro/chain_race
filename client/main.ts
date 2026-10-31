@@ -1,4 +1,4 @@
-import {guideEnabled,saveGuide} from './ability-guide';
+import {guideEnabled,saveGuide} from './in-game-guide';
 import {readRecovery,writeRecovery,clearRecovery,type Recovery} from './net/recovery';
 import {BUILTIN_COURSES,isBuiltinCourse} from '../shared/builtin-courses';
 import {courseMusic} from './music';
