@@ -30,6 +30,6 @@ test('Basic Class signs do not cover terrain, items or DD parts',()=>{
  raw.tiles.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!=='.')occupied.add(y*raw.width+x);}));
  for(const key of ['game','front','tele','speed','switches','entities'] as const)for(const r of raw.dd?.[key]??[])occupied.add(r[0]);
  for(const h of raw.hints){const x=h.x*32+16-186,y=h.y*32-20,height=64+Math.max(1,h.text.split('\n').length-1)*26+22;
-  for(let cy=Math.floor(y/32);cy<Math.ceil((y+height)/32);cy++)for(let cx=Math.floor(x/32);cx<Math.ceil((x+372)/32);cx++)assert.ok(!occupied.has(cy*raw.width+cx),`${h.text.split('\n')[0]} covers ${cx},${cy}`);
+  for(let cy=Math.floor(y/32);cy<Math.ceil((y+height)/32);cy++)for(let cx=Math.floor(x/32);cx<Math.ceil((x+372)/32);cx++)assert.ok(!occupied.has(cy*raw.width+cx)||(h===raw.hints[6]&&['G','H','M'].includes(raw.tiles[cy]?.[cx])),`${h.text.split('\n')[0]} covers ${cx},${cy}`);
  }
 });

@@ -19,7 +19,7 @@ export interface DDRunner {
 export interface DDShot { owner: number; weapon: number; x: number; y: number; vx: number; vy: number; life: number }
 export interface DDBeam { x: number; y: number; ex: number; ey: number; weapon: number; until: number }
 export interface DDWorld {
-  switches: Record<number, { on: boolean; until: number; after: boolean }>;
+  switches: Record<number, { on: boolean; until: number; after: boolean; pending?:boolean }>;
   shots: DDShot[]; beams: DDBeam[];
 }
 export const WEAPON_NAMES = ['ハンマー', 'ピストル', 'ショットガン', 'グレネード', 'レーザー', '忍者'];
@@ -118,13 +118,25 @@ export function ddHookExit(m: MapDef, x: number, y: number) {
   if (exit !== undefined) return position(m,exit);
 }
 
+/** Physical occupants of closing doors; airborne spirits are excluded, their bodies are included. */
+export function occupiedCells(w:World){
+  const cells=new Set<number>();const rect=(x:number,y:number,width:number,height:number)=>{for(let ty=Math.floor((y+.001)/32);ty<=Math.floor((y+height-.001)/32);ty++)for(let tx=Math.floor((x+.001)/32);tx<=Math.floor((x+width-.001)/32);tx++)if(tx>=0&&ty>=0&&tx<w.map.width&&ty<w.map.height)cells.add(ty*w.map.width+tx);};
+  for(const t of w.runners)if(!t.ghostBody)rect(t.x-(t.ability==='bicycle'?42:14),t.y-14,t.ability==='bicycle'?84:28,t.ability==='bicycle'?56:t.hammerBrace?45:28);
+  for(const b of w.balls)if(b.carriedBy===undefined)rect(b.x-32,b.y-32,64,64);
+  for(const b of w.words)if(b.kind==='mini'&&b.solid)rect(b.x,b.y,32,32);
+  return cells;
+}
+function doorOccupied(w:World,number:number){const cells=occupiedCells(w),c=ddCache(w.map);return [...cells].some(idx=>c.doorCells.get(idx)?.includes(number));}
+function setSwitch(w:World,number:number,on:boolean,until:number,after:boolean){
+  const pending=on&&doorOccupied(w,number);w.dd!.switches[number]={on:on&&!pending,until,after,...(pending?{pending:true}:{})};
+}
 export function ddPressSwitch(w:World,idx:number){
   if(!w.dd)return;
   const sw=ddCache(w.map).switches.get(idx);if(!sw)return;
   const [,type,number,,delay]=sw;
-  if([22,23,24,25].includes(type)&&number>0){const on=type===22||type===24;w.dd.switches[number]={on,until:type<24?w.tick+1+delay*50:0,after:!on};}
+  if([22,23,24,25].includes(type)&&number>0){const on=type===22||type===24;setSwitch(w,number,on,type<24?w.tick+1+delay*50:0,!on);}
 }
-export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTeleport = true) {
+export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTeleport = true, teleOnly = false) {
   if (!t.dd || !w.dd) return;
   const d = t.dd, c = ddCache(w.map), n = Math.max(1,Math.ceil(Math.hypot(t.x-fromX,t.y-fromY)/8));
   const indices = new Set<number>();
@@ -135,7 +147,7 @@ export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTele
     const idx=indexAt(w.map,t.x+dx,t.y+dy);if(c.tele.has(idx))indices.add(idx);
   }
   for (const idx of indices) {
-    for (const row of [c.game.get(idx),c.front.get(idx)]) {
+    for (const row of teleOnly?[]:[c.game.get(idx),c.front.get(idx)]) {
       const type = row?.[1];
       const old={...d};
       // Normal freeze/unfreeze uses the same body contact test as legacy tiles.
@@ -166,13 +178,13 @@ export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTele
       }
     }
     const sw = c.switches.get(idx);
-    if (sw) {
+    if (sw&&!teleOnly) {
       const [,type,number,,delay] = sw;
       if(type===9&&ddSwitchActive(w,number))t.stun=150;
       if (type === 7) d.jumps = delay === 255 ? -1 : delay;
       if ([22,23,24,25].includes(type) && number > 0) {
         const on = type === 22 || type === 24;
-        w.dd.switches[number] = {on,until:type < 24 ? w.tick+1+delay*50 : 0,after:!on};
+        setSwitch(w,number,on,type < 24 ? w.tick+1+delay*50 : 0,!on);
       }
     }
     const tele = c.tele.get(idx);
@@ -190,7 +202,10 @@ export function ddTiles(w: World, t: Runner, fromX = t.x, fromY = t.y, allowTele
 
 export function ddTick(w: World) {
   if (!w.dd) return;
-  for (const s of Object.values(w.dd.switches)) if (s.until && w.tick >= s.until) { s.on=s.after; s.until=0; }
+  for (const [number,s] of Object.entries(w.dd.switches)) {
+    if(s.until&&w.tick>=s.until){s.pending=s.after;s.on=false;s.until=0;}
+    if(s.pending&&!doorOccupied(w,+number)){s.on=true;delete s.pending;}
+  }
   w.dd.beams = w.dd.beams.filter(b => b.until > w.tick);
 }
 export function ddPrepare(w: World, t: Runner, input: Input) {
