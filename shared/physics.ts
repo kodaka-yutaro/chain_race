@@ -273,6 +273,8 @@ export function wordCollision(w:World):WordCollision {
 }
 
 function moveBox(w: World, t: Runner, collision:WordCollision) {
+  // Wheels can ride a freeze surface, but a frozen rider must still fall.
+  const freezeSolid=t.ability!=='bicycle'||(t.stun===0&&!touchedTiles(w,t).includes('~'));
   const carried=new Set<Runner>();
   const rect=(r:Runner,x=r.x,y=r.y)=>{const b=bodyBounds(r);return {x:x-b.left,y:y-b.top,w:b.left*2,h:b.top+b.bottom};};
   const overlap=(a:{x:number;y:number;w:number;h:number},b:{x:number;y:number;w:number;h:number})=>a.x<b.x+b.w-.01&&a.x+a.w>b.x+.01&&a.y<b.y+b.h-.01&&a.y+a.h>b.y+.01;
@@ -304,7 +306,7 @@ function moveBox(w: World, t: Runner, collision:WordCollision) {
     if(t.vy<0&&blocked(t.x,ny))pushMinis(w,t,t.x,ny,collision);
     if(w.map.abilityMode&&(t.ability==='bicycle'||t.hammerBrace)&&t.vy>=0){
       const bottom=t.hammerBrace?31:42,oldBottom=t.y+bottom,nextBottom=ny+bottom;
-      for(const x of [nx-(t.hammerBrace?7:41),nx,nx+(t.hammerBrace?7:41)]){const row=Math.floor(nextBottom/32);if(oldBottom<=row*32+.01&&bicycleFloor(w,x,nextBottom)){ny=row*32-bottom;t.vy=0;break;}}
+      for(const x of [nx-(t.hammerBrace?7:41),nx,nx+(t.hammerBrace?7:41)]){const row=Math.floor(nextBottom/32);if(oldBottom<=row*32+.01&&bicycleFloor(w,x,nextBottom,freezeSolid)){ny=row*32-bottom;t.vy=0;break;}}
     }
     const movementBlocked=(x:number,y:number)=>blocked(x,y)||!canCarry(x-t.x,y-t.y);
     if (movementBlocked(nx,ny)) {
@@ -375,7 +377,7 @@ function touchedTiles(w: World, t: Runner): string[] {
 }
 
 function checkGrounded(w: World, t: Runner): boolean {
-  if(w.map.abilityMode&&(t.ability==='bicycle'||t.hammerBrace)){const bottom=t.hammerBrace?31:42,half=t.hammerBrace?7:41;return [t.x-half,t.x,t.x+half].some(x=>isSolid(w,x,t.y+bottom+1)||bicycleFloor(w,x,t.y+bottom+1))||metalOverlap(w,t.x-half,t.y+bottom,half*2,2,t.id);}
+  if(w.map.abilityMode&&(t.ability==='bicycle'||t.hammerBrace)){const bottom=t.hammerBrace?31:42,half=t.hammerBrace?7:41,freezeSolid=t.ability!=='bicycle'||(t.stun===0&&!touchedTiles(w,t).includes('~'));return [t.x-half,t.x,t.x+half].some(x=>isSolid(w,x,t.y+bottom+1)||bicycleFloor(w,x,t.y+bottom+1,freezeSolid))||metalOverlap(w,t.x-half,t.y+bottom,half*2,2,t.id);}
   if(metalOverlap(w,t.x-13,t.y+14,26,3,t.id))return true;
   if (ddRestrictions(w,t.x,t.y) & 2) return true;
   if (wordBoxSolid(w,t.x-R+1,t.y+R-.01,TEE_SIZE-2,3.01)) return true;

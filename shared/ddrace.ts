@@ -96,7 +96,20 @@ export function ballStopperBlocks(w:World,x:number,y:number,nx:number,ny:number,
 }
 export function ddClamp(w: World, t: Runner) {
 let r = ddRestrictions(w,t.x,t.y);
-  if(t.ability==='bicycle')for(const dx of [-28,0,28])for(const dy of [0,28])r|=ddRestrictions(w,t.x+dx,t.y+dy);
+  if(t.ability==='bicycle'&&w.map.dd){
+    // Sweep the full 84x56 body by one substep, including the outer corners.
+    // Point samples at the rider and wheel centers miss narrow stopper edges.
+    r=0;const c=ddCache(w.map);
+    for(const [dx,dy,side] of [[1,0,1],[0,1,2],[-1,0,4],[0,-1,8]]){
+      for(let ty=Math.floor((t.y-14+dy+.001)/32);ty<=Math.floor((t.y+42+dy-.001)/32);ty++)
+        for(let tx=Math.floor((t.x-42+dx+.001)/32);tx<=Math.floor((t.x+42+dx-.001)/32);tx++){
+          if(tx<0||ty<0||tx>=w.map.width||ty>=w.map.height)continue;
+          const idx=ty*w.map.width+tx;
+          for(const row of [c.game.get(idx),c.front.get(idx)])if(row)r|=restriction(row[1],row[2])&side;
+          if(c.doorCells.get(idx)?.some(n=>ddSwitchActive(w,n)))r|=side;
+        }
+    }
+  }
   if ((r & 1 && t.vx > 0) || (r & 4 && t.vx < 0)) t.vx = 0;
   if ((r & 8 && t.vy < 0) || (r & 2 && t.vy > 0)) {
     if (t.vy > 0 && t.dd) { t.dd.usedJumps = 0; t.jumped &= ~2; }

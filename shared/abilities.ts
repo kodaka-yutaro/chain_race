@@ -82,8 +82,8 @@ export function bicycleBlocked(w:World,x:number,y:number):boolean{
     if(isSolidChar(tileAt(w.map,Math.floor(px/TILE),Math.floor(py/TILE)),w.doorsOpen))return true;
   return wordBoxSolid(w,x-42,y-14,84,56);
 }
-export function bicycleFloor(w:World,x:number,y:number):boolean{
-  const c=tileAt(w.map,Math.floor(x/TILE),Math.floor(y/TILE));return c==='~'||c==='^';
+export function bicycleFloor(w:World,x:number,y:number,freezeSolid=true):boolean{
+  const c=tileAt(w.map,Math.floor(x/TILE),Math.floor(y/TILE));return (freezeSolid&&c==='~')||c==='^';
 }
 export function initBalls(w:World){
   for(let y=0;y<w.map.height;y++)for(let x=0;x<w.map.width;x++)if(w.map.tiles[y][x]==='o')
