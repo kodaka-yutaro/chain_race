@@ -682,7 +682,7 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       if(!lockHook)t.wireTick++;
       if(t.wireBall>=0){
         const b=w.balls.find(b=>b.id===t.wireBall);
-        if(!b||b.carriedBy!==undefined)releaseWire(t);else{t.wireX=b.x;t.wireY=b.y;const dx=t.x-b.x,dy=t.y-b.y,d=Math.hypot(dx,dy);if(d>PHYS.hookLength+32)releaseWire(t);else if(!lockHook&&d>35){b.vx+=dx/d*.8;b.vy+=dy/d*.8;}}
+        if(!b||b.carriedBy!==undefined)releaseWire(t);else{t.wireX=b.x;t.wireY=b.y;const dx=t.x-b.x,dy=t.y-b.y,d=Math.hypot(dx,dy);if(!lockHook&&d>35){b.vx+=dx/d*.8;b.vy+=dy/d*.8;}}
       } else if (t.wireRunner >= 0) {
         const o = byId(w, t.wireRunner);
         // 仲間をつかめるのは少しの間だけ
@@ -691,13 +691,14 @@ export function stepWorld(w: World, inputs: Map<number, Input>): StepEvents {
       } else if (w.words.find(b=>b.id===t.wireWord)?.kind==='mini') {
         const block=w.words.find(b=>b.id===t.wireWord)!;
         const dx=t.x-t.wireX,dy=t.y-t.wireY,d=Math.hypot(dx,dy);
-        if(d>PHYS.hookLength+32)releaseWire(t);
-        else if(!lockHook&&d>38){
+        if(!lockHook&&d>38){
           // Pull gently without clipping the much faster velocity of a hammer hit.
           block.vx=saturatedAdd(-6,6,block.vx,dx/d*.95);
           block.vy=saturatedAdd(-6,10,block.vy,dy/d*.95);
         }
       }
+      // Like DDNet's grabbed hook, attached anchors have no distance cutoff;
+      // hookLength limits flight only. Player hooks retain their time limit.
       // Movable anchors pull the runner with the same acceleration and speed
       // rule as terrain. Their own gravity, velocity and collision stay active.
       if (t.wireState===WIRE_ATTACHED && t.wireRunner<0 && !lockHook&&Math.hypot(t.wireX - t.x, t.wireY - t.y) > 46) {
