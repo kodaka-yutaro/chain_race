@@ -50,3 +50,44 @@ body:has(#screen-editor:not(.hidden)) .music-dock{display:none}
 
 #screen-editor [data-brush-preview]{position:fixed;z-index:50;display:flex;align-items:center;gap:6px;pointer-events:none;background:#101c2df2;border:1px solid #9dcbd6;border-radius:6px;padding:4px 8px;color:#fff;font-size:12px;box-shadow:0 3px 12px #0007;max-width:170px}
 #screen-editor [data-brush-preview] canvas{width:28px;height:28px;flex:none}
+
+/* iPad: keep the game PC-oriented, but make course authoring finger-friendly. */
+.ed-touch-tools{display:none}
+#screen-editor.ed-touch{height:100dvh;overflow:hidden!important;padding:0!important}
+#screen-editor.ed-touch .ed-header,
+#screen-editor.ed-touch .ed-toolbar,
+#screen-editor.ed-touch .ed-footer{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+#screen-editor.ed-touch .ed-header>*,
+#screen-editor.ed-touch .ed-toolbar>*,
+#screen-editor.ed-touch .ed-footer>*{flex-shrink:0}
+#screen-editor.ed-touch .ed-header [data-name]{min-width:125px;flex:1}
+#screen-editor.ed-touch button,
+#screen-editor.ed-touch .file-button{min-height:44px}
+#screen-editor.ed-touch input,
+#screen-editor.ed-touch select{font-size:16px}
+#screen-editor.ed-touch .ed-toolbar label{white-space:nowrap}
+#screen-editor.ed-touch .ed-canvas-hint{display:none}
+#screen-editor.ed-touch .editor-viewport,
+#screen-editor.ed-touch .editor-viewport canvas{touch-action:none;user-select:none;-webkit-user-select:none}
+#screen-editor.ed-touch .ed-palette,
+#screen-editor.ed-touch .ed-inspector{touch-action:pan-y;-webkit-overflow-scrolling:touch}
+#screen-editor.ed-touch .ed-categories{grid-template-columns:repeat(2,minmax(0,1fr))}
+#screen-editor.ed-touch .ed-categories button{min-height:38px;font-size:12px}
+#screen-editor.ed-touch .tile-tools .part-button{min-height:48px;height:auto;padding:7px 4px;font-size:12px}
+#screen-editor.ed-touch .ed-pages button{min-height:44px}
+#screen-editor.ed-touch .ed-touch-tools{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex:none;padding:6px 10px;background:#1a3144;border-top:1px solid #49627d}
+#screen-editor.ed-touch .ed-touch-tools .ed-touch-note{flex-basis:100%;color:#b7d2e6;font-size:11px}
+#screen-editor.ed-touch .ed-touch-tools>span:not(.ed-touch-note){font-size:11px;color:#b7d2e6}
+#screen-editor.ed-touch .ed-touch-tools button{min-width:44px;padding:7px 10px}
+#screen-editor.ed-touch .ed-touch-tools button[aria-pressed=true]{background:#345d78;border-color:#82c3d3;color:#fff}
+#screen-editor.ed-touch .ed-footer{padding-bottom:max(6px,env(safe-area-inset-bottom))}
+#screen-editor.ed-touch .ed-inspector.ed-open{bottom:110px}
+@media(max-width:600px){
+  #screen-editor.ed-touch .ed-header [data-close],
+  #screen-editor.ed-touch .ed-footer [data-publish]{display:inline-flex}
+  #screen-editor.ed-touch .ed-workspace{grid-template-columns:150px minmax(0,1fr)}
+}
+@media(max-height:700px){
+  #screen-editor.ed-touch .ed-touch-note{display:none}
+  #screen-editor.ed-touch .ed-touch-tools{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+}
