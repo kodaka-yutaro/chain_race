@@ -38,6 +38,13 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       <main class="ed-stage"><div class="editor-viewport" tabindex="0" aria-label="コース編集領域"><div class="ed-map-space"><canvas aria-label="タイルを選んで描く"></canvas></div></div><div class="ed-canvas-hint">右クリックでパーツを拾う · 矢印で延長 · Rで元に戻す · Pで塗る · Eで消す · Shift+Eで5×5消去 · ＋／−で倍率 · Spaceで移動<span data-cursor></span></div></main>
       <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="tele-color">テレポートの色<select data-tele-color><option value="0">黒</option><option value="1">明るい灰色</option><option value="2">赤</option></select></label><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">配置済みパーツは「マス選択」か右クリックで選ぶと設定を変更できます。</p></aside>
     </div>
+    <div class="ed-touch-tools" role="toolbar" aria-label="iPadの編集操作">
+      <span class="ed-touch-note">描く：指でなぞる ／ 移動：指でスクロール ／ マス選択：タップ</span>
+      <button data-fill type="button" aria-pressed="false">囲みを塗る</button>
+      <span>選択マスを延長</span>
+      <button data-extend="-1,0" type="button" aria-label="左に延長">←</button><button data-extend="0,-1" type="button" aria-label="上に延長">↑</button><button data-extend="0,1" type="button" aria-label="下に延長">↓</button><button data-extend="1,0" type="button" aria-label="右に延長">→</button>
+      <button data-zoom-out type="button" aria-label="縮小">－</button><button data-zoom-in type="button" aria-label="拡大">＋</button>
+    </div>
     <footer class="ed-footer"><span data-status role="status">下書きはこの端末に自動保存</span><button data-export>ファイルに保存</button><label class="file-button">開く<input data-import type="file" accept="application/json,.json"></label><button data-publish>プレリリース</button></footer>
     <dialog class="ed-dialog" data-settings-dialog><div class="ed-dialog-head"><h2>コース設定</h2><button data-dismiss>閉じる</button></div><button data-backgrounds>背景を選ぶ</button><section class="ed-music"><h3>コースのBGM</h3><label>曲を選ぶ<select data-music>${MUSIC.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label><p data-music-description class="note"></p><button data-music-preview type="button">試聴</button><label>音量（この端末）<input data-music-volume type="range" min="0" max="100" step="1" value="${Math.round(courseMusic.volume*100)}"></label><p class="note">選んだ曲はコースと一緒に保存されます。「ともに走れ」は現在、歌声なしの伴奏版です。</p></section><label>説明<input data-desc maxlength="280"></label><div class="ed-size"><label>幅（マス）<input data-width type="number" min="20" max="${COURSE_MAX_WIDTH}"></label><label>高さ（マス）<input data-height type="number" min="16" max="${COURSE_MAX_HEIGHT}"></label><button data-resize>サイズ変更</button></div><label>開始に必要な人数<select data-players>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}人</option>`).join('')}</select></label><p class="note">テストプレイは設定人数にかかわらず1人で試せます。</p><button data-new>新しいコース</button><label hidden><input type="checkbox" data-word-blocks>中華</label></dialog>
     <dialog class="ed-dialog bg-dialog" data-background-dialog><div class="ed-dialog-head"><h2>背景を選ぶ</h2><button data-dismiss>閉じる</button></div><p>コースと一緒に保存され、プレイ中に表示されます。</p><div data-background-grid></div></dialog>
@@ -45,6 +52,8 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   const q = <T extends HTMLElement = HTMLElement>(s: string) => root.querySelector<T>(s)!;
   const name = q<HTMLInputElement>('[data-name]'), desc = q<HTMLInputElement>('[data-desc]'), canvas = q<HTMLCanvasElement>('.editor-viewport canvas'), viewport = q('.editor-viewport');
   const status = (s: string) => { q('[data-status]').textContent = s; };
+  const touchEditor = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1;
+  root.classList.toggle('ed-touch', touchEditor);
   let size = 24, category='地形', page=0;
   for(const [button,dialog] of [['[data-settings]','[data-settings-dialog]'],['[data-help]','[data-help-dialog]'],['[data-backgrounds]','[data-background-dialog]']])q(button).onclick=()=>q<HTMLDialogElement>(dialog).showModal();
   root.querySelectorAll<HTMLButtonElement>('[data-dismiss]').forEach(b=>b.onclick=()=>b.closest('dialog')!.close());
@@ -138,7 +147,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     selected=null;eraseRadius=0;q('[data-big-erase]').setAttribute('aria-pressed','false');
     if(c==='dd:game:9:0')c='~';if(c==='dd:game:11:0')c='U';
     const part=PARTS.find(p=>p[0]===c);if(!part)return;
-    tool=c;mode='paint';viewport.style.touchAction='none';selectPart(c,part[1]);
+    tool=c;mode='paint';viewport.style.touchAction='none';q('[data-fill]').setAttribute('aria-pressed','false');selectPart(c,part[1]);
     root.querySelectorAll<HTMLElement>('[data-part]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===c)));
     root.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode==='paint'&&c!=='.')));
     q('[data-erase]').setAttribute('aria-pressed',String(c==='.'));draw();updatePreview();
@@ -205,14 +214,15 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.onclick = () => {
     if(b.dataset.mode==='paint'&&tool==='.')choosePart('#');
     q('[data-erase]').setAttribute('aria-pressed','false');
-    mode = b.dataset.mode!;updatePreview(); viewport.style.touchAction = mode === 'pan' ? 'pan-x pan-y' : 'none';
+    mode = b.dataset.mode!;q('[data-fill]').setAttribute('aria-pressed','false');updatePreview(); viewport.style.touchAction = touchEditor ? 'none' : mode === 'pan' ? 'pan-x pan-y' : 'none';
     root.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
   });
   let spacePan=false;
-  let panPoint:{x:number;y:number;left:number;top:number}|null=null;
-  viewport.addEventListener('pointerdown',e=>{if(mode!=='pan'&&!spacePan&&e.button!==1)return;panPoint={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);e.preventDefault();});
-  viewport.addEventListener('pointermove',e=>{if(!panPoint)return;viewport.scrollLeft=panPoint.left-e.clientX+panPoint.x;viewport.scrollTop=panPoint.top-e.clientY+panPoint.y;});
-  viewport.addEventListener('pointerup',()=>panPoint=null);viewport.addEventListener('pointercancel',()=>panPoint=null);
+  let panPoint:{id:number;x:number;y:number;left:number;top:number}|null=null;
+  viewport.addEventListener('pointerdown',e=>{if((mode!=='pan'&&!spacePan&&e.button!==1)||panPoint)return;panPoint={id:e.pointerId,x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);e.preventDefault();});
+  viewport.addEventListener('pointermove',e=>{if(!panPoint||panPoint.id!==e.pointerId)return;viewport.scrollLeft=panPoint.left-e.clientX+panPoint.x;viewport.scrollTop=panPoint.top-e.clientY+panPoint.y;});
+  const endPan=(e:PointerEvent)=>{if(panPoint?.id===e.pointerId)panPoint=null;};
+  viewport.addEventListener('pointerup',endPan);viewport.addEventListener('pointercancel',endPan);viewport.addEventListener('lostpointercapture',endPan);
   let hover:{x:number;y:number}|null=null;
   function updatePreview(){
     const footprint=q('[data-erase-footprint]');footprint.hidden=!hover||mode!=='paint'||tool!=='.'||!eraseRadius;
@@ -222,12 +232,13 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     const icon=box.querySelector('canvas')!,g=icon.getContext('2d')!;g.clearRect(0,0,32,32);drawPart(g,tool,0,0,32,undefined,0,+q<HTMLSelectElement>('[data-tele-color]').value);box.querySelector('span')!.textContent=PARTS.find(p=>p[0]===tool)?.[1]??tool;
     if(tool==='.'&&eraseRadius)box.querySelector('span')!.textContent='消去 5×5マス';
   }
-  function fill(){
-    if(!hover||pointer!==null)return;
+  function fill(at?:{x:number;y:number}){
+    if(pointer!==null)return;
     if(tool==='.'||tool==='S'){status('塗りつぶすパーツを選んでください（消去・出現地点は対象外）');return;}
-    const rect=canvas.getBoundingClientRect(),x=Math.floor((hover.x-rect.left+viewport.scrollLeft)/size),y=Math.floor((hover.y-rect.top+viewport.scrollTop)/size);
+    const rect=canvas.getBoundingClientRect(),x=at?.x??(hover?Math.floor((hover.x-rect.left+viewport.scrollLeft)/size):-1),y=at?.y??(hover?Math.floor((hover.y-rect.top+viewport.scrollTop)/size):-1);
+    if(x<0||y<0||x>=map.width||y>=map.height){status('囲まれた空白をタップして塗りつぶしてください');return;}
     const cells=enclosedCells(map,x,y);
-    if(!cells.length){status('枠で閉じた空白の内側にカーソルを合わせてPを押してください');return;}
+    if(!cells.length){status(at?'枠で閉じた空白の内側をタップしてください':'枠で閉じた空白の内側にカーソルを合わせてPを押してください');return;}
     history.push(snapshot());if(history.length>60)history.shift();future=[];
     const rows=map.tiles.map(row=>[...row]);
     if(map.dd)map.dd=structuredClone(map.dd);
@@ -283,7 +294,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     if(!count){status('その方向には延ばせません（空白・出現地点・隣にパーツがある場合）');return;}
     history.push(old);if(history.length>60)history.shift();future=[];draw();save();status(`${count}マス延ばしました（R / Ctrl+Zで戻す）`);
   }
-  canvas.onpointerdown = e => { if(!spacePan&&(e.button===2||mode==='select'&&e.button===0)){selectCell(e);e.preventDefault();return;}if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(snapshot()); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; viewport.focus({preventScroll:true}); lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
+  canvas.onpointerdown = e => { if(!spacePan&&mode==='fill'&&e.button===0){const r=canvas.getBoundingClientRect();fill({x:Math.floor((e.clientX-r.left+viewport.scrollLeft)/size),y:Math.floor((e.clientY-r.top+viewport.scrollTop)/size)});e.preventDefault();return;}if(!spacePan&&(e.button===2||mode==='select'&&e.button===0)){selectCell(e);e.preventDefault();return;}if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(snapshot()); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; viewport.focus({preventScroll:true}); lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
   canvas.onpointermove = e => { hover={x:e.clientX,y:e.clientY}; updatePreview();if (e.pointerId === pointer) paint(e);
     const r=canvas.getBoundingClientRect(),x=Math.floor((e.clientX-r.left+viewport.scrollLeft)/size),y=Math.floor((e.clientY-r.top+viewport.scrollTop)/size),idx=y*map.width+x;
     const names:string[]=[];const tile=map.tiles[y]?.[x];if(tile&&tile!=='.')names.push(TILE_TOOLS.find(t=>t[0]===tile)?.[1]??tile);
@@ -295,8 +306,11 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   canvas.onpointerup = canvas.onpointercancel = canvas.onlostpointercapture = end;
   q('[data-undo]').onclick = () => { const rows = history.pop(); if (rows) { future.push(snapshot()); map = rows; selected=null;refreshBackground();save(); draw(); } };
   q('[data-redo]').onclick = () => { const rows = future.pop(); if (rows) { history.push(snapshot()); map = rows; selected=null;refreshBackground();save(); draw(); } };
+  q('[data-fill]').onclick=()=>{mode=mode==='fill'?'paint':'fill';viewport.style.touchAction='none';root.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(mode==='paint'&&b.dataset.mode==='paint')));q('[data-fill]').setAttribute('aria-pressed',String(mode==='fill'));updatePreview();status(mode==='fill'?'囲まれた空白をタップすると塗りつぶします':'描画モードに戻りました');};
+  root.querySelectorAll<HTMLButtonElement>('[data-extend]').forEach(b=>b.onclick=()=>{const [dx,dy]=b.dataset.extend!.split(',').map(Number);extend(dx,dy);});
   function zoom(next:number){const x=(viewport.scrollLeft+viewport.clientWidth/2)/size,y=(viewport.scrollTop+viewport.clientHeight/2)/size;size=next;q('.ed-map-space').style.width=`${map.width*size}px`;q('.ed-map-space').style.height=`${map.height*size}px`;q<HTMLSelectElement>('[data-zoom]').value=String(size);draw();viewport.scrollLeft=x*size-viewport.clientWidth/2;viewport.scrollTop=y*size-viewport.clientHeight/2;}
   function zoomStep(delta:number){zoom(ZOOMS[Math.max(0,Math.min(ZOOMS.length-1,ZOOMS.indexOf(size)+delta))]);}
+  q('[data-zoom-out]').onclick=()=>zoomStep(-1);q('[data-zoom-in]').onclick=()=>zoomStep(1);
   q<HTMLSelectElement>('[data-zoom]').onchange=e=>zoom(+(e.target as HTMLSelectElement).value);
   viewport.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();zoomStep(e.deltaY<0?1:-1);},{passive:false});
   root.onkeydown=e=>{if((e.target as HTMLElement).closest('input,select,textarea,dialog,[contenteditable]'))return;if(e.code==='KeyE'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();if(e.shiftKey)bigErase();else choosePart('.');}if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat){const direction:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};if(direction[e.key]){e.preventDefault();extend(...direction[e.key]);}if(e.key==='+'||e.key==='='||e.code==='NumpadAdd'){e.preventDefault();zoomStep(1);}if(e.key==='-'||e.code==='NumpadSubtract'){e.preventDefault();zoomStep(-1);}if(e.code==='KeyP'){e.preventDefault();fill();}if(e.code==='KeyR'){e.preventDefault();if(pointer===null)q<HTMLButtonElement>('[data-undo]').click();}}if(e.code==='Space'){e.preventDefault();spacePan=true;viewport.style.cursor='grab';}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();q<HTMLButtonElement>(e.shiftKey?'[data-redo]':'[data-undo]').click();}};
