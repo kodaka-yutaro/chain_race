@@ -39,7 +39,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
       <aside class="ed-inspector" aria-label="選択パーツの設定"><h3 data-selected-name>岩壁</h3><p data-part-help>フックが掛かる岩壁</p><div class="ed-fields"><label data-field="tele-color">テレポートの色<select data-tele-color><option value="0">黒</option><option value="1">明るい灰色</option><option value="2">赤</option></select></label><label data-field="number">接続番号<input data-number type="number" min="1" max="255" value="1"></label><label data-field="angle">角度<input data-angle type="number" min="0" max="359" value="0"></label><label data-field="force">強さ / 回数<input data-force type="number" min="0" max="255" value="2"></label><label data-field="delay">秒数<input data-delay type="number" min="0" max="60" value="3"></label></div><p data-no-settings class="note">このパーツはそのまま配置できます。</p><section class="ed-channel"><h3>通常スイッチ</h3><label>接続グループ<select data-channel-select>${[1,2,3,4,5].map(n=>`<option value="${n-1}">${n} 番</option>`).join('')}</select></label><div class="channels"></div></section><p class="ed-tip">配置済みパーツは「マス選択」か右クリックで選ぶと設定を変更できます。</p></aside>
     </div>
     <div class="ed-touch-tools" role="toolbar" aria-label="iPadの編集操作">
-      <span class="ed-touch-note">一本指：描く・選択 ／ 二本指：移動・ピンチ拡大縮小</span>
+      <span class="ed-touch-note">描く：指でなぞる ／ 移動：指でスクロール ／ マス選択：タップ</span>
       <button data-fill type="button" aria-pressed="false">囲みを塗る</button>
       <span>選択マスを延長</span>
       <button data-extend="-1,0" type="button" aria-label="左に延長">←</button><button data-extend="0,-1" type="button" aria-label="上に延長">↑</button><button data-extend="0,1" type="button" aria-label="下に延長">↓</button><button data-extend="1,0" type="button" aria-label="右に延長">→</button>
@@ -247,60 +247,6 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   }
   canvas.onpointerleave=()=>{hover=null;updatePreview();};
   let pointer: number | null = null, lastCell: { x: number; y: number } | null = null;
-  // Multi-touch navigation remains available in every editing mode.
-  const touches = new Map<number,{x:number;y:number}>();
-  let gestureLocked = false;
-  let gesture: { distance:number; startSize:number; worldX:number; worldY:number } | null = null;
-  const pair = () => {
-    const [a,b]=[...touches.values()];
-    return { x:(a.x+b.x)/2, y:(a.y+b.y)/2, distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)) };
-  };
-  const beginGesture = () => {
-    if(pointer!==null) {
-      // Commit the current one-finger stroke before switching to navigation.
-      const active=pointer;pointer=null;lastCell=null;
-      if(canvas.hasPointerCapture(active))canvas.releasePointerCapture(active);
-      save();
-    }
-    panPoint=null;
-    gestureLocked=true;
-    hover=null;updatePreview();
-    const p=pair(), rect=viewport.getBoundingClientRect();
-    gesture={distance:p.distance,startSize:size,
-      worldX:(viewport.scrollLeft+p.x-rect.left)/size,
-      worldY:(viewport.scrollTop+p.y-rect.top)/size};
-  };
-  const onTouchDown=(e:PointerEvent)=>{
-    if(!touchEditor || e.pointerType!=='touch')return;
-    touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(touches.size===2){beginGesture();e.preventDefault();e.stopPropagation();}
-    else if(gestureLocked){e.preventDefault();e.stopPropagation();}
-  };
-  const onTouchMove=(e:PointerEvent)=>{
-    if(!touches.has(e.pointerId))return;
-    touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(!gestureLocked || touches.size!==2 || !gesture)return;
-    e.preventDefault();
-    const p=pair(),rect=viewport.getBoundingClientRect();
-    const next=Math.max(ZOOMS[0],Math.min(ZOOMS[ZOOMS.length-1],gesture.startSize*p.distance/gesture.distance));
-    size=next;
-    viewport.querySelector<HTMLElement>('.ed-map-space')!.style.width=`${map.width*size}px`;
-    viewport.querySelector<HTMLElement>('.ed-map-space')!.style.height=`${map.height*size}px`;
-    viewport.scrollLeft=gesture.worldX*size-(p.x-rect.left);
-    viewport.scrollTop=gesture.worldY*size-(p.y-rect.top);
-    const closest=ZOOMS.reduce((a,b)=>Math.abs(b-size)<Math.abs(a-size)?b:a);
-    q<HTMLSelectElement>('[data-zoom]').value=String(closest);
-    draw();
-  };
-  const onTouchEnd=(e:PointerEvent)=>{
-    if(!touches.delete(e.pointerId))return;
-    if(touches.size<2)gesture=null;
-    if(!touches.size){gestureLocked=false;hover=null;updatePreview();}
-  };
-  viewport.addEventListener('pointerdown',onTouchDown,true);
-  viewport.addEventListener('pointermove',onTouchMove,true);
-  viewport.addEventListener('pointerup',onTouchEnd,true);
-  viewport.addEventListener('pointercancel',onTouchEnd,true);
   const paint = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect();
     const x = Math.floor((e.clientX - r.left + viewport.scrollLeft) / size), y = Math.floor((e.clientY - r.top + viewport.scrollTop) / size);
@@ -348,8 +294,8 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
     if(!count){status('その方向には延ばせません（空白・出現地点・隣にパーツがある場合）');return;}
     history.push(old);if(history.length>60)history.shift();future=[];draw();save();status(`${count}マス延ばしました（R / Ctrl+Zで戻す）`);
   }
-  canvas.onpointerdown = e => { if(gestureLocked)return; if(!spacePan&&mode==='fill'&&e.button===0){const r=canvas.getBoundingClientRect();fill({x:Math.floor((e.clientX-r.left+viewport.scrollLeft)/size),y:Math.floor((e.clientY-r.top+viewport.scrollTop)/size)});e.preventDefault();return;}if(!spacePan&&(e.button===2||mode==='select'&&e.button===0)){selectCell(e);e.preventDefault();return;}if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(snapshot()); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; viewport.focus({preventScroll:true}); lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
-  canvas.onpointermove = e => { if(gestureLocked)return; hover={x:e.clientX,y:e.clientY}; updatePreview();if (e.pointerId === pointer) paint(e);
+  canvas.onpointerdown = e => { if(!spacePan&&mode==='fill'&&e.button===0){const r=canvas.getBoundingClientRect();fill({x:Math.floor((e.clientX-r.left+viewport.scrollLeft)/size),y:Math.floor((e.clientY-r.top+viewport.scrollTop)/size)});e.preventDefault();return;}if(!spacePan&&(e.button===2||mode==='select'&&e.button===0)){selectCell(e);e.preventDefault();return;}if (mode !== 'paint' || spacePan || e.button!==0 || pointer !== null) return; history.push(snapshot()); if (history.length > 60) history.shift(); future = []; pointer = e.pointerId; viewport.focus({preventScroll:true}); lastCell = null; canvas.setPointerCapture(pointer); paint(e); e.preventDefault(); };
+  canvas.onpointermove = e => { hover={x:e.clientX,y:e.clientY}; updatePreview();if (e.pointerId === pointer) paint(e);
     const r=canvas.getBoundingClientRect(),x=Math.floor((e.clientX-r.left+viewport.scrollLeft)/size),y=Math.floor((e.clientY-r.top+viewport.scrollTop)/size),idx=y*map.width+x;
     const names:string[]=[];const tile=map.tiles[y]?.[x];if(tile&&tile!=='.')names.push(TILE_TOOLS.find(t=>t[0]===tile)?.[1]??tile);
     for(const key of ['game','front','tele','speed','switches','entities'] as const)for(const row of map.dd?.[key]??[])if(row[0]===idx){const p=DD_PARTS.find(p=>p.layer===key&&(p.type===row[1]||key==='speed')&&(!['game','front'].includes(key)||(p.flags??0)===(row[2]??0)));names.push(p?.name??'特殊パーツ');}
@@ -363,7 +309,7 @@ export function mountEditor(root: HTMLElement, publish: (m: MapDef) => Promise<v
   q('[data-fill]').onclick=()=>{mode=mode==='fill'?'paint':'fill';viewport.style.touchAction='none';root.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(mode==='paint'&&b.dataset.mode==='paint')));q('[data-fill]').setAttribute('aria-pressed',String(mode==='fill'));updatePreview();status(mode==='fill'?'囲まれた空白をタップすると塗りつぶします':'描画モードに戻りました');};
   root.querySelectorAll<HTMLButtonElement>('[data-extend]').forEach(b=>b.onclick=()=>{const [dx,dy]=b.dataset.extend!.split(',').map(Number);extend(dx,dy);});
   function zoom(next:number){const x=(viewport.scrollLeft+viewport.clientWidth/2)/size,y=(viewport.scrollTop+viewport.clientHeight/2)/size;size=next;q('.ed-map-space').style.width=`${map.width*size}px`;q('.ed-map-space').style.height=`${map.height*size}px`;q<HTMLSelectElement>('[data-zoom]').value=String(size);draw();viewport.scrollLeft=x*size-viewport.clientWidth/2;viewport.scrollTop=y*size-viewport.clientHeight/2;}
-  function zoomStep(delta:number){const index=ZOOMS.reduce((best,n,i)=>Math.abs(n-size)<Math.abs(ZOOMS[best]-size)?i:best,0);zoom(ZOOMS[Math.max(0,Math.min(ZOOMS.length-1,index+delta))]);}
+  function zoomStep(delta:number){zoom(ZOOMS[Math.max(0,Math.min(ZOOMS.length-1,ZOOMS.indexOf(size)+delta))]);}
   q('[data-zoom-out]').onclick=()=>zoomStep(-1);q('[data-zoom-in]').onclick=()=>zoomStep(1);
   q<HTMLSelectElement>('[data-zoom]').onchange=e=>zoom(+(e.target as HTMLSelectElement).value);
   viewport.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();zoomStep(e.deltaY<0?1:-1);},{passive:false});
